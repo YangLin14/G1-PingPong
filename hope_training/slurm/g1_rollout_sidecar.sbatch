@@ -2,10 +2,13 @@
 #SBATCH -J hope-g1-sidecar
 #SBATCH -A tritondroids
 #SBATCH -p normal
-#SBATCH --gres=rtx2080ti:1
-#SBATCH -c 4
+#SBATCH --gres=rtx2080ti:2
+#SBATCH -c 2
 #SBATCH --mem=24G
 #SBATCH --time=00:45:00
+# gres=2 is a 2026-10-10 workaround: zixian's GPU IDX 3 (0000:61:00.0) is dead ("Unable to determine the
+# device handle") and Slurm hands it to every 1-GPU job while the trainers hold IDX 0-2; with 2 GPUs the
+# allocation also contains a healthy one (CUDA then sees exactly 1 device). Revert to 1 once it is drained.
 #SBATCH -o /home/%u/.cache/hope-slurm/sidecar/%j-sidecar.out
 # MuJoCo rollout sidecar for a G1 training run: every HOPE_G1_SIDECAR_PERIOD it takes the newest local
 # checkpoint of HOPE_G1_RUN_NAME, exports it to ONNX inside the Isaac image (GPU, headless), runs a few
@@ -87,7 +90,12 @@ if [ $rc -ne 0 ] || [ ! -f "$exported/policy.onnx" ]; then echo "[sidecar] expor
 mkdir -p "$run_dir/videos"
 mp4="$run_dir/videos/mujoco_iter${iter}.mp4"; js="$run_dir/videos/mujoco_iter${iter}.json"
 cd "$HOPE_REPO"
-MUJOCO_GL=egl timeout -k 30 15m "$VENV/bin/python" "$WBT/scripts/mujoco_eval_onnx.py" --robot "$HOPE_G1_ROBOT" \
+# Pin the EGL device: letting MuJoCo walk all devices aborts the process on a node with a faulty GPU
+# (zixian's 0000:61:00.0 since 2026-10-10); pick_egl_device.py probes each one in a subprocess.
+egl_dev=$(MUJOCO_GL=egl "$VENV/bin/python" "$HOPE_REPO/hope_training/slurm/pick_egl_device.py")
+if [ -z "$egl_dev" ]; then echo "[sidecar] no working EGL device in this allocation"; resubmit; exit 1; fi
+echo "[sidecar] MUJOCO_EGL_DEVICE_ID=$egl_dev"
+MUJOCO_GL=egl MUJOCO_EGL_DEVICE_ID=$egl_dev timeout -k 30 15m "$VENV/bin/python" "$WBT/scripts/mujoco_eval_onnx.py" --robot "$HOPE_G1_ROBOT" \
   --onnx "$exported/policy.onnx" --num-serves "$HOPE_G1_SIDECAR_SERVES" --seed "$iter" \
   --video-out "$mp4" --json-out "$js"
 rc=$?
