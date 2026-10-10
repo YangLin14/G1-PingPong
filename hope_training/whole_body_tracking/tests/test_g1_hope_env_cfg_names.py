@@ -36,7 +36,7 @@ from whole_body_tracking.robots.g1 import (  # noqa: E402
     G1_WRIST_BODY,
 )
 from whole_body_tracking.tasks.tracking.actor_observation_contract import HITTER_PURE_UNITREE_G1  # noqa: E402
-from whole_body_tracking.tasks.tracking.config.g1 import hope_env_cfg  # noqa: E402
+from whole_body_tracking.tasks.tracking.config.g1 import g1_recipe, hope_env_cfg  # noqa: E402
 from whole_body_tracking.utils.g1_retarget import find_residual_a3_names  # noqa: E402
 
 
@@ -83,3 +83,53 @@ def test_pd_randomization_is_the_generic_event(cfg):
 def test_hitter_contract_is_registered_for_29_joints():
     assert HITTER_PURE_UNITREE_G1.total_dim == 104
     assert dict(HITTER_PURE_UNITREE_G1.layout)["joint_pos"] == 29
+
+
+def test_hitter_cfg_carries_the_g1_recipe_v2():
+    cfg = hope_env_cfg.HitterPingPongUnitreeG1EnvCfg()
+    racket = cfg.commands.racket_target
+    assert tuple(tuple(tuple(r) for r in clip) for clip in racket.racket_pos_range_per_clip) == g1_recipe.POS_RANGE_PER_CLIP
+    assert tuple(racket.venue_tuple_contact_z_range) == g1_recipe.VENUE_CONTACT_Z_RANGE
+    assert cfg.rewards.rally_ready_root_height_debt.params["min_height"] == g1_recipe.ROOT_HEIGHT_MIN
+    assert cfg.rewards.hold_ready.params["reach"] == g1_recipe.HOLD_READY_REACH
+    assert (cfg.rewards.ready_stance_width.params["lo"], cfg.rewards.ready_stance_width.params["hi"]) == g1_recipe.STANCE_WIDTH
+    assert cfg.terminations.base_too_low.params["minimum_height"] == g1_recipe.BASE_TOO_LOW
+    # the research env keeps the A3 numbers (only the deploy-grade hitter is retuned)
+    full = hope_env_cfg.HOPEPingPongUnitreeG1EnvCfg()
+    assert tuple(full.commands.racket_target.venue_tuple_contact_z_range) == g1_recipe.A3_VENUE_CONTACT_Z_RANGE
+
+
+def test_host_actuation_table_matches_the_isaac_articulation():
+    """unitree/scripts/g1_actuation.py (used by the MJCF/YAML generators) == robots/g1.py G1_CYLINDER_CFG."""
+    import importlib.util
+    import pathlib
+
+    from whole_body_tracking.robots.g1 import G1_ACTION_SCALE, G1_CYLINDER_CFG, UNITREE_G1_JOINT_NAMES
+
+    root = pathlib.Path(__file__).resolve().parents[3]
+    spec = importlib.util.spec_from_file_location("g1_actuation", root / "unitree" / "scripts" / "g1_actuation.py")
+    act = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(act)
+    import re
+
+    def resolve(mapping, joint):
+        if not isinstance(mapping, dict):
+            return float(mapping)
+        for pattern, value in mapping.items():
+            if re.fullmatch(pattern, joint):
+                return float(value)
+        raise KeyError(joint)
+
+    for joint in UNITREE_G1_JOINT_NAMES:
+        actuator = next(a for a in G1_CYLINDER_CFG.actuators.values() if any(re.fullmatch(e, joint) for e in a.joint_names_expr))
+        assert resolve(actuator.stiffness, joint) == pytest.approx(act.stiffness(joint), rel=1e-6), joint
+        assert resolve(actuator.damping, joint) == pytest.approx(act.damping(joint), rel=1e-6), joint
+        assert resolve(actuator.armature, joint) == pytest.approx(act.armature(joint), rel=1e-6), joint
+        assert resolve(actuator.effort_limit_sim, joint) == pytest.approx(act.effort_limit(joint)), joint
+        scale = next(v for k, v in G1_ACTION_SCALE.items() if re.fullmatch(k, joint))
+        assert scale == pytest.approx(act.action_scale(joint), rel=1e-6), joint
+    init = G1_CYLINDER_CFG.init_state
+    assert init.pos[2] == pytest.approx(act.INIT_PELVIS_Z)
+    for joint in UNITREE_G1_JOINT_NAMES:
+        expected = next((v for k, v in init.joint_pos.items() if re.fullmatch(k, joint)), 0.0)
+        assert expected == pytest.approx(act.init_joint_pos(joint)), joint

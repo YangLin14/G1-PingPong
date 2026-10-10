@@ -30,7 +30,9 @@ trajectory:
 
 There is NO analytic predicted-landing substitute: every event above is read off the
 real simulated ball. Forehand, backhand and all serves merge into the one number.
-Emits only ``{"success_rate": <float>}`` to stdout (and optionally --json-out); a
+Emits ``{"success_rate": <float>, ...}`` to stdout (and optionally --json-out) -- the shipped
+metric plus per-serve diagnostics (contact / net-clear / on-opponent / fall rates, the minimum
+racket-ball distance and a ``serves`` list) so a 0 % run can be diagnosed; a
 one-line human summary goes to stderr.
 
 Two evaluation modes (``--eval-mode``):
@@ -84,6 +86,16 @@ DEFAULT_ROBOT = "agibot_a3"
 # = robot's right = -y) and the strike height band above the table surface. The A3 values are the
 # original neutral examples; the G1 entry starts EQUAL (TODO: retune to the G1's shorter reach once a
 # G1 policy exists). ``--serve-y-fh/--serve-y-bh/--serve-z`` override whichever robot is selected.
+# Robot-to-table placement and the fixed intercept plane, table-frame x (0 = the near edge), as the
+# TRAINING recipes define them: the base stands 0.50 m before the near edge (vb_table_near_x) and the
+# strike plane is 0.58 m from the base on the A3 (HOPEPingPong.yaml) / 0.46 m on the G1
+# (config/g1/g1_recipe.py). With the old defaults (edge 0.30, plane 0.0) the ball arrived 0.28 m
+# closer than any policy was trained for and model_21800 never got within 0.4 m of it.
+TABLE_GEOMETRY = {
+    "agibot_a3": {"near_edge_x": 0.50, "strike_plane_x": 0.08},
+    "unitree_g1": {"near_edge_x": 0.50, "strike_plane_x": -0.04},
+}
+
 SERVE_RANGES = {
     "agibot_a3": {"y_fh": (-0.45, -0.12), "y_bh": (0.05, 0.38), "z": (0.10, 0.22)},
     # G1: lateral bands x0.79 (shoulder-to-blade reach 0.62 m vs 0.786 m), strike height band lowered
@@ -251,6 +263,11 @@ def run_eval(args) -> dict:
     onnx_path = args.onnx or str(runtime_cfg.onnx_path)
     robot_xml = args.model_xml or str(runtime_cfg.model_xml_path)
     args.serve_ranges = _resolve_serve_ranges(args, profile.name)
+    geometry = TABLE_GEOMETRY[profile.name]
+    if args.near_edge_x is None:
+        args.near_edge_x = geometry["near_edge_x"]
+    if args.strike_plane_x is None:
+        args.strike_plane_x = geometry["strike_plane_x"]
 
     ball_cfg = load_ball_physics_config()
     physics = BallPhysics.from_config(ball_cfg)
@@ -351,6 +368,7 @@ def run_eval(args) -> dict:
     transitions_seen: set = set()
     prev_side = None
     task_counter = 0
+    serve_records: list[dict] = []
 
     for trial in range(args.num_serves):
         # Side pattern FH, FH, BH, BH, ... exercises all four adjacent side
@@ -388,8 +406,15 @@ def run_eval(args) -> dict:
         contacted = False
         net_clear = False
         first_bounce = None
+        # per-serve diagnostics (so a 0 % run can be read: never reached the ball / fell over /
+        # hit into the net / landed out)
+        min_dist = float("inf")
+        fell = False
+        contact_tick = None
+        ticks_run = 0
 
         for _tick in range(max_ticks):
+            ticks_run = _tick + 1
             ball_pos, ball_vel = scene.ball_state()
             cmd = _predict_command(
                 ball_pos, ball_vel, side, scene, physics, args, task_id, revision, RacketCommand
@@ -402,15 +427,19 @@ def run_eval(args) -> dict:
             # --- contact: real MuJoCo ball<->racket contact, or the allowed proximity
             #     fallback (ball within contact_radius of the racket site with the
             #     racket moving toward it). ---
+            if scene.base_fallen():
+                fell = True
             if not contacted:
+                r_pos, r_vel = scene.racket_site_state()
+                b_pos, _b_vel = scene.ball_state()
+                delta = b_pos - r_pos
+                min_dist = min(min_dist, float(np.linalg.norm(delta)))
                 if events.ball_racket_contact:
                     contacted = True
-                else:
-                    r_pos, r_vel = scene.racket_site_state()
-                    b_pos, _b_vel = scene.ball_state()
-                    delta = b_pos - r_pos
-                    if np.linalg.norm(delta) <= contact_radius and float(np.dot(r_vel, delta)) > 0.0:
-                        contacted = True
+                elif np.linalg.norm(delta) <= contact_radius and float(np.dot(r_vel, delta)) > 0.0:
+                    contacted = True
+                if contacted:
+                    contact_tick = _tick
 
             # --- after contact, watch the REAL outgoing ball for net clearance and its
             #     first bounce (both read off the simulated trajectory). ---
@@ -433,13 +462,25 @@ def run_eval(args) -> dict:
             if not contacted and scene.ball_state()[0][0] < scene.near_edge_x - 0.8:
                 break
 
-        success = bool(
-            contacted
-            and net_clear
-            and first_bounce is not None
-            and table.on_opponent_half(first_bounce[0], first_bounce[1])
-        )
+        on_opponent = bool(first_bounce is not None and table.on_opponent_half(first_bounce[0], first_bounce[1]))
+        success = bool(contacted and net_clear and on_opponent)
         accumulator.add_bool(success)
+        serve_records.append(
+            {
+                "serve": trial,
+                "side": "FH" if side == FOREHAND else "BH",
+                "success": success,
+                "contacted": bool(contacted),
+                "contact_tick": contact_tick,
+                "min_racket_ball_distance_m": None if not np.isfinite(min_dist) else round(min_dist, 4),
+                "net_clear": bool(net_clear),
+                "first_bounce_xy": None if first_bounce is None else [round(float(first_bounce[0]), 3), round(float(first_bounce[1]), 3)],
+                "on_opponent_half": on_opponent,
+                "fell": bool(fell),
+                "ticks": ticks_run,
+                "strike_point_w": [round(float(v), 3) for v in _strike_pt],
+            }
+        )
 
     if capture is not None:
         n_frames = capture.num_frames
@@ -458,12 +499,27 @@ def run_eval(args) -> dict:
             + ("" if all_four else "  (increase --num-serves >= 5 to cover all four)"),
             file=sys.stderr,
         )
+    n_serves = max(1, len(serve_records))
+    diagnostics = {
+        "contact_rate": sum(r["contacted"] for r in serve_records) / n_serves,
+        "net_clear_rate": sum(r["net_clear"] for r in serve_records) / n_serves,
+        "on_opponent_rate": sum(r["on_opponent_half"] for r in serve_records) / n_serves,
+        "fall_rate": sum(r["fell"] for r in serve_records) / n_serves,
+        "mean_min_racket_ball_distance_m": float(np.mean([
+            r["min_racket_ball_distance_m"] for r in serve_records if r["min_racket_ball_distance_m"] is not None
+        ])) if any(r["min_racket_ball_distance_m"] is not None for r in serve_records) else None,
+    }
     print(
         f"[mujoco_eval] robot={profile.name} mode={args.eval_mode} serves={accumulator.attempts} "
-        f"returns={accumulator.successes} success_rate={accumulator.value:.4f}",
+        f"returns={accumulator.successes} success_rate={accumulator.value:.4f} "
+        f"contact_rate={diagnostics['contact_rate']:.2f} net_clear_rate={diagnostics['net_clear_rate']:.2f} "
+        f"fall_rate={diagnostics['fall_rate']:.2f}",
         file=sys.stderr,
     )
-    return accumulator.as_dict()
+    out = accumulator.as_dict()
+    out.update(diagnostics)
+    out["serves"] = serve_records
+    return out
 
 
 def _resolve_serve_ranges(args, robot: str) -> dict:
@@ -513,12 +569,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--contact-radius", type=float, default=0.10, help="Racket-site proximity contact fallback (m).")
     parser.add_argument(
-        "--near-edge-x", type=float, default=0.30,
-        help="MuJoCo x of the table's near edge (sets the robot-to-table placement).",
+        "--near-edge-x", type=float, default=None,
+        help="MuJoCo x of the table's near edge (sets the robot-to-table placement). Default: the robot's "
+             "training placement (TABLE_GEOMETRY, 0.50 m for both robots).",
     )
     parser.add_argument(
-        "--strike-plane-x", type=float, default=0.0,
-        help="Strike plane, table-frame x (0 = the near table edge); the fixed intercept plane.",
+        "--strike-plane-x", type=float, default=None,
+        help="Strike plane, table-frame x (0 = the near table edge); the fixed intercept plane. Default: the "
+             "robot's training strike plane (TABLE_GEOMETRY: +0.08 A3, -0.04 G1).",
     )
     parser.add_argument("--seed", type=int, default=0, help="RNG seed for the example serve distribution.")
     parser.add_argument("--view", action="store_true", help="Launch the MuJoCo passive viewer (debug only).")
