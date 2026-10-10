@@ -119,8 +119,16 @@ def build_manifest(
 
 
 def _actor_wrapper(policy, contract, obs_group_dims):
-    """Build the flat-observation actor wrapper the ONNX graph is traced from (CPU, eval mode)."""
+    """Build the flat-observation actor wrapper the ONNX graph is traced from (CPU, eval mode).
+
+    Works on a deep copy so the runner's live policy stays on its device (the parity check steps
+    the env with it afterwards).
+    """
+    import copy
+
     import torch
+
+    policy = copy.deepcopy(policy)
 
     class _ActorWrapper(torch.nn.Module):
         """Flat [1, obs_dim] observation -> raw action.
@@ -301,6 +309,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _guard_exit_status(status_box: list) -> None:
+    """Kit's ``simulation_app.close()`` can terminate the interpreter with status 0 before ``main``
+    returns, which hid an export failure from the Slurm smoke. Re-assert our status at exit."""
+    import atexit
+
+    def _exit():
+        if status_box[0]:
+            os._exit(int(status_box[0]))
+
+    atexit.register(_exit)
+
+
 def main() -> int:
     args = parse_args()
     checkpoint = os.path.abspath(args.checkpoint)
@@ -316,6 +336,8 @@ def main() -> int:
     simulation_app = app_launcher.app
 
     status = 0
+    status_box = [0]
+    _guard_exit_status(status_box)
     env = None
     try:
         import gymnasium as gym
@@ -402,6 +424,7 @@ def main() -> int:
         print("\n[export_onnx] ERROR:", flush=True)
         traceback.print_exc()
         status = 1
+        status_box[0] = 1
     finally:
         # Always close the env (it clears the sim callbacks + instance); closing the app with the
         # timeline-STOP handler still subscribed spins forever in Isaac Lab's render loop.

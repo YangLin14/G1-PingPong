@@ -103,6 +103,12 @@ def run_isaac(args, repo: pathlib.Path) -> int:
     app_launcher = AppLauncher(headless=True, device=args.device)
     simulation_app = app_launcher.app
     status = 0
+    status_box = [0]
+    import atexit
+    import os
+
+    # Kit's close() may end the interpreter with status 0 before we return; re-assert ours.
+    atexit.register(lambda: os._exit(int(status_box[0])) if status_box[0] else None)
     sim = None
     try:
         import torch
@@ -156,6 +162,7 @@ def run_isaac(args, repo: pathlib.Path) -> int:
 
         traceback.print_exc()
         status = 1
+        status_box[0] = 1
     finally:
         if sim is not None:
             try:
