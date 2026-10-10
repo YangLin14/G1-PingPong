@@ -34,13 +34,15 @@ mkdir -p "$(dirname "$STATE")"
 echo "[sidecar] host $(hostname) job=$SLURM_JOB_ID start $(date) run=$HOPE_G1_RUN_NAME period=$HOPE_G1_SIDECAR_PERIOD"
 
 trainer_alive () {
-  # The trainer for THIS run name: its W&B run id / log dir carry the run name, the job name does not,
-  # so match on the exported environment of the pending/running hope-g1-train jobs.
-  for j in $(squeue -h -u "$USER" -n hope-g1-train -t RUNNING,PENDING -o %i); do
-    if scontrol show job "$j" -dd 2>/dev/null | grep -qE "HOPE_G1_RUN_NAME=${HOPE_G1_RUN_NAME}([ ,]|$)"; then return 0; fi
+  # The trainer for THIS run name: the job name is shared, so read the "run_name=<x>" the trainer
+  # prints on its first log line (Slurm does not expose a job's environment). A trainer that is
+  # still PENDING has no log yet; keep re-queuing for it as long as any hope-g1-train job pends.
+  local j log
+  for j in $(squeue -h -u "$USER" -n hope-g1-train -t RUNNING -o %i); do
+    log="$HOME/.cache/hope-slurm/$j-g1-train.out"
+    [ -f "$log" ] && grep -m1 -qE "^\[train\] .*run_name=${HOPE_G1_RUN_NAME}( |$)" "$log" && return 0
   done
-  # Fallback: a trainer that did not export the knob runs the default run name.
-  [ "$HOPE_G1_RUN_NAME" = "g1_v2a" ] && squeue -h -u "$USER" -n hope-g1-train -t RUNNING,PENDING | grep -q .
+  squeue -h -u "$USER" -n hope-g1-train -t PENDING | grep -q .
 }
 
 resubmit () {
