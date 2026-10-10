@@ -309,18 +309,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _guard_exit_status(status_box: list) -> None:
-    """Kit's ``simulation_app.close()`` can terminate the interpreter with status 0 before ``main``
-    returns, which hid an export failure from the Slurm smoke. Re-assert our status at exit."""
-    import atexit
-
-    def _exit():
-        if status_box[0]:
-            os._exit(int(status_box[0]))
-
-    atexit.register(_exit)
-
-
 def main() -> int:
     args = parse_args()
     checkpoint = os.path.abspath(args.checkpoint)
@@ -336,8 +324,6 @@ def main() -> int:
     simulation_app = app_launcher.app
 
     status = 0
-    status_box = [0]
-    _guard_exit_status(status_box)
     env = None
     try:
         import gymnasium as gym
@@ -423,8 +409,15 @@ def main() -> int:
 
         print("\n[export_onnx] ERROR:", flush=True)
         traceback.print_exc()
-        status = 1
-        status_box[0] = 1
+        sys.stdout.flush(); sys.stderr.flush()
+        # Kit's simulation_app.close() ends the interpreter with status 0 (it bypasses atexit too,
+        # job 4219), so a failed export must leave through a hard exit to be seen by the caller.
+        if env is not None:
+            try:
+                env.close()
+            except Exception:
+                pass
+        os._exit(1)
     finally:
         # Always close the env (it clears the sim callbacks + instance); closing the app with the
         # timeline-STOP handler still subscribed spins forever in Isaac Lab's render loop.
