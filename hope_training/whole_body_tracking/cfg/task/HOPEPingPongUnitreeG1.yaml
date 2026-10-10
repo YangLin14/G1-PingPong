@@ -8,8 +8,13 @@
 # contact geometry are NOT preserved. Replace them with a keypoint/IK retarget when available:
 #   motion_file=<g1_forehand.npz> motion_file_2=<g1_backhand.npz>
 #
-# G1: the racket-target sampling boxes (racket.pos_range_per_clip / vel_*), the station ranges and the
-# reward std values below are the A3 reach values -- retune them for the G1 (shorter arm) once clips exist.
+# G1: RECIPE V2 (2026-10). The first G1 run (job 4047) proved the A3 reach values unreachable for the
+# G1 (strike matrix -9 cm x / -10 cm z, a permanent root-height debt). The values marked "G1 v2:"
+# below are the A3 numbers rescaled to the G1 geometry by the rule in
+# source/.../tasks/tracking/config/g1/g1_recipe.py (horizontal reach x0.79, shoulder-relative
+# heights, pelvis ratio 0.76/1.068, hip-spacing ratio 0.87). train.py applies only the env/motion/
+# domain_rand/rewards/overrides sections of this file; the racket: block documents the values the env
+# cfg sets in code (g1_recipe.apply_recipe) and tests/test_g1_recipe_scaling.py pins both to the module.
 defaults:
 - /base/env_base@_here_
 - /base/sim_base@_here_
@@ -94,7 +99,7 @@ rewards:
   lower_body_plant_imitation_std: 0.5
   hold_ready_weight: 1.0
   hold_ready_std: 1.5
-  hold_ready_reach: 0.3
+  hold_ready_reach: 0.24  # G1 v2: A3 0.3 x 0.79 reach ratio
   hold_ready_reach_mode: station
   hold_ready_include_ang_vel: true
   hold_ready_heading_gate_rad: 0.25
@@ -106,8 +111,8 @@ rewards:
   hold_upper_pose_imitation_weight: 1.0
   hold_upper_pose_imitation_std: 0.5
   stance_width_weight: 0.0
-  stance_width_lo: 0.25
-  stance_width_hi: 0.35
+  stance_width_lo: 0.22  # G1 v2: A3 0.25 x 0.87 hip-spacing ratio
+  stance_width_hi: 0.30  # G1 v2: A3 0.35 x 0.87
   stance_width_std: 0.05
   racket_normal_alignment_debt_weight: -2.0
   racket_normal_alignment_debt_margin: 0.1
@@ -184,8 +189,8 @@ rewards:
   ready_stance_heading_gate_rad: 0.15
   ready_stance_speed_gate: 0.2
   ready_stance_width_weight: -0.3
-  ready_stance_width_lo: 0.25
-  ready_stance_width_hi: 0.35
+  ready_stance_width_lo: 0.22  # G1 v2: A3 0.25 x 0.87
+  ready_stance_width_hi: 0.30  # G1 v2: A3 0.35 x 0.87
   ready_stance_width_std: 0.05
   ready_foot_alignment_weight: -0.15
   ready_foot_alignment_margin: 0.12
@@ -251,7 +256,7 @@ rewards:
   settle_foot_slip_post_t_hi: 1.55
   settle_foot_slip_huber_tail: true
   rally_ready_root_height_debt_weight: -0.35
-  rally_ready_root_height_debt_min_height: 0.98
+  rally_ready_root_height_debt_min_height: 0.70  # G1 v2: A3 0.98 x (0.76 / 1.068 pelvis ratio); the G1 pelvis stands at 0.76 m
   rally_ready_root_height_debt_std: 0.05
   rally_ready_root_height_debt_ready_t_lo: -0.1
   rally_ready_root_height_debt_ready_t_hi: 1.1
@@ -283,27 +288,33 @@ racket:
   ready_monitor_step_range:
   - 0.0
   - 0.35
+  # G1 v2: strike plane 0.58 -> 0.46 (x0.79), y bands x0.79, z box shoulder-relative (A3 [0.85, 1.30]
+  # is [shoulder-0.51, shoulder-0.06]; G1 shoulder 1.05 m, clamped to table top + 4 cm, extended to
+  # shoulder + 5 cm). Set in code by g1_recipe.apply_recipe; documented here.
   pos_range_per_clip:
     forehand:
       x:
-      - 0.58
-      - 0.58
+      - 0.46
+      - 0.46
       y:
-      - -0.48
-      - -0.4
+      - -0.38
+      - -0.32
       z:
-      - 0.85
-      - 1.3
+      - 0.8
+      - 1.1
     backhand:
       x:
-      - 0.58
-      - 0.58
+      - 0.46
+      - 0.46
       y:
-      - -0.13
-      - -0.05
+      - -0.1
+      - -0.04
       z:
-      - 0.85
-      - 1.3
+      - 0.8
+      - 1.1
+  venue_tuple_contact_z_range:  # G1 v2: A3 (0.98, 1.26) shifted with the shoulder, clamped to the z box
+  - 0.84
+  - 1.1
   vel_range_per_clip:
     forehand:
       x:
@@ -466,6 +477,7 @@ domain_rand:
 motion_file: ../motions/preprocessed/g1_hope_forehand.npz
 motion_file_2: ../motions/preprocessed/g1_hope_backhand.npz
 checkpoint_export_onnx: false
+# G1 v2: terminations.base_too_low.minimum_height 0.5 -> 0.40 (pelvis ratio), set in code by g1_recipe.
 build_contract:
   actor_observation_dim: 104  # G1
   action_dim: 29              # G1

@@ -53,6 +53,7 @@ from whole_body_tracking.tasks.tracking.config.agibot_a3.hope_env_cfg import (
     HOPEPingPongAgibotA3EnvCfg,
 )
 from whole_body_tracking.utils.g1_retarget import find_residual_a3_names, retarget_cfg_tree
+from whole_body_tracking.tasks.tracking.config.g1 import g1_recipe
 
 # Generic actuator-gain DR for the G1 (the A3 recipe's ``randomize_a3_message_pd_gains`` encodes
 # the A3 message-kd / passive-damping split and raises on any other asset). Same ±15 % band as the
@@ -127,10 +128,12 @@ class HitterPingPongUnitreeG1EnvCfg(HitterPingPongAgibotA3EnvCfg):
     """Deploy-grade ``hitter_pure`` rally task on the Unitree G1 (104-D actor, 29-D action).
 
     Identical recipe to ``HitterPingPongAgibotA3EnvCfg`` (same observation/action/reward/termination
-    classes and ``__post_init__`` deltas), retargeted to the G1 articulation. The racket-target
-    sampling ranges are the A3's reach values — retune for the G1 once G1 reference clips exist.
+    classes and ``__post_init__`` deltas), retargeted to the G1 articulation, then rescaled to the
+    G1's geometry by ``g1_recipe.apply_recipe`` (strike plane / boxes x0.81, shoulder-relative
+    heights, pelvis-height terms, stance width; see that module for the rule and the evidence).
     """
 
     def __post_init__(self):
         super().__post_init__()
         apply_unitree_g1(self)
+        g1_recipe.apply_recipe(self)

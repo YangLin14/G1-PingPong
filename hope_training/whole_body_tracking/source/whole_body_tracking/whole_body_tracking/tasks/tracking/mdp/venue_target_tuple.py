@@ -213,8 +213,14 @@ def sample_correlated_venue_tuple(
     table_surface_z: float = 0.76,
     landing_x_range: tuple[float, float] = DEFAULT_LANDING_X_RANGE,
     landing_y_range: tuple[float, float] = DEFAULT_LANDING_Y_RANGE,
+    contact_z_range: tuple[float, float] = VENUE_CONTACT_Z_RANGE,
 ) -> dict[str, torch.Tensor]:
-    """Sample one correlated physical tuple for every requested FH/BH clip."""
+    """Sample one correlated physical tuple for every requested FH/BH clip.
+
+    ``contact_z_range`` defaults to the A3 venue band; a shorter robot passes its own.
+    """
+    if len(contact_z_range) != 2 or not (float(contact_z_range[0]) < float(contact_z_range[1])):
+        raise ValueError("contact_z_range must be (lo, hi) with lo < hi")
 
     if clip.ndim != 1 or clip.dtype != torch.long:
         raise ValueError("clip must be a 1-D int64 tensor")
@@ -238,9 +244,9 @@ def sample_correlated_venue_tuple(
         velocity_bounds[:, 1] - velocity_bounds[:, 0]
     )
     contact_z = (
-        VENUE_CONTACT_Z_RANGE[0]
+        float(contact_z_range[0])
         + correlated_u[:, 3]
-        * (VENUE_CONTACT_Z_RANGE[1] - VENUE_CONTACT_Z_RANGE[0])
+        * (float(contact_z_range[1]) - float(contact_z_range[0]))
     )
     spin_magnitude = correlated_u[:, 4] * VENUE_SPIN_MAX_RAD_S
 

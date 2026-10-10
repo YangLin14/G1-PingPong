@@ -3909,6 +3909,7 @@ class RacketTargetCommand(CommandTerm):
                 pending_clip,
                 contact_x,
                 table_surface_z=float(self.cfg.vb_table_surface_z),
+                contact_z_range=tuple(self.cfg.venue_tuple_contact_z_range),
                 landing_x_range=tuple(
                     self.cfg.venue_tuple_landing_x_range
                 ),
@@ -11304,6 +11305,10 @@ class RacketTargetCommandCfg(CommandTermCfg):
     venue_tuple_speed_limit_mps: float = 3.5
     venue_tuple_max_resample_attempts: int = 8
     venue_tuple_landing_x_range: tuple[float, float] = (2.17, 3.04)
+    # Contact-height band of the correlated venue tuple sampler (A3 reach; the Unitree G1 recipe
+    # lowers it with its shoulder, see config/g1/g1_recipe.py). Rows outside the per-clip position
+    # box are rejected anyway, so this only keeps the acceptance rate up.
+    venue_tuple_contact_z_range: tuple[float, float] = (0.98, 1.26)
     venue_tuple_landing_y_range: tuple[float, float] = (-0.50, 0.50)
 
     # Phase windows used only by command telemetry.  Defaults are the pre-V3 literals, so old task

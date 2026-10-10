@@ -86,7 +86,9 @@ DEFAULT_ROBOT = "agibot_a3"
 # G1 policy exists). ``--serve-y-fh/--serve-y-bh/--serve-z`` override whichever robot is selected.
 SERVE_RANGES = {
     "agibot_a3": {"y_fh": (-0.45, -0.12), "y_bh": (0.05, 0.38), "z": (0.10, 0.22)},
-    "unitree_g1": {"y_fh": (-0.45, -0.12), "y_bh": (0.05, 0.38), "z": (0.10, 0.22)},
+    # G1: lateral bands x0.79 (shoulder-to-blade reach 0.62 m vs 0.786 m), strike height band lowered
+    # 2 cm with the shoulder (1.05 m vs 1.36 m); see config/g1/g1_recipe.py.
+    "unitree_g1": {"y_fh": (-0.36, -0.10), "y_bh": (0.04, 0.30), "z": (0.08, 0.20)},
 }
 
 
