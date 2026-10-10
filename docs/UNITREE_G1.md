@@ -123,13 +123,14 @@ schema with the sidecar fields `joint_order` = the Isaac order pinned in 3.2,
 ### 3.4 Train / evaluate / export
 
 On the Slurm cluster the whole Isaac side runs inside the pinned image
-(`~/containers/hope_grasping.sif`) from `~/.cache/hope-slurm/`:
+(`~/containers/hope_grasping.sif`); the job scripts live in
+[`hope_training/slurm/`](../hope_training/slurm/README.md):
 
 | script | what |
 |---|---|
-| `g1_isaac_smoke.sbatch` | asset prep, joint-order pin, cfg-name test, 2-iteration train (≈2 min) |
-| `g1_train.sbatch` | the full run on `long` (requeue + resume from the newest `*_<run_name>` checkpoint), `logger=wandb` project `hope-g1`, W&B run id `hope-g1-<run_name>-<jobid>`; knobs `HOPE_G1_RUN_NAME`, `HOPE_G1_NUM_ENVS` (4096 on the 11 GB 2080 Ti), `HOPE_G1_EXTRA`, `HOPE_G1_VIDEO` |
-| `g1_rollout_sidecar.sbatch` | self-rescheduling (default every 2 h): newest checkpoint → `export_onnx.py` → `mujoco_eval_onnx.py --video-out` → `wandb_log_rollout.py` into the companion run `<run_name>-rollouts` (same project, grouped), x-axis = iteration |
+| `g1_isaac_smoke.sbatch` | asset prep, joint-order pin, cfg-name test, Isaac-vs-MuJoCo plant replay, 2-iteration train of each G1 recipe, export + 2-serve MuJoCo eval |
+| `g1_train.sbatch` | the full run on `long` (requeue + resume from the newest `*_<run_name>` checkpoint), `logger=wandb` project `hope-g1`, W&B run id `hope-g1-<run_name>-<jobid>`; knobs `HOPE_G1_RUN_NAME`, `HOPE_G1_TASK`, `HOPE_G1_NUM_ENVS` (4096 on the 11 GB 2080 Ti), `HOPE_G1_EXTRA`, `HOPE_G1_VIDEO` |
+| `g1_rollout_sidecar.sbatch` | self-rescheduling (default every 2 h): newest checkpoint → `export_onnx.py` → `mujoco_eval_onnx.py --video-out --json-out` → `wandb_log_rollout.py` into the companion run `<run_name>-rollouts` (same project, grouped), x-axis = iteration |
 
 `HOPE_G1_VIDEO=1` (in-Isaac `RecordVideo`) is off by default because Isaac Sim 5.1's RTX
 renderer segfaults at startup on NVIDIA driver 610.43 (`librtx.scenedb.plugin.so`, upstream
