@@ -118,6 +118,39 @@ def build_manifest(
     }
 
 
+def _actor_wrapper(policy, contract, obs_group_dims):
+    """Build the flat-observation actor wrapper the ONNX graph is traced from (CPU, eval mode)."""
+    import torch
+
+    class _ActorWrapper(torch.nn.Module):
+        """Flat [1, obs_dim] observation -> raw action.
+
+        rsl_rl >= 3 policies take an observation *mapping* (``obs_groups["policy"]`` names ->
+        tensors) and concatenate the groups themselves; older ones take the flat tensor. The deploy
+        contract is the flat concatenation in group order, so split it back by group width.
+        """
+
+        def __init__(self, actor_critic, group_dims, total_dim, contract_name):
+            super().__init__()
+            self.actor_critic = actor_critic
+            groups = list(getattr(actor_critic, "obs_groups", {}).get("policy", []))
+            self.groups = groups
+            self.widths = [int(group_dims[g]) for g in groups] if groups else []
+            if groups and sum(self.widths) != int(total_dim):
+                raise RuntimeError(
+                    f"policy obs groups {dict(zip(groups, self.widths))} sum to {sum(self.widths)}, "
+                    f"contract {contract_name} is {total_dim}-D"
+                )
+
+        def forward(self, observation):
+            if not self.groups:
+                return self.actor_critic.act_inference(observation)
+            parts = torch.split(observation, self.widths, dim=-1)
+            return self.actor_critic.act_inference(dict(zip(self.groups, parts)))
+
+    return _ActorWrapper(policy, obs_group_dims, contract.total_dim, contract.name).to("cpu").eval()
+
+
 def export_deploy_policy(
     policy,
     contract,
@@ -140,34 +173,9 @@ def export_deploy_policy(
     onnx_path = os.path.join(output_dir, onnx_name)
     manifest_path = os.path.join(output_dir, MANIFEST_NAME)
 
-    class _ActorWrapper(torch.nn.Module):
-        """Flat [1, obs_dim] observation -> raw action.
-
-        rsl_rl >= 3 policies take an observation *mapping* (``obs_groups["policy"]`` names ->
-        tensors) and concatenate the groups themselves; older ones take the flat tensor. The deploy
-        contract is the flat concatenation in group order, so split it back by group width.
-        """
-
-        def __init__(self, actor_critic, group_dims):
-            super().__init__()
-            self.actor_critic = actor_critic
-            groups = list(getattr(actor_critic, "obs_groups", {}).get("policy", []))
-            self.groups = groups
-            self.widths = [int(group_dims[g]) for g in groups] if groups else []
-            if groups and sum(self.widths) != int(contract.total_dim):
-                raise RuntimeError(
-                    f"policy obs groups {dict(zip(groups, self.widths))} sum to {sum(self.widths)}, "
-                    f"contract {contract.name} is {contract.total_dim}-D"
-                )
-
-        def forward(self, observation):
-            if not self.groups:
-                return self.actor_critic.act_inference(observation)
-            parts = torch.split(observation, self.widths, dim=-1)
-            return self.actor_critic.act_inference(dict(zip(self.groups, parts)))
-
-    module = _ActorWrapper(policy, obs_group_dims or {}).to("cpu").eval()
+    module = _actor_wrapper(policy, contract, obs_group_dims or {})
     dummy = torch.zeros(1, int(contract.total_dim))
+
     torch.onnx.export(
         module,
         (dummy,),
@@ -202,9 +210,71 @@ def export_deploy_policy(
     return onnx_path, manifest_path
 
 
+def verify_onnx_against_actor(onnx_path: str, actor_module, flat_obs, atol: float = 1e-4) -> float:
+    """Run the exported graph on real observations and compare with the torch actor.
+
+    Catches a wrong observation-group split, a stale wrapper or a tracing artefact before the file
+    is ever loaded by a runner. Uses onnxruntime when available, else onnx's reference evaluator.
+    Returns the max abs difference; raises RuntimeError above ``atol``.
+    """
+    import numpy as np
+    import torch
+
+    obs = flat_obs.detach().to("cpu").float()
+    with torch.no_grad():
+        ref = actor_module(obs).cpu().numpy()
+    x = obs.numpy().astype(np.float32)
+    rows = []
+    try:
+        import onnxruntime as ort
+
+        sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+        for i in range(x.shape[0]):
+            rows.append(sess.run(None, {"observation": x[i : i + 1]})[0])
+    except ImportError:
+        import onnx
+        from onnx.reference import ReferenceEvaluator
+
+        sess = ReferenceEvaluator(onnx.load(onnx_path))
+        for i in range(x.shape[0]):
+            rows.append(sess.run(None, {"observation": x[i : i + 1]})[0])
+    out = np.concatenate(rows, axis=0)
+    if out.shape != ref.shape:
+        raise RuntimeError(f"ONNX output shape {out.shape} != actor output shape {ref.shape}")
+    diff = float(np.abs(out - ref).max())
+    if not np.isfinite(diff) or diff > atol:
+        raise RuntimeError(f"ONNX actor disagrees with the torch actor: max abs diff {diff:.3e} > {atol}")
+    return diff
+
+
+def _collect_flat_observations(env, policy, steps: int, max_rows: int = 256):
+    """Step the wrapped env with the torch policy and return a [N, obs_dim] batch of flat policy observations."""
+    import torch
+
+    groups = list(getattr(policy, "obs_groups", {}).get("policy", []))
+
+    def flatten(obs):
+        if groups:
+            return torch.cat([obs[g] for g in groups], dim=-1)
+        return obs
+
+    rows = []
+    obs = env.get_observations()
+    obs = obs[0] if isinstance(obs, tuple) else obs
+    with torch.no_grad():
+        for _ in range(steps):
+            rows.append(flatten(obs).detach().cpu())
+            actions = policy.act_inference(obs)
+            obs, *_ = env.step(actions)
+    batch = torch.cat(rows, dim=0)
+    return batch[:max_rows]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--checkpoint", required=True, help="Local checkpoint (.pt) to export.")
+    parser.add_argument("--skip-verify", action="store_true", help="Skip the ONNX-vs-torch parity check on real observations.")
+    parser.add_argument("--verify-steps", type=int, default=8, help="Env steps (x num_envs rows) used by the parity check.")
     parser.add_argument("--output-dir", default=None, help="Output directory (default: <ckpt_dir>/exported).")
     parser.add_argument("--task", default="HOPE-HitterPingPong-AgibotA3-v0", help="Gym task id.")
     parser.add_argument(
@@ -312,6 +382,20 @@ def main() -> int:
         )
         print(f"[export_onnx] wrote {onnx_path}", flush=True)
         print(f"[export_onnx] wrote {manifest_path}", flush=True)
+
+        # Parity gate: the graph must reproduce the torch actor on REAL observations from this env.
+        if not args.skip_verify:
+            policy = runner.alg.policy
+            batch = _collect_flat_observations(env, policy, steps=args.verify_steps)
+            if batch.shape[-1] != int(contract.total_dim):
+                raise RuntimeError(f"collected observations are {batch.shape[-1]}-D, contract is {contract.total_dim}-D")
+            group_dims = {
+                name: int(sum(dim) if isinstance(dim, (list, tuple)) else dim)
+                for name, dim in env.unwrapped.observation_manager.group_obs_dim.items()
+            }
+            wrapper = _actor_wrapper(policy, contract, group_dims)
+            diff = verify_onnx_against_actor(onnx_path, wrapper, batch)
+            print(f"[export_onnx] verified ONNX against the torch actor on {batch.shape[0]} observations: max abs diff {diff:.2e}", flush=True)
     except Exception:
         import traceback
 

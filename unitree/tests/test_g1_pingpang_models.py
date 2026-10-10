@@ -184,17 +184,35 @@ def test_mjcf_names_the_evaluator_depends_on():
     assert not (reserved & all_names)
 
 
-def test_mjcf_motors_cover_every_hinge_with_urdf_effort_ctrlrange():
+def test_mjcf_motors_cover_every_hinge_with_training_recipe_ctrlrange():
+    """ctrlrange / actuatorfrcrange = the Isaac training recipe's effort limits (robots/g1.py via
+    g1_actuation), NOT the vendor URDF: the recipe uses 50 N.m where the URDF says 35 N.m for the
+    ankle and waist roll/pitch motors, and the MuJoCo plant must clip like the plant the policy was
+    trained on. Armature matches the Isaac drive; no implicit damping/friction (the harness PD is
+    the whole actuation)."""
     root = _mjcf_root()
-    efforts = builder.joint_effort_limits(ET.parse(_UPSTREAM / "urdf" / "g1_29dof_rev_1_0.urdf").getroot())
+    urdf_efforts = builder.joint_effort_limits(ET.parse(_UPSTREAM / "urdf" / "g1_29dof_rev_1_0.urdf").getroot())
     motors = root.find("actuator").findall("motor")
     assert len(motors) == G1_HINGE_JOINT_COUNT
-    hinges = [j.get("name") for j in root.iter("joint") if j.get("type") != "free"]
+    hinges = {j.get("name"): j for j in root.iter("joint") if j.get("type") != "free"}
     assert sorted(m.get("joint") for m in motors) == sorted(hinges)
+    differing = set()
     for motor in motors:
+        name = motor.get("joint")
+        effort = builder.g1_actuation.effort_limit(name)
         lo, hi = (float(v) for v in motor.get("ctrlrange").split())
         assert motor.get("ctrllimited") == "true"
-        assert -lo == hi == pytest.approx(efforts[motor.get("joint")])
+        assert -lo == hi == pytest.approx(effort)
+        jlo, jhi = (float(v) for v in hinges[name].get("actuatorfrcrange").split())
+        assert -jlo == jhi == pytest.approx(effort)
+        assert float(hinges[name].get("armature")) == pytest.approx(builder.g1_actuation.armature(name), rel=1e-4)
+        assert hinges[name].get("damping") == "0" and hinges[name].get("frictionloss") == "0"
+        if effort != urdf_efforts[name]:
+            differing.add(name)
+    assert differing == {
+        "left_ankle_pitch_joint", "right_ankle_pitch_joint", "left_ankle_roll_joint", "right_ankle_roll_joint",
+        "waist_roll_joint", "waist_pitch_joint",
+    }
 
 
 def test_mjcf_stand_keyframe_matches_the_builder_pose():

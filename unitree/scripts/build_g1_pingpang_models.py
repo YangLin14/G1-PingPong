@@ -97,6 +97,13 @@ HANDLE_RADIUS = 0.014
 RACKET_MASS = 0.18
 RACKET_DISC_RADIUS = 0.08
 
+# Shared actuation tables (armature / stiffness / damping / effort / init pose) — pure Python
+# mirror of robots/g1.py ``G1_CYLINDER_CFG`` so the MJCF carries the SAME per-joint armature as the
+# Isaac implicit drive (sim-to-sim parity: a joint without its rotor inertia responds differently to
+# the same PD torque).
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import g1_actuation  # noqa: E402
+
 #: Grounded stand keyframe for the MJCF.  Joint values mirror ``G1_CYLINDER_CFG.init_state`` in
 #: ``hope_training/.../robots/g1.py`` (BeyondMimic G1 recipe); the pelvis height puts the lowest
 #: foot contact sphere on the floor for that leg pose.
@@ -402,13 +409,29 @@ def build_mjcf(upstream: ET.ElementTree, effort_limits: dict[str, float]) -> ET.
         rgba="0 0 0 0",
     ))
 
-    # Torque motors with ctrlrange = +/- URDF effort (the PD law lives in the harness and is clipped).
+    # Torque motors with ctrlrange = +/- the TRAINING recipe's effort limit (robots/g1.py
+    # effort_limit_sim, mirrored in g1_actuation): the PD law lives in the harness and is clipped the
+    # way the Isaac implicit drive clips it. NOTE the recipe uses 50 N.m for the ankle and waist
+    # roll/pitch motors where the upstream URDF says 35 N.m (see robots/g1.py); the MuJoCo plant must
+    # match the plant the policy was trained on, not the vendor sheet.
     actuator = root.find("actuator")
     for motor in actuator.findall("motor"):
         joint = motor.get("joint")
-        effort = effort_limits[joint]
+        effort = g1_actuation.effort_limit(joint)
         motor.set("ctrllimited", "true")
         motor.set("ctrlrange", _fmt((-effort, effort)))
+
+    # Per-joint rotor armature exactly as the Isaac articulation (robots/g1.py); no implicit joint
+    # damping or dry friction, since the harness computes the full PD torque itself and Isaac's
+    # URDF import adds none either.
+    for joint in root.iter("joint"):
+        if joint.get("type") == "free" or joint.get("name") is None:
+            continue
+        joint.set("armature", f"{g1_actuation.armature(joint.get('name')):.6g}")
+        joint.set("damping", "0")
+        joint.set("frictionloss", "0")
+        effort = g1_actuation.effort_limit(joint.get("name"))
+        joint.set("actuatorfrcrange", _fmt((-effort, effort)))
 
     # Sensors the evaluator / reference runner read.
     sensor = root.find("sensor")
