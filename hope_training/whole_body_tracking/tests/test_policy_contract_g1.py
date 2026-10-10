@@ -80,7 +80,14 @@ def test_task_yaml_declares_the_g1_contract():
     assert set(a3["rewards"]) - set(task["rewards"]) == {
         "passive_head_raw_action_weight", "passive_head_raw_action_std", "passive_head_raw_action_huber_delta"
     }
-    assert a3["racket"] == task["racket"]
+    # racket: block: identical to the A3 recipe except the documented G1 v2 geometry retune
+    # (strike boxes and the venue contact band; see config/g1/g1_recipe.py + test_g1_recipe_scaling.py).
+    g1_racket = dict(task["racket"])
+    assert set(g1_racket) - set(a3["racket"]) == {"venue_tuple_contact_z_range"}
+    g1_racket.pop("venue_tuple_contact_z_range")
+    assert g1_racket.pop("pos_range_per_clip") != a3["racket"]["pos_range_per_clip"]
+    a3_racket = dict(a3["racket"]); a3_racket.pop("pos_range_per_clip")
+    assert a3_racket == g1_racket
 
 
 def test_manifest_schema_for_29_joints():
