@@ -16,7 +16,9 @@
 #
 # Knobs: HOPE_REPO, HOPE_SIF, HOPE_VENV (default $HOME/.cache/hope-venv), HOPE_G1_RUN_NAME, HOPE_G1_PROJECT,
 #        HOPE_G1_SIDECAR_PERIOD (default 2hours), HOPE_G1_SIDECAR_SERVES (default 8),
-#        HOPE_G1_MOTION_FH / HOPE_G1_MOTION_BH (clips the export env is built with; variant B uses the IK pair).
+#        HOPE_G1_MOTION_FH / HOPE_G1_MOTION_BH (clips the export env is built with; variant B uses the IK pair),
+#        HOPE_G1_ROBOT / HOPE_G1_GYM_TASK / HOPE_G1_EXPERIMENT (export + MuJoCo profile; A3 reference run:
+#        agibot_a3 / HOPE-HitterPingPong-AgibotA3-v0 / agibot_a3_hitter_pingpong with the hope_*.npz clips).
 set -uo pipefail
 HOPE_REPO="${HOPE_REPO:-$HOME/HOPE}"
 SIF="${HOPE_SIF:-$HOME/containers/hope_grasping.sif}"
@@ -28,10 +30,13 @@ export HOPE_G1_SIDECAR_PERIOD="${HOPE_G1_SIDECAR_PERIOD:-2hours}"
 export HOPE_G1_SIDECAR_SERVES="${HOPE_G1_SIDECAR_SERVES:-8}"
 export HOPE_G1_MOTION_FH="${HOPE_G1_MOTION_FH:-hope_training/motions/preprocessed/g1_hope_forehand.npz}"
 export HOPE_G1_MOTION_BH="${HOPE_G1_MOTION_BH:-hope_training/motions/preprocessed/g1_hope_backhand.npz}"
+export HOPE_G1_ROBOT="${HOPE_G1_ROBOT:-unitree_g1}"
+export HOPE_G1_GYM_TASK="${HOPE_G1_GYM_TASK:-HOPE-HitterPingPong-UnitreeG1-v0}"
+export HOPE_G1_EXPERIMENT="${HOPE_G1_EXPERIMENT:-unitree_g1_hitter_pingpong}"
 WBT="$HOPE_REPO/hope_training/whole_body_tracking"
 STATE="$HOME/.cache/hope-slurm/sidecar/${HOPE_G1_RUN_NAME}.last_iter"
 mkdir -p "$(dirname "$STATE")"
-echo "[sidecar] host $(hostname) job=$SLURM_JOB_ID start $(date) run=$HOPE_G1_RUN_NAME period=$HOPE_G1_SIDECAR_PERIOD"
+echo "[sidecar] host $(hostname) job=$SLURM_JOB_ID start $(date) run=$HOPE_G1_RUN_NAME robot=$HOPE_G1_ROBOT experiment=$HOPE_G1_EXPERIMENT period=$HOPE_G1_SIDECAR_PERIOD"
 
 trainer_alive () {
   # The trainer for THIS run name: the job name is shared, so read the "run_name=<x>" the trainer
@@ -48,7 +53,7 @@ trainer_alive () {
 resubmit () {
   if trainer_alive; then
     next=$(sbatch --parsable --dependency=singleton --begin="now+${HOPE_G1_SIDECAR_PERIOD}" \
-      --export=ALL,HOPE_REPO,HOPE_SIF,HOPE_VENV,HOPE_G1_RUN_NAME,HOPE_G1_PROJECT,HOPE_G1_SIDECAR_PERIOD,HOPE_G1_SIDECAR_SERVES,HOPE_G1_MOTION_FH,HOPE_G1_MOTION_BH \
+      --export=ALL,HOPE_REPO,HOPE_SIF,HOPE_VENV,HOPE_G1_RUN_NAME,HOPE_G1_PROJECT,HOPE_G1_SIDECAR_PERIOD,HOPE_G1_SIDECAR_SERVES,HOPE_G1_MOTION_FH,HOPE_G1_MOTION_BH,HOPE_G1_ROBOT,HOPE_G1_GYM_TASK,HOPE_G1_EXPERIMENT \
       "$HOPE_REPO/hope_training/slurm/g1_rollout_sidecar.sbatch")
     echo "[sidecar] resubmitted as job $next (begin now+${HOPE_G1_SIDECAR_PERIOD})"
   else
@@ -56,7 +61,7 @@ resubmit () {
   fi
 }
 
-ckpt=$(ls -1 "$WBT"/logs/rsl_rl/unitree_g1_hitter_pingpong/*_"${HOPE_G1_RUN_NAME}"/model_*.pt 2>/dev/null \
+ckpt=$(ls -1 "$WBT"/logs/rsl_rl/"${HOPE_G1_EXPERIMENT}"/*_"${HOPE_G1_RUN_NAME}"/model_*.pt 2>/dev/null \
   | awk -F"model_" '{split($2,a,"."); print a[1]" "$0}' | sort -n | tail -1 | cut -d" " -f2-)
 if [ -z "$ckpt" ]; then echo "[sidecar] no checkpoint yet"; resubmit; exit 0; fi
 iter=$(basename "$ckpt" .pt); iter=${iter#model_}
@@ -72,8 +77,8 @@ apptainer exec --nv --writable-tmpfs --bind "$HOME" --bind "$ICD:/usr/share/vulk
   --env HOPE_REPO="$HOPE_REPO" "$SIF" bash -c '
 set -uo pipefail
 cd "$HOPE_REPO/hope_training/whole_body_tracking" && source setup_train_env.sh >/dev/null
-timeout -k 30 15m env PYTHONPATH="${HOPE_PYTHONPATH}" "${ISAAC_PYTHON}" -u scripts/export_onnx.py --robot unitree_g1 \
-  --task HOPE-HitterPingPong-UnitreeG1-v0 --experiment-name unitree_g1_hitter_pingpong \
+timeout -k 30 15m env PYTHONPATH="${HOPE_PYTHONPATH}" "${ISAAC_PYTHON}" -u scripts/export_onnx.py --robot '"$HOPE_G1_ROBOT"' \
+  --task '"$HOPE_G1_GYM_TASK"' --experiment-name '"$HOPE_G1_EXPERIMENT"' \
   --checkpoint '"$ckpt"' --output-dir '"$exported"' \
   --motion-file "$HOPE_REPO/'"$HOPE_G1_MOTION_FH"'" --motion-file-2 "$HOPE_REPO/'"$HOPE_G1_MOTION_BH"'"'
 rc=$?
@@ -82,7 +87,7 @@ if [ $rc -ne 0 ] || [ ! -f "$exported/policy.onnx" ]; then echo "[sidecar] expor
 mkdir -p "$run_dir/videos"
 mp4="$run_dir/videos/mujoco_iter${iter}.mp4"; js="$run_dir/videos/mujoco_iter${iter}.json"
 cd "$HOPE_REPO"
-MUJOCO_GL=egl timeout -k 30 15m "$VENV/bin/python" "$WBT/scripts/mujoco_eval_onnx.py" --robot unitree_g1 \
+MUJOCO_GL=egl timeout -k 30 15m "$VENV/bin/python" "$WBT/scripts/mujoco_eval_onnx.py" --robot "$HOPE_G1_ROBOT" \
   --onnx "$exported/policy.onnx" --num-serves "$HOPE_G1_SIDECAR_SERVES" --seed "$iter" \
   --video-out "$mp4" --json-out "$js"
 rc=$?

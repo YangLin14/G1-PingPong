@@ -184,8 +184,8 @@ On the Slurm cluster the whole Isaac side runs inside the pinned image
 | script | what |
 |---|---|
 | `g1_isaac_smoke.sbatch` | asset prep, joint-order pin, cfg-name test, Isaac-vs-MuJoCo plant replay, 2-iteration train of each G1 recipe, export + 2-serve MuJoCo eval |
-| `g1_train.sbatch` | the full run on `long` (requeue + resume from the newest `*_<run_name>` checkpoint), `logger=wandb` project `hope-g1`, W&B run id `hope-g1-<run_name>-<jobid>`; knobs `HOPE_G1_RUN_NAME`, `HOPE_G1_TASK`, `HOPE_G1_NUM_ENVS` (4096 on the 11 GB 2080 Ti), `HOPE_G1_EXTRA`, `HOPE_G1_VIDEO` |
-| `g1_rollout_sidecar.sbatch` | self-rescheduling (default every 2 h): newest checkpoint → `export_onnx.py` → `mujoco_eval_onnx.py --video-out --json-out` → `wandb_log_rollout.py` into the companion run `<run_name>-rollouts` (same project, grouped), x-axis = iteration |
+| `g1_train.sbatch` | the full run on `long` (requeue + resume from the newest `*_<run_name>` checkpoint), `logger=wandb` project `hope-g1`, W&B run id `hope-g1-<run_name>-<jobid>`; knobs `HOPE_G1_RUN_NAME`, `HOPE_G1_TASK`, `HOPE_G1_EXPERIMENT`, `HOPE_G1_MOTION_FH`/`_BH`, `HOPE_G1_NUM_ENVS` (4096 on the 11 GB 2080 Ti), `HOPE_G1_EXTRA`, `HOPE_G1_VIDEO`; the same job runs the original A3 recipe as the reference line (`hope_training/slurm/README.md`) |
+| `g1_rollout_sidecar.sbatch` | self-rescheduling (default every 2 h): newest checkpoint → `export_onnx.py` → `mujoco_eval_onnx.py --video-out --json-out` → `wandb_log_rollout.py` into the companion run `<run_name>-rollouts` (same project, grouped), x-axis = iteration; `HOPE_G1_ROBOT=agibot_a3` for the A3 reference run |
 
 `HOPE_G1_VIDEO=1` (in-Isaac `RecordVideo`) is off by default because Isaac Sim 5.1's RTX
 renderer segfaults at startup on NVIDIA driver 610.43 (`librtx.scenedb.plugin.so`, upstream

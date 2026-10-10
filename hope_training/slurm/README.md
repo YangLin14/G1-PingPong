@@ -15,13 +15,24 @@ sbatch --export=ALL,HOPE_G1_RUN_NAME=g1_v2b,HOPE_G1_TASK=HOPEPingPongUnitreeG1_I
        hope_training/slurm/g1_train.sbatch
 sbatch --export=ALL,HOPE_G1_RUN_NAME=g1_v2a hope_training/slurm/g1_rollout_sidecar.sbatch
 scancel -n hope-g1-sidecar                                                 # stop the sidecars
+
+# The original A3 recipe (QUICKSTART_A3_ISAAC.md step 5) through the same jobs, as the reference line
+# in the same W&B project; the sidecar needs the A3 export/MuJoCo profile:
+A3="HOPE_G1_RUN_NAME=a3_ref,HOPE_G1_TASK=HOPEPingPong,HOPE_G1_EXPERIMENT=agibot_a3_hitter_pingpong,\
+HOPE_G1_MOTION_FH=hope_training/motions/preprocessed/hope_forehand.npz,HOPE_G1_MOTION_BH=hope_training/motions/preprocessed/hope_backhand.npz"
+sbatch --export=ALL,$A3 hope_training/slurm/g1_train.sbatch
+sbatch --export=ALL,$A3,HOPE_G1_ROBOT=agibot_a3,HOPE_G1_GYM_TASK=HOPE-HitterPingPong-AgibotA3-v0 \
+       hope_training/slurm/g1_rollout_sidecar.sbatch
 ```
+
+The A3 asset must be prepared on the checkout first (`scripts/prepare_a3_isaac_asset.py --force`,
+done by the smoke job's A3 baseline step or by hand inside the image).
 
 | script | what |
 |---|---|
 | `g1_isaac_smoke.sbatch` | asset prep, joint-order pin (`check_g1_asset_isaac.py`), env-cfg name audit, Isaac half of the plant replay (`sim2sim_replay_g1.py`), 2-iteration train of each recipe in `HOPE_G1_SMOKE_TASKS`, export of the iteration-2 checkpoint, then on the host: MuJoCo half of the replay + comparison and a 2-serve MuJoCo eval |
-| `g1_train.sbatch` | the full run on `long` (requeue + resume from the newest `*_<run_name>` checkpoint), `logger=wandb` project `hope-g1`, W&B run id `hope-g1-<run_name>-<jobid>`; knobs `HOPE_G1_RUN_NAME`, `HOPE_G1_TASK`, `HOPE_G1_NUM_ENVS` (4096 on the 11 GB 2080 Ti), `HOPE_G1_EXTRA`, `HOPE_G1_VIDEO` |
-| `g1_rollout_sidecar.sbatch` | self-rescheduling (default every 2 h) while a trainer for the same run name is queued: newest checkpoint -> `export_onnx.py --robot unitree_g1` -> `mujoco_eval_onnx.py --video-out --json-out` -> `wandb_log_rollout.py` into the companion run `<run_name>-rollouts` (same project), x-axis = iteration |
+| `g1_train.sbatch` | the full run on `long` (requeue + resume from the newest `*_<run_name>` checkpoint), `logger=wandb` project `hope-g1`, W&B run id `hope-g1-<run_name>-<jobid>`; knobs `HOPE_G1_RUN_NAME`, `HOPE_G1_TASK`, `HOPE_G1_EXPERIMENT` (log dir), `HOPE_G1_MOTION_FH`/`_BH`, `HOPE_G1_NUM_ENVS` (4096 on the 11 GB 2080 Ti), `HOPE_G1_EXTRA`, `HOPE_G1_VIDEO` |
+| `g1_rollout_sidecar.sbatch` | self-rescheduling (default every 2 h) while a trainer for the same run name is queued: newest checkpoint -> `export_onnx.py --robot unitree_g1` -> `mujoco_eval_onnx.py --video-out --json-out` -> `wandb_log_rollout.py` into the companion run `<run_name>-rollouts` (same project), x-axis = iteration; `HOPE_G1_ROBOT`/`HOPE_G1_GYM_TASK`/`HOPE_G1_EXPERIMENT` select the G1 (default) or A3 profile |
 | `nvidia_icd.json` | Vulkan ICD manifest bound into the container (`apptainer --nv` binds the driver libraries but no ICD, and Kit needs one to create a GPU device) |
 
 Resource notes (2026-10): the group association allows 8 RTX 2080 Ti, 96 GB and 32 CPUs in

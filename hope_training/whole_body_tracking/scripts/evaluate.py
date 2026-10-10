@@ -30,6 +30,8 @@ Usage:
 
 import argparse
 import json
+
+import numpy as np
 import os
 import pathlib
 import sys
@@ -184,6 +186,8 @@ def main() -> int:
 
         obs = env.get_observations().to(args.device)
         prev_tts = read_state()[3].clone()
+        counts = {"attempts": 0, "contacted": 0, "net_clear": 0, "on_opponent": 0, "successes": 0}
+        contact_errors: list[float] = []
         for _ in range(args.num_steps):
             with torch.inference_mode():
                 actions = policy(obs)
@@ -201,9 +205,27 @@ def main() -> int:
                 rv = racket_vel[e].cpu().numpy().astype(float)  # achieved racket velocity at strike
                 outcome = evaluate_return(tp, rp, rv, physics, table, contact_radius=args.contact_radius)
                 accumulator.add(outcome)
+                counts["attempts"] += 1
+                counts["contacted"] += int(outcome.contacted)
+                counts["net_clear"] += int(outcome.net_clear)
+                counts["on_opponent"] += int(outcome.on_opponent)
+                counts["successes"] += int(outcome.success)
+                contact_errors.append(float(np.linalg.norm(rp - tp)))
             prev_tts = tts.clone()
 
         result = accumulator.as_dict()
+        # Diagnostics next to the shipped metric: how many strikes were scored and which of the
+        # three conditions failed (a bare 0.0 cannot be read otherwise).
+        result.update({k: int(v) for k, v in counts.items()})
+        if contact_errors:
+            result["mean_contact_error_m"] = float(np.mean(contact_errors))
+            result["median_contact_error_m"] = float(np.median(contact_errors))
+        print(
+            f"[evaluate] attempts={counts['attempts']} contacted={counts['contacted']} net_clear={counts['net_clear']} "
+            f"on_opponent={counts['on_opponent']} successes={counts['successes']} "
+            f"mean_contact_error={result.get('mean_contact_error_m', float('nan')):.3f} m",
+            file=sys.stderr, flush=True,
+        )
         print(json.dumps(result))
         if args.json_out:
             with open(args.json_out, "w", encoding="utf-8") as f:

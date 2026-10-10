@@ -17,7 +17,13 @@
 #   HOPE_REPO          repository checkout                   (default $HOME/HOPE)
 #   HOPE_SIF           Apptainer image                        (default $HOME/containers/hope_grasping.sif)
 #   HOPE_G1_RUN_NAME   local run-name suffix + W&B name       (default g1_v2a)
-#   HOPE_G1_TASK       Hydra task recipe (cfg/task/*.yaml)    (default HOPEPingPongUnitreeG1; variant B: HOPEPingPongUnitreeG1_IK)
+#   HOPE_G1_TASK       Hydra task recipe (cfg/task/*.yaml)    (default HOPEPingPongUnitreeG1; variant B: HOPEPingPongUnitreeG1_IK;
+#                      A3 reference: HOPEPingPong)
+#   HOPE_G1_EXPERIMENT rsl_rl experiment dir under logs/rsl_rl   (default unitree_g1_hitter_pingpong; A3: agibot_a3_hitter_pingpong)
+#   HOPE_G1_MOTION_FH / HOPE_G1_MOTION_BH
+#                      motion_file / motion_file_2 overrides, repo-relative or absolute (default: the task
+#                      YAML's clips; the A3 recipe has none, so pass hope_training/motions/preprocessed/hope_forehand.npz
+#                      and hope_backhand.npz)
 #   HOPE_G1_NUM_ENVS   parallel envs                          (default 4096; the A3 recipe's 6144 needs >11 GB VRAM)
 #   HOPE_G1_PROJECT    W&B project                            (default hope-g1)
 #   HOPE_G1_EXTRA      extra Hydra overrides appended verbatim (e.g. "max_iterations=300")
@@ -29,6 +35,9 @@ SIF="${HOPE_SIF:-$HOME/containers/hope_grasping.sif}"
 ICD="$HOPE_REPO/hope_training/slurm/nvidia_icd.json"
 export HOPE_G1_RUN_NAME="${HOPE_G1_RUN_NAME:-g1_v2a}"
 export HOPE_G1_TASK="${HOPE_G1_TASK:-HOPEPingPongUnitreeG1}"
+export HOPE_G1_EXPERIMENT="${HOPE_G1_EXPERIMENT:-unitree_g1_hitter_pingpong}"
+export HOPE_G1_MOTION_FH="${HOPE_G1_MOTION_FH:-}"
+export HOPE_G1_MOTION_BH="${HOPE_G1_MOTION_BH:-}"
 export HOPE_G1_NUM_ENVS="${HOPE_G1_NUM_ENVS:-4096}"
 export HOPE_G1_PROJECT="${HOPE_G1_PROJECT:-hope-g1}"
 export HOPE_G1_EXTRA="${HOPE_G1_EXTRA:-}"
@@ -36,7 +45,7 @@ export HOPE_G1_VIDEO="${HOPE_G1_VIDEO:-0}"
 # Same W&B run across requeues of this job; ~/.netrc (bound via $HOME) supplies the API key.
 export WANDB_RUN_ID="hope-g1-${HOPE_G1_RUN_NAME}-${SLURM_JOB_ID}"
 export WANDB_RESUME=allow
-echo "[train] host $(hostname) job=$SLURM_JOB_ID start $(date) repo=$HOPE_REPO run_name=$HOPE_G1_RUN_NAME task=$HOPE_G1_TASK num_envs=$HOPE_G1_NUM_ENVS project=$HOPE_G1_PROJECT extra='$HOPE_G1_EXTRA'"; nvidia-smi -L
+echo "[train] host $(hostname) job=$SLURM_JOB_ID start $(date) repo=$HOPE_REPO run_name=$HOPE_G1_RUN_NAME task=$HOPE_G1_TASK experiment=$HOPE_G1_EXPERIMENT num_envs=$HOPE_G1_NUM_ENVS project=$HOPE_G1_PROJECT motions='${HOPE_G1_MOTION_FH:-task default}' extra='$HOPE_G1_EXTRA'"; nvidia-smi -L
 export OMNI_KIT_ACCEPT_EULA=YES ACCEPT_EULA=Y PRIVACY_CONSENT=N OMNI_KIT_ALLOW_ROOT=1
 # Apptainer --nv binds the NVIDIA libs but not a Vulkan ICD manifest; Kit needs one to create a GPU device.
 apptainer exec --nv --writable-tmpfs --bind "$HOME" --bind "$ICD:/usr/share/vulkan/icd.d/nvidia_icd.json" \
@@ -46,15 +55,22 @@ set -uo pipefail
 cd "$HOPE_REPO/hope_training/whole_body_tracking"
 source setup_train_env.sh
 # Resume from the newest checkpoint of this run name, if any (requeue after preemption).
-latest=$(ls -1 logs/rsl_rl/unitree_g1_hitter_pingpong/*_${HOPE_G1_RUN_NAME}/model_*.pt 2>/dev/null \
+latest=$(ls -1 logs/rsl_rl/${HOPE_G1_EXPERIMENT}/*_${HOPE_G1_RUN_NAME}/model_*.pt 2>/dev/null \
   | awk -F"model_" "{split(\$2,a,\".\"); print a[1]\" \"\$0}" | sort -n | tail -1 | cut -d" " -f2-)
 resume=""
 if [ -n "$latest" ]; then echo "[train] resuming from $latest"; resume="checkpoint_path=$latest"; fi
 # video_interval is in env steps: 12000 = 500 iterations x 24 steps, i.e. one 300-step (6 s) clip per checkpoint.
+motions=""
+if [ -n "${HOPE_G1_MOTION_FH}" ]; then
+  fh="${HOPE_G1_MOTION_FH}"; bh="${HOPE_G1_MOTION_BH}"
+  case "$fh" in /*) ;; *) fh="$HOPE_REPO/$fh";; esac
+  case "$bh" in /*) ;; *) bh="$HOPE_REPO/$bh";; esac
+  motions="motion_file=$fh motion_file_2=$bh"
+fi
 video=""
 if [ "${HOPE_G1_VIDEO}" = "1" ]; then video="video=true video_length=300 video_interval=12000"; fi
 hope_isaac_py -u scripts/train.py task=$HOPE_G1_TASK headless=true num_envs=$HOPE_G1_NUM_ENVS \
-  run_name=$HOPE_G1_RUN_NAME logger=wandb wandb_project=$HOPE_G1_PROJECT $video $resume $HOPE_G1_EXTRA
+  run_name=$HOPE_G1_RUN_NAME logger=wandb wandb_project=$HOPE_G1_PROJECT $motions $video $resume $HOPE_G1_EXTRA
 '
 rc=$?
 echo "[train] end $(date) exit=$rc"; exit $rc
