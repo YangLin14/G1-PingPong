@@ -325,7 +325,7 @@ The table below reports current repository implementation coverage.
 | Robot | DOF | Status |
 |-------|-----|--------|
 | Agibot Expedition A3 | 31 actuated | Shipped end-to-end path: Isaac Lab training (deploy-grade `hitter_pure` rally line), ONNX export with fail-closed metadata, Isaac/MuJoCo evaluation gates, native C++ deploy runner — exercised on real A3 hardware — plus the Agibot vendor deploy example. |
-| Unitree G1 | 29 | Isaac Lab training + MuJoCo sim-to-sim path: vendored Unitree description with a generated racket-equipped URDF/MJCF (`unitree/`), `HOPE-HitterPingPong-UnitreeG1-v0` task, 104-D `hitter_pure_unitree_g1` contract, exporter and MuJoCo evaluator `--robot unitree_g1`. Trains from derived G1 clips (joint-space transfer of the A3 pair); no deploy runner. See [docs/UNITREE_G1.md](docs/UNITREE_G1.md). |
+| Unitree G1 | 29 | Isaac Lab training + MuJoCo sim-to-sim path: vendored Unitree description with a generated racket-equipped URDF/MJCF (`unitree/`), `HOPE-HitterPingPong-UnitreeG1-v0` task with the G1-rescaled recipe v2 (two variants: joint-space or keypoint/IK derived clips), 104-D `hitter_pure_unitree_g1` contract, exporter and MuJoCo evaluator `--robot unitree_g1`, an Isaac-vs-MuJoCo plant parity gate and Slurm jobs (`hope_training/slurm/`); no deploy runner. See [docs/UNITREE_G1.md](docs/UNITREE_G1.md). |
 
 ## Coordinate Frame Convention
 

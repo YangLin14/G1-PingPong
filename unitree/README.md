@@ -13,6 +13,9 @@ hardware runner** in this repository (see [docs/UNITREE_G1.md](../docs/UNITREE_G
 | [`URDF/g1_description/`](URDF/g1_description/) | `LICENSE`, `urdf/g1_29dof_rev_1_0.urdf`, `mjcf/g1_29dof_rev_1_0.xml`, the 35 referenced STL meshes, `SHA256SUMS`. | **Verbatim** subset of upstream `unitreerobotics/unitree_ros`, `robots/g1_description/` (BSD-3-Clause). Never edit. |
 | [`URDF/g1_29dof_pingpang/`](URDF/g1_29dof_pingpang/) | `urdf/g1_29dof_pingpang.urdf`, `mjcf/g1_29dof_pingpang.xml`, the two blade meshes. | **Generated** by `scripts/build_g1_pingpang_models.py` from the upstream files (HOPE, Apache-2.0). The blade meshes are copied from `agibot/URDF/A3T2.5-URDF-std-pingpang/meshes/`. |
 | [`scripts/build_g1_pingpang_models.py`](scripts/build_g1_pingpang_models.py) | The single source of truth for the racket mount; regenerates both variant files. | HOPE |
+| [`scripts/g1_actuation.py`](scripts/g1_actuation.py) | Pure-Python mirror of `robots/g1.py` `G1_CYLINDER_CFG` (motor armature, PD gains, effort limits, init pose) used by every host-side generator and test. | HOPE |
+| [`scripts/generate_g1_runtime_yamls.py`](scripts/generate_g1_runtime_yamls.py) | Generates (`--check`) the MuJoCo runtime YAML (per-joint training gains) and the action-adapter YAML under `a3_deploy/a3_deploy_example/config/`. | HOPE |
+| [`scripts/sync_g1_variant_yaml.py`](scripts/sync_g1_variant_yaml.py) | Generates (`--check`) the variant B task YAML from the variant A recipe. | HOPE |
 | [`tests/`](tests/) | Checksum, regeneration, structure and MuJoCo load tests. | HOPE |
 
 ## Upstream provenance
@@ -56,8 +59,11 @@ right_wrist_yaw_link
   at the blade centre, `right_racket_collision` (blade cylinder),
   `right_racket_handle_collision`, the diagnostic
   `right_racket_clearance_proxy` box, a `pelvis_imu_gyro` sensor, torque
-  `<motor>` actuators with `ctrlrange = ±effort`, and a grounded `stand`
-  keyframe (key 0). These are the names
+  `<motor>` actuators with `ctrlrange` = ± the **training recipe's** effort
+  limit (`g1_actuation.py`; 50 N·m at the ankles / waist roll-pitch where the
+  vendor URDF says 35), per-joint `armature` equal to the Isaac implicit drive
+  (no implicit damping / friction), and a grounded `stand` keyframe (key 0) equal
+  to the Isaac init pose. These are the names
   `hope_training/whole_body_tracking/scripts/mujoco_eval_onnx.py` and the
   reference runner resolve.
 

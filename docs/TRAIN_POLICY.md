@@ -92,6 +92,12 @@ The evaluation story has three layers, cheap to expensive:
    exported ONNX against a real MuJoCo ball that physically bounces off the racket, table, and net
    (no GPU, no Isaac). This is the first cross-simulator check and the authoritative simulated
    number.
+   The JSON also carries per-serve diagnostics (`contact_rate`, `net_clear_rate`, `fall_rate`,
+   `mean_min_racket_ball_distance_m`, a `serves` list) and the table placement defaults to the
+   training recipe's (`TABLE_GEOMETRY`). Treat its `success_rate` as a smoke number, not a gate:
+   the published `model_21800` scores 0 returns in this planner-less harness (its racket never
+   comes within 0.14 m of the example serves); the in-Isaac estimate above and the Gate 3 closed
+   loop are the authoritative numbers.
 
 3. **Closed-loop planner rehearsal** — the reference harness's `--planner` mode exercises the
    exported policy through the real planner over the same flat wire the hardware runner
