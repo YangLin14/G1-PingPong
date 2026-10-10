@@ -1,0 +1,102 @@
+# HOPE runtime configuration -- Unitree G1 (29-DoF), 104-D `hitter_pure_unitree_g1`.
+#
+# Read by the clean-room reference runner (a3_deploy_onnx_ref_pingpong --robot unitree_g1) and by
+# hope_training/whole_body_tracking/scripts/mujoco_eval_onnx.py --robot unitree_g1. Every relative
+# path resolves against THIS file's directory. The A3 config (hope_pingpong_runtime.yaml) is untouched.
+#
+# Single observation/action path only: 104-D observation, 29-D action, no observation
+# normalization, one control rate, no passive columns (the G1 has no neck).
+
+contract: hitter_pure_unitree_g1
+control_hz: 50.0                 # 50 Hz control loop
+observation_normalization: none  # raw observation (must stay 'none')
+passive_neck: false              # the G1 has no passive joints
+
+policy:
+  # No published G1 policy ships with the repository: export one with
+  #   scripts/export_onnx.py --robot unitree_g1 --task HOPE-HitterPingPong-UnitreeG1-v0 ...
+  # and pass it with --onnx (or edit this path).
+  onnx_path: ../models/unitree_g1/policy/exported/policy.onnx
+  joint_order: unitree_g1        # LOAD-BEARING: selects the RobotProfile (joint names, dims, MJCF names)
+
+action_adapter:
+  config_path: action_adapter_unitree_g1.yaml
+
+simulation:
+  # The racket-equipped G1 MJCF generated from the vendored Unitree description (unitree/README.md).
+  model_xml_path: ../../../unitree/URDF/g1_29dof_pingpang/mjcf/g1_29dof_pingpang.xml
+  # Training-plant PD gains (G1_CYLINDER_CFG stiffness/damping in robots/g1.py), per joint, so the
+  # MuJoCo harness realizes q_des the way the Isaac implicit drive did. Not vendor deploy gains.
+  pd_gains:
+    per_joint:
+      stiffness:
+        left_hip_pitch_joint: 40.1792
+        right_hip_pitch_joint: 40.1792
+        waist_yaw_joint: 40.1792
+        left_hip_roll_joint: 99.0984
+        right_hip_roll_joint: 99.0984
+        waist_roll_joint: 28.5012
+        left_hip_yaw_joint: 40.1792
+        right_hip_yaw_joint: 40.1792
+        waist_pitch_joint: 28.5012
+        left_knee_joint: 99.0984
+        right_knee_joint: 99.0984
+        left_shoulder_pitch_joint: 14.2506
+        right_shoulder_pitch_joint: 14.2506
+        left_ankle_pitch_joint: 28.5012
+        right_ankle_pitch_joint: 28.5012
+        left_shoulder_roll_joint: 14.2506
+        right_shoulder_roll_joint: 14.2506
+        left_ankle_roll_joint: 28.5012
+        right_ankle_roll_joint: 28.5012
+        left_shoulder_yaw_joint: 14.2506
+        right_shoulder_yaw_joint: 14.2506
+        left_elbow_joint: 14.2506
+        right_elbow_joint: 14.2506
+        left_wrist_roll_joint: 14.2506
+        right_wrist_roll_joint: 14.2506
+        left_wrist_pitch_joint: 16.7783
+        right_wrist_pitch_joint: 16.7783
+        left_wrist_yaw_joint: 16.7783
+        right_wrist_yaw_joint: 16.7783
+      damping:
+        left_hip_pitch_joint: 2.55789
+        right_hip_pitch_joint: 2.55789
+        waist_yaw_joint: 2.55789
+        left_hip_roll_joint: 6.3088
+        right_hip_roll_joint: 6.3088
+        waist_roll_joint: 1.81445
+        left_hip_yaw_joint: 2.55789
+        right_hip_yaw_joint: 2.55789
+        waist_pitch_joint: 1.81445
+        left_knee_joint: 6.3088
+        right_knee_joint: 6.3088
+        left_shoulder_pitch_joint: 0.907223
+        right_shoulder_pitch_joint: 0.907223
+        left_ankle_pitch_joint: 1.81445
+        right_ankle_pitch_joint: 1.81445
+        left_shoulder_roll_joint: 0.907223
+        right_shoulder_roll_joint: 0.907223
+        left_ankle_roll_joint: 1.81445
+        right_ankle_roll_joint: 1.81445
+        left_shoulder_yaw_joint: 0.907223
+        right_shoulder_yaw_joint: 0.907223
+        left_elbow_joint: 0.907223
+        right_elbow_joint: 0.907223
+        left_wrist_roll_joint: 0.907223
+        right_wrist_roll_joint: 0.907223
+        left_wrist_pitch_joint: 1.06814
+        right_wrist_pitch_joint: 1.06814
+        left_wrist_yaw_joint: 1.06814
+        right_wrist_yaw_joint: 1.06814
+
+lifecycle:
+  # Example continuous-rally timing (ready -> swing -> follow-through -> recovery).
+  follow_through_s: 0.6
+  recovery_s: 0.8
+  ready_time_to_strike: 1.0
+  # Base-relative ready reach the racket goal holds while idle. COPIED FROM THE A3 (its arm is
+  # longer than the G1's): retune once a G1 policy exists.
+  ready_reach_x: 0.40
+  ready_reach_y: 0.20
+  ready_reach_z: -0.05

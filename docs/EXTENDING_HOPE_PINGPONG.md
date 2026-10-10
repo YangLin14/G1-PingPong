@@ -96,9 +96,22 @@ how the policy was produced.
 
 ## Bring your own robot
 
-The stack targets the Agibot A3 (31 DOF). The joint order
-(`hope_training/config/joint_order_agibot_a3.yaml`), the robot articulation config
-(`hope_training/.../robots/agibot_a3.py`), and the URDF/asset prep
-([RUN_ON_AGIBOT.md](RUN_ON_AGIBOT.md)) are the places a different robot would diverge; the
-observation contracts and action dimensions are sized to 31 DOF throughout, so a different robot
-means revisiting the contract dimensions (and the deploy metadata) as well.
+The stack targets the Agibot A3 (31 DOF); the Unitree G1 (29 DOF) is the worked example of a
+second robot ([UNITREE_G1.md](UNITREE_G1.md)). The places a robot diverges, with the G1 file next
+to each:
+
+| Concern | A3 | G1 (worked example) |
+| --- | --- | --- |
+| Description + racket | `agibot/URDF/A3T2.5-URDF-std-pingpang/` (vendor, racket included) | `unitree/URDF/g1_description/` (verbatim) + `unitree/scripts/build_g1_pingpang_models.py` generating `g1_29dof_pingpang` with the A3 racket link names and `+Y` face normal |
+| Isaac asset prep | `scripts/prepare_a3_isaac_asset.py` | `scripts/prepare_g1_isaac_asset.py` |
+| Articulation + name constants | `robots/agibot_a3.py` | `robots/g1.py` (`G1_*` mirrors of the `A3_*` constants) |
+| Canonical joint order | `hope_training/config/joint_order_agibot_a3.yaml` | `hope_training/config/joint_order_unitree_g1.yaml`, pinned once with `scripts/check_g1_asset_isaac.py` |
+| Env configs | `config/agibot_a3/hope_env_cfg.py` | `config/g1/hope_env_cfg.py`: subclasses the A3 configs and retargets every body name mechanically (`utils/g1_retarget.py`), no passive joints, generic PD DR |
+| Actor contract | `hitter_pure` (110-D) | `hitter_pure_contract(num_joints, name=...)` factory → `hitter_pure_unitree_g1` (104-D) |
+| Shared action adapter | `a3_deploy/.../config/action_adapter.yaml` | `action_adapter_unitree_g1.yaml`; both loaders are keyed by `robot=` |
+| Export / eval | `scripts/export_onnx.py`, `scripts/mujoco_eval_onnx.py` | the same scripts with `--robot unitree_g1` |
+| Deploy reference runner | `RobotProfile AGIBOT_A3` (default) | `RobotProfile UNITREE_G1`; the robot is selected explicitly, never inferred from a joint count |
+| Reference motions | published A3 pair | must be retargeted to the new robot (the loader rejects a mismatched joint count) |
+
+Keep the A3 racket link names and face convention on a new robot and the racket command, contact
+exclusions and motion sidecars carry over unchanged.

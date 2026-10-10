@@ -5732,11 +5732,14 @@ class RacketTargetCommand(CommandTerm):
 
     def left_arm_clearance(
         self,
-        hand_body_name: str = "left_wrist_yaw_Link",
-        elbow_body_name: str = "left_elbow_Link",
-        forearm_end_body_name: str = "left_wrist_roll_Link",
+        hand_body_name: str | None = None,
+        elbow_body_name: str | None = None,
+        forearm_end_body_name: str | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Racket-center distance to the left-hand proxy and left-forearm line segment.
+
+        Body names default to the cfg's ``left_hand_body_name`` / ``left_elbow_body_name`` /
+        ``left_forearm_end_body_name`` (A3 names by default; the Unitree G1 config retargets them).
 
         The fixed ``left_hand_Link`` is merged into ``left_wrist_yaw_Link`` by the articulation
         importer, so the wrist-yaw body is the deploy-consistent hand proxy.  The forearm uses the
@@ -5744,6 +5747,9 @@ class RacketTargetCommand(CommandTerm):
         bodies return ``+inf`` (zero clearance penalty) and never crash a training job.
         """
         inf = torch.full((self.num_envs,), float("inf"), device=self.device)
+        hand_body_name = hand_body_name or self.cfg.left_hand_body_name
+        elbow_body_name = elbow_body_name or self.cfg.left_elbow_body_name
+        forearm_end_body_name = forearm_end_body_name or self.cfg.left_forearm_end_body_name
         hand_idx = self._resolve_body_index(hand_body_name)
         elbow_idx = self._resolve_body_index(elbow_body_name)
         forearm_end_idx = self._resolve_body_index(forearm_end_body_name)
@@ -9601,7 +9607,7 @@ class RacketTargetCommand(CommandTerm):
         # Exact-strike base/torso heading and torso yaw-rate.  These are reward/eval-only simulation
         # state; the 110-D actor observation remains unchanged and deploy-honest.
         base_wz_abs = torch.abs(self.robot.data.root_ang_vel_w[:, 2])
-        torso_idx = self._resolve_body_index("torso_Link")
+        torso_idx = self._resolve_body_index(self.cfg.torso_body_name)
         if torso_idx >= 0:
             torso_yaw = _yaw_from_quat(self.robot.data.body_quat_w[:, torso_idx])
             torso_wz = self.robot.data.body_ang_vel_w[:, torso_idx, 2]
@@ -10693,6 +10699,12 @@ class RacketTargetCommandCfg(CommandTermCfg):
     # its composite success stays 0 even though pos/vel pass. Set (forehand, backhand) e.g. (1.0, -1.0) to
     # score each swing's real striking face. Empty () -> scalar mount_normal_sign for every clip (back-compat).
     mount_normal_sign_per_clip: tuple = ()
+    # Bodies used by the heading / left-arm-clearance metrics (eval-only telemetry; a missing body
+    # degrades to a no-op). A3 names by default; the Unitree G1 config retargets them to ``*_link``.
+    torso_body_name: str = "torso_Link"
+    left_hand_body_name: str = "left_wrist_yaw_Link"
+    left_elbow_body_name: str = "left_elbow_Link"
+    left_forearm_end_body_name: str = "left_wrist_roll_Link"
 
     # --- strike timing (fraction of the reference clip where the paddle meets the ball) ---
     strike_phase: float = 0.46  # HITTER clip: strike at frame 43/94 ≈ 0.46

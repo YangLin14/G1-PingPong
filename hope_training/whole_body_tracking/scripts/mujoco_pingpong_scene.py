@@ -106,6 +106,11 @@ class PingPongRealPhysicsScene:
         control_dt: float = 0.02,
         near_edge_x: float = 0.30,
         launch_viewer: bool = False,
+        base_free_joint: str = "pelvis_free_joint",
+        gyro_sensor: str = "pelvis_imu_gyro",
+        racket_site: str = "right_racket",
+        racket_collision_geom: str = "right_racket_collision",
+        floor_geom: str = "floor",
     ) -> None:
         import mujoco  # lazy import so the module imports without MuJoCo present
 
@@ -113,6 +118,12 @@ class PingPongRealPhysicsScene:
         self.control_dt = float(control_dt)
         self.joint_names = list(joint_names)
         self.num_joints = len(self.joint_names)
+        # MJCF element names (defaults = the a3_pingpong model; a RobotProfile supplies others).
+        self.base_free_joint = str(base_free_joint)
+        self.gyro_sensor = str(gyro_sensor)
+        self.racket_site = str(racket_site)
+        self.racket_collision_geom = str(racket_collision_geom)
+        self.floor_geom = str(floor_geom)
 
         # --- geometry from the shared ball-physics config -----------------------
         g = float(ball_cfg.get("gravity", 9.81))
@@ -146,15 +157,15 @@ class PingPongRealPhysicsScene:
 
         # --- resolve addresses -------------------------------------------------
         m = self.model
-        self._base_qadr = int(m.jnt_qposadr[self._joint_id("pelvis_free_joint")])
-        self._base_vadr = int(m.jnt_dofadr[self._joint_id("pelvis_free_joint")])
+        self._base_qadr = int(m.jnt_qposadr[self._joint_id(self.base_free_joint)])
+        self._base_vadr = int(m.jnt_dofadr[self._joint_id(self.base_free_joint)])
         self._ball_qadr = int(m.jnt_qposadr[self._joint_id("ball_free_joint")])
         self._ball_vadr = int(m.jnt_dofadr[self._joint_id("ball_free_joint")])
         self._ball_bid = self._body_id("ball")
-        self._racket_sid = self._site_id("right_racket")
+        self._racket_sid = self._site_id(self.racket_site)
         self._ball_gid = self._geom_id("ball_geom")
-        self._racket_gid = self._geom_id("right_racket_collision")
-        self._gyro_adr = self._sensor_adr("pelvis_imu_gyro")
+        self._racket_gid = self._geom_id(self.racket_collision_geom)
+        self._gyro_adr = self._sensor_adr(self.gyro_sensor)
 
         # Controlled-joint qpos/qvel addresses + driving actuator indices.
         self._q_adr = np.zeros(self.num_joints, dtype=int)
@@ -240,8 +251,8 @@ class PingPongRealPhysicsScene:
 
         _add_pair("ball_geom", "table_geom", _restitution("table", 0.9215), _friction("table", 0.40))
         _add_pair("ball_geom", "net_geom", _restitution("net", 0.10), _friction("net", 0.50))
-        _add_pair("ball_geom", "right_racket_collision", _restitution("paddle", 0.654), _friction("paddle", 0.60))
-        _add_pair("ball_geom", "floor", _restitution("floor", 0.40), _friction("floor", 0.80))
+        _add_pair("ball_geom", self.racket_collision_geom, _restitution("paddle", 0.654), _friction("paddle", 0.60))
+        _add_pair("ball_geom", self.floor_geom, _restitution("floor", 0.40), _friction("floor", 0.80))
 
         # Extend the model's stand keyframe with a resting ball pose so the combined
         # nq matches (the ball's 7 qpos are overwritten per serve anyway).
@@ -267,7 +278,11 @@ class PingPongRealPhysicsScene:
         return self._mj.mj_name2id(self.model, self._mj.mjtObj.mjOBJ_BODY, name)
 
     def _site_id(self, name: str) -> int:
-        return self._mj.mj_name2id(self.model, self._mj.mjtObj.mjOBJ_SITE, name)
+        sid = self._mj.mj_name2id(self.model, self._mj.mjtObj.mjOBJ_SITE, name)
+        if sid < 0:
+            # A missing racket site would silently read site 0's pose; fail instead.
+            raise ValueError(f"site '{name}' not found")
+        return sid
 
     def _geom_id(self, name: str) -> int:
         gid = self._mj.mj_name2id(self.model, self._mj.mjtObj.mjOBJ_GEOM, name)

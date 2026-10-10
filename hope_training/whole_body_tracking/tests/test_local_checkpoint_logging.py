@@ -64,11 +64,16 @@ def test_atomic_local_checkpoint_retains_resume_state(tmp_path, with_provenance)
         assert receipt["checkpoint_sha256"] == hashlib.sha256(checkpoint.read_bytes()).hexdigest()
 
 
-def test_writer_is_local_only():
+@pytest.mark.parametrize("logger", ["tensorboard", "wandb", "WandB"])
+def test_writer_accepts_tensorboard_and_wandb(logger):
     runner = runner_methods()()
-    runner.cfg = {"logger": "tensorboard"}
+    runner.cfg = {"logger": logger}
     runner._prepare_logging_writer()
     assert runner.writer == "local"
+
+
+def test_writer_rejects_other_backends():
+    runner = runner_methods()()
     runner.cfg = {"logger": "remote_service"}
     with pytest.raises(ValueError, match="local tensorboard"):
         runner._prepare_logging_writer()

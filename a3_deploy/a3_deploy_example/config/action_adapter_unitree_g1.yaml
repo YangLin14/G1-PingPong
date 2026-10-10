@@ -1,0 +1,142 @@
+# Canonical shared ActionAdapter configuration (HOPE, 29-DOF Unitree G1).
+#
+# Mirror of action_adapter.yaml (Agibot A3) for the Unitree G1. Read by BOTH the training package
+# (whole_body_tracking.utils.action_adapter_config, robot="unitree_g1") and the reference deploy
+# runner / MuJoCo evaluator (RobotProfile UNITREE_G1), so the raw-action -> joint-target mapping is
+# defined in exactly one place. Parity is asserted by
+# hope_training/whole_body_tracking/tests/test_action_adapter_parity_g1.py.
+#
+# Transform (deterministic; not a rejection filter, emits no status):
+#     q_des = default_q + raw_action * action_scale
+#     q_des = clip(q_des, joint_position_clamp.lower, joint_position_clamp.upper)
+#
+# VALUES (generated from hope_training/.../robots/g1.py and the upstream URDF, 2026-10-07):
+#   * default_q    : G1_CYLINDER_CFG.init_state.joint_pos (BeyondMimic G1 stand; unlisted joints 0).
+#   * action_scale : per joint, 0.25 * effort_limit_sim / stiffness == G1_ACTION_SCALE in robots/g1.py
+#                    (the recipe's 50 N.m ankle/waist effort, not the URDF's 35 N.m -- see g1.py).
+#   * joint_position_clamp : the upstream g1_29dof_rev_1_0 URDF joint limits.
+# The G1 has no passive (neck) columns: every vector here is length 29.
+
+action_scale:
+  left_hip_pitch_joint: 0.547546
+  right_hip_pitch_joint: 0.547546
+  waist_yaw_joint: 0.547546
+  left_hip_roll_joint: 0.350661
+  right_hip_roll_joint: 0.350661
+  waist_roll_joint: 0.438577
+  left_hip_yaw_joint: 0.547546
+  right_hip_yaw_joint: 0.547546
+  waist_pitch_joint: 0.438577
+  left_knee_joint: 0.350661
+  right_knee_joint: 0.350661
+  left_shoulder_pitch_joint: 0.438577
+  right_shoulder_pitch_joint: 0.438577
+  left_ankle_pitch_joint: 0.438577
+  right_ankle_pitch_joint: 0.438577
+  left_shoulder_roll_joint: 0.438577
+  right_shoulder_roll_joint: 0.438577
+  left_ankle_roll_joint: 0.438577
+  right_ankle_roll_joint: 0.438577
+  left_shoulder_yaw_joint: 0.438577
+  right_shoulder_yaw_joint: 0.438577
+  left_elbow_joint: 0.438577
+  right_elbow_joint: 0.438577
+  left_wrist_roll_joint: 0.438577
+  right_wrist_roll_joint: 0.438577
+  left_wrist_pitch_joint: 0.0745009
+  right_wrist_pitch_joint: 0.0745009
+  left_wrist_yaw_joint: 0.0745009
+  right_wrist_yaw_joint: 0.0745009
+
+default_q:            # rad, BeyondMimic G1 stand (= Isaac articulation default pose)
+  left_hip_pitch_joint: -0.312
+  right_hip_pitch_joint: -0.312
+  waist_yaw_joint: 0
+  left_hip_roll_joint: 0
+  right_hip_roll_joint: 0
+  waist_roll_joint: 0
+  left_hip_yaw_joint: 0
+  right_hip_yaw_joint: 0
+  waist_pitch_joint: 0
+  left_knee_joint: 0.669
+  right_knee_joint: 0.669
+  left_shoulder_pitch_joint: 0.2
+  right_shoulder_pitch_joint: 0.2
+  left_ankle_pitch_joint: -0.363
+  right_ankle_pitch_joint: -0.363
+  left_shoulder_roll_joint: 0.2
+  right_shoulder_roll_joint: -0.2
+  left_ankle_roll_joint: 0
+  right_ankle_roll_joint: 0
+  left_shoulder_yaw_joint: 0
+  right_shoulder_yaw_joint: 0
+  left_elbow_joint: 0.6
+  right_elbow_joint: 0.6
+  left_wrist_roll_joint: 0
+  right_wrist_roll_joint: 0
+  left_wrist_pitch_joint: 0
+  right_wrist_pitch_joint: 0
+  left_wrist_yaw_joint: 0
+  right_wrist_yaw_joint: 0
+
+joint_position_clamp:  # rad; upstream g1_29dof_rev_1_0 URDF joint limits
+  lower:
+    left_hip_pitch_joint: -2.5307
+    right_hip_pitch_joint: -2.5307
+    waist_yaw_joint: -2.618
+    left_hip_roll_joint: -0.5236
+    right_hip_roll_joint: -2.9671
+    waist_roll_joint: -0.52
+    left_hip_yaw_joint: -2.7576
+    right_hip_yaw_joint: -2.7576
+    waist_pitch_joint: -0.52
+    left_knee_joint: -0.087267
+    right_knee_joint: -0.087267
+    left_shoulder_pitch_joint: -3.0892
+    right_shoulder_pitch_joint: -3.0892
+    left_ankle_pitch_joint: -0.87267
+    right_ankle_pitch_joint: -0.87267
+    left_shoulder_roll_joint: -1.5882
+    right_shoulder_roll_joint: -2.2515
+    left_ankle_roll_joint: -0.2618
+    right_ankle_roll_joint: -0.2618
+    left_shoulder_yaw_joint: -2.618
+    right_shoulder_yaw_joint: -2.618
+    left_elbow_joint: -1.0472
+    right_elbow_joint: -1.0472
+    left_wrist_roll_joint: -1.97222
+    right_wrist_roll_joint: -1.97222
+    left_wrist_pitch_joint: -1.61443
+    right_wrist_pitch_joint: -1.61443
+    left_wrist_yaw_joint: -1.61443
+    right_wrist_yaw_joint: -1.61443
+  upper:
+    left_hip_pitch_joint: 2.8798
+    right_hip_pitch_joint: 2.8798
+    waist_yaw_joint: 2.618
+    left_hip_roll_joint: 2.9671
+    right_hip_roll_joint: 0.5236
+    waist_roll_joint: 0.52
+    left_hip_yaw_joint: 2.7576
+    right_hip_yaw_joint: 2.7576
+    waist_pitch_joint: 0.52
+    left_knee_joint: 2.8798
+    right_knee_joint: 2.8798
+    left_shoulder_pitch_joint: 2.6704
+    right_shoulder_pitch_joint: 2.6704
+    left_ankle_pitch_joint: 0.5236
+    right_ankle_pitch_joint: 0.5236
+    left_shoulder_roll_joint: 2.2515
+    right_shoulder_roll_joint: 1.5882
+    left_ankle_roll_joint: 0.2618
+    right_ankle_roll_joint: 0.2618
+    left_shoulder_yaw_joint: 2.618
+    right_shoulder_yaw_joint: 2.618
+    left_elbow_joint: 2.0944
+    right_elbow_joint: 2.0944
+    left_wrist_roll_joint: 1.97222
+    right_wrist_roll_joint: 1.97222
+    left_wrist_pitch_joint: 1.61443
+    right_wrist_pitch_joint: 1.61443
+    left_wrist_yaw_joint: 1.61443
+    right_wrist_yaw_joint: 1.61443

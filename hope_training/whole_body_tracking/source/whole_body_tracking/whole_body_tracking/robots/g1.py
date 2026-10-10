@@ -1,8 +1,124 @@
+"""Unitree G1 (29-DoF, ``g1_29dof_rev_1_0``) — BeyondMimic recipe plus the HOPE racket-equipped asset.
+
+The articulation spawns the racket-equipped URDF generated from the vendored Unitree description
+(``unitree/URDF/g1_29dof_pingpang/``) and prepared into the git-ignored training asset directory by
+``scripts/prepare_g1_isaac_asset.py`` (mirror of the A3 flow). Nothing here touches the filesystem at
+import time, so the G1 tasks register without the asset present.
+
+PD gains / armature keep the BeyondMimic G1 recipe (10 Hz natural frequency, damping ratio 2, motor
+armatures). NOTE: upstream ``g1_29dof_rev_1_0`` lists 35 N·m for the ankle and waist roll/pitch
+motors while the recipe uses 50 N·m; changing an effort limit changes the action scale
+(``0.25 * effort / stiffness``), so that is a deliberate, separate decision — keep them in sync with
+``G1_ACTION_SCALE`` and ``a3_deploy/a3_deploy_example/config/action_adapter_unitree_g1.yaml`` if you do.
+
+The name constants below mirror ``robots/agibot_a3.py`` so the HOPE config code can be retargeted
+mechanically (see ``utils/g1_retarget.py``). G1 body names are lowercase ``*_link`` and the root is
+``pelvis`` (the A3 uses ``*_Link`` and ``pelvis_link``); the G1 has no head joints, so its policy
+vector is 29-D with no passive columns.
+"""
+
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
 from whole_body_tracking.assets import ASSET_DIR
+
+##
+# Asset path — the racket-equipped G1 URDF prepared from unitree/URDF/g1_29dof_pingpang/ by
+# scripts/prepare_g1_isaac_asset.py (same layout as the A3's assets/agibot_a3/).
+##
+UNITREE_G1_ASSET_ROOT = f"{ASSET_DIR}/unitree_g1"
+UNITREE_G1_URDF_PATH = f"{UNITREE_G1_ASSET_ROOT}/urdf/model.urdf"
+
+##
+# Body / joint name constants (real names from the Unitree G1 URDF).
+##
+G1_ROOT_BODY = "pelvis"
+G1_ANCHOR_BODY = "torso_link"
+
+# Bodies tracked by the BeyondMimic motion command (the 14-body G1 set).
+G1_TRACKED_BODIES = [
+    "pelvis",
+    "left_hip_roll_link",
+    "left_knee_link",
+    "left_ankle_roll_link",
+    "right_hip_roll_link",
+    "right_knee_link",
+    "right_ankle_roll_link",
+    "torso_link",
+    "left_shoulder_roll_link",
+    "left_elbow_link",
+    "left_wrist_yaw_link",
+    "right_shoulder_roll_link",
+    "right_elbow_link",
+    "right_wrist_yaw_link",
+]
+
+# Feet + hands; used for contact/termination exclusions.
+G1_FEET_BODIES = ["left_ankle_roll_link", "right_ankle_roll_link"]
+G1_HAND_BODIES = ["left_wrist_yaw_link", "right_wrist_yaw_link"]
+
+# UPPER-body tracked bodies (torso + both arms); mirror of A3_UPPER_TRACKED.
+G1_UPPER_TRACKED = [
+    "torso_link",
+    "left_shoulder_roll_link",
+    "left_elbow_link",
+    "left_wrist_yaw_link",
+    "right_shoulder_roll_link",
+    "right_elbow_link",
+    "right_wrist_yaw_link",
+]
+
+# Canonical 29-joint policy order — MUST equal hope_training/config/joint_order_unitree_g1.yaml
+# (tests pin the two together) and the live Isaac articulation enumeration (pinned once with
+# scripts/check_g1_asset_isaac.py). Isaac/PhysX enumerate breadth-first over the kinematic tree.
+UNITREE_G1_JOINT_NAMES = [
+    "left_hip_pitch_joint",
+    "right_hip_pitch_joint",
+    "waist_yaw_joint",
+    "left_hip_roll_joint",
+    "right_hip_roll_joint",
+    "waist_roll_joint",
+    "left_hip_yaw_joint",
+    "right_hip_yaw_joint",
+    "waist_pitch_joint",
+    "left_knee_joint",
+    "right_knee_joint",
+    "left_shoulder_pitch_joint",
+    "right_shoulder_pitch_joint",
+    "left_ankle_pitch_joint",
+    "right_ankle_pitch_joint",
+    "left_shoulder_roll_joint",
+    "right_shoulder_roll_joint",
+    "left_ankle_roll_joint",
+    "right_ankle_roll_joint",
+    "left_shoulder_yaw_joint",
+    "right_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "right_elbow_joint",
+    "left_wrist_roll_joint",
+    "right_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "right_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+    "right_wrist_yaw_joint",
+]
+
+# Racket mount (right arm) — see unitree/scripts/build_g1_pingpang_models.py, the single source of
+# truth for the generated URDF/MJCF. A test parses the committed URDF's pingpang_red_joint origin and
+# asserts it equals G1_MOUNT_OFFSET, so the two cannot drift apart.
+G1_WRIST_BODY = "right_wrist_yaw_link"          # last actuated link of the paddle arm
+G1_RACKET_BODY = "pingpang_red_Link"            # racket-centre body (A3 name kept on purpose)
+G1_MOUNT_OFFSET = (0.210, 0.015, 0.010)         # wrist_yaw -> blade centre, wrist frame (m)
+G1_MOUNT_QUAT = (1.0, 0.0, 0.0, 0.0)            # identity: blade plane XZ, +Y = red face normal
+
+# Contact bodies allowed to touch (feet) or carrying the paddle (wrists + racket links); the
+# undesired-contact penalty excludes them via this negative-lookahead regex.
+G1_CONTACT_EXCLUDE_REGEX = (
+    r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)"
+    r"(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$)"
+    r"(?!right_hand_pingpang_Link$)(?!pingpang_red_Link$)(?!pingpang_black_Link$).+$"
+)
 
 ARMATURE_5020 = 0.003609725
 ARMATURE_7520_14 = 0.010177520
@@ -26,7 +142,7 @@ G1_CYLINDER_CFG = ArticulationCfg(
     spawn=sim_utils.UrdfFileCfg(
         fix_base=False,
         replace_cylinders_with_capsules=True,
-        asset_path=f"{ASSET_DIR}/unitree_description/urdf/g1/main.urdf",
+        asset_path=UNITREE_G1_URDF_PATH,
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,

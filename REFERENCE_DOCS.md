@@ -29,6 +29,7 @@ docs win:
 | Raw mocap adapters / clock acceptance | [`NatNet2ROS2/README.md`](NatNet2ROS2/README.md) · [`VRPN2ROS2/README.md`](VRPN2ROS2/README.md) |
 | ROS 2 workspace bring-up (planner/relay, dry-run, shadow mode) | [`hope_ws/README.md`](hope_ws/README.md) · [`hope_ws/BRINGUP_TUTORIAL.md`](hope_ws/BRINGUP_TUTORIAL.md) · [`hope_ws/SMOKE_TEST.md`](hope_ws/SMOKE_TEST.md) · [`hope_ws/SHADOW_MODE.md`](hope_ws/SHADOW_MODE.md) |
 | Asset map / joint order source | [`A3_ASSETS.md`](A3_ASSETS.md) |
+| Unitree G1 (second robot: assets, tasks, export, MuJoCo evaluation) | [`docs/UNITREE_G1.md`](docs/UNITREE_G1.md) · [`unitree/README.md`](unitree/README.md) |
 
 ## What the rewrite dropped
 

@@ -3,10 +3,13 @@
 """MuJoCo sim-to-sim evaluation of the exported HOPE ONNX policy.
 
 This drives the exported ``policy.onnx`` (single layout: observation[1, 110]
-``hitter_pure`` -> raw_action[1, 31], no observation normalization) through the
-SAME 110-D observation builder, ActionAdapter, swing lifecycle and RacketCommand
-that the clean-room reference deploy runner uses, so this is a faithful test of
-the deploy contract rather than a second, divergent implementation.
+``hitter_pure`` -> raw_action[1, 31] for the Agibot A3; observation[1, 104]
+``hitter_pure_unitree_g1`` -> raw_action[1, 29] with ``--robot unitree_g1``, no
+observation normalization) through the SAME observation builder, ActionAdapter,
+swing lifecycle and RacketCommand that the clean-room reference deploy runner
+uses, so this is a faithful test of the deploy contract rather than a second,
+divergent implementation. The robot is selected explicitly (``--robot``), never
+inferred from a joint count.
 
 ``success_rate`` is measured from an ACTUAL simulated ball. A real ball (free joint,
 sphere) is served from the opponent side toward the robot; it flies under gravity +
@@ -71,8 +74,24 @@ def _reference_pkg_dir(repo_root: pathlib.Path) -> pathlib.Path:
     return repo_root / "a3_deploy" / "a3_deploy_example" / "reference"
 
 
-def _default_runtime_config(repo_root: pathlib.Path) -> pathlib.Path:
-    return repo_root / "a3_deploy" / "a3_deploy_example" / "config" / "hope_pingpong_runtime.yaml"
+_RUNTIME_CONFIGS = {
+    "agibot_a3": "hope_pingpong_runtime.yaml",
+    "unitree_g1": "hope_pingpong_runtime_unitree_g1.yaml",
+}
+DEFAULT_ROBOT = "agibot_a3"
+
+# Example serve distribution per robot: strike-point y band per side (MuJoCo/robot frame, forehand
+# = robot's right = -y) and the strike height band above the table surface. The A3 values are the
+# original neutral examples; the G1 entry starts EQUAL (TODO: retune to the G1's shorter reach once a
+# G1 policy exists). ``--serve-y-fh/--serve-y-bh/--serve-z`` override whichever robot is selected.
+SERVE_RANGES = {
+    "agibot_a3": {"y_fh": (-0.45, -0.12), "y_bh": (0.05, 0.38), "z": (0.10, 0.22)},
+    "unitree_g1": {"y_fh": (-0.45, -0.12), "y_bh": (0.05, 0.38), "z": (0.10, 0.22)},
+}
+
+
+def _default_runtime_config(repo_root: pathlib.Path, robot: str = DEFAULT_ROBOT) -> pathlib.Path:
+    return repo_root / "a3_deploy" / "a3_deploy_example" / "config" / _RUNTIME_CONFIGS[robot]
 
 
 def _load_success_metric(repo_root: pathlib.Path):
@@ -115,11 +134,12 @@ def _sample_serve(rng, side, scene, physics, args):
     the true ball each tick, so the exact serve is not relied upon.
     """
     strike_x = scene.near_edge_x + args.strike_plane_x  # MuJoCo x of the fixed strike plane
+    ranges = args.serve_ranges
     if side >= 0:  # FOREHAND -> robot's right = -y in the MuJoCo/robot frame
-        y = rng.uniform(-0.45, -0.12)
+        y = rng.uniform(*ranges["y_fh"])
     else:          # BACKHAND -> robot's left = +y
-        y = rng.uniform(0.05, 0.38)
-    z = scene.table_height + rng.uniform(0.10, 0.22)
+        y = rng.uniform(*ranges["y_bh"])
+    z = scene.table_height + rng.uniform(*ranges["z"])
     strike_pt = np.array([strike_x, y, z], dtype=np.float64)
 
     origin = np.array(
@@ -197,7 +217,6 @@ def run_eval(args) -> dict:
     ref_dir = pathlib.Path(args.reference_dir) if args.reference_dir else _reference_pkg_dir(repo_root)
     sys.path.insert(0, str(ref_dir))
     from a3_deploy_onnx_ref_pingpong.config import RuntimeConfig
-    from a3_deploy_onnx_ref_pingpong.joint_order import HEAD_INDICES, JOINT_NAMES
     from a3_deploy_onnx_ref_pingpong.lifecycle import SwingLifecycle
     from a3_deploy_onnx_ref_pingpong.observation import build_observation
     from a3_deploy_onnx_ref_pingpong.onnx_policy import OnnxPolicy
@@ -222,28 +241,58 @@ def run_eval(args) -> dict:
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
     from mujoco_pingpong_scene import PingPongRealPhysicsScene
 
-    runtime_cfg = RuntimeConfig.load(args.runtime_config or _default_runtime_config(repo_root))
+    robot = getattr(args, "robot", DEFAULT_ROBOT) or DEFAULT_ROBOT
+    runtime_cfg = RuntimeConfig.load(
+        args.runtime_config or _default_runtime_config(repo_root, robot), profile=robot
+    )
+    profile = runtime_cfg.profile  # joint order / dims / passive columns / MJCF names
     onnx_path = args.onnx or str(runtime_cfg.onnx_path)
     robot_xml = args.model_xml or str(runtime_cfg.model_xml_path)
+    args.serve_ranges = _resolve_serve_ranges(args, profile.name)
 
     ball_cfg = load_ball_physics_config()
     physics = BallPhysics.from_config(ball_cfg)
     table = TableGeometry.from_config(ball_cfg)
     accumulator = SuccessRate()
 
-    policy = OnnxPolicy(onnx_path)
+    policy = OnnxPolicy(onnx_path, profile=profile)
     scene = PingPongRealPhysicsScene(
         robot_xml,
         ball_cfg,
-        JOINT_NAMES,
+        profile.joint_names,
         control_dt=runtime_cfg.control_dt,
         near_edge_x=args.near_edge_x,
         launch_viewer=args.view,
+        base_free_joint=profile.base_free_joint,
+        gyro_sensor=profile.gyro_sensor,
+        racket_site=profile.racket_site,
+        racket_collision_geom=profile.racket_collision_geom,
+        floor_geom=profile.floor_geom,
     )
+
+    # Optional offscreen mp4 of the session (every --video-every-th tick; needs MUJOCO_GL=egl/osmesa).
+    capture = None
+    if getattr(args, "video_out", None):
+        from mujoco_video import RolloutVideo
+
+        az, el, dist = (float(v) for v in args.video_camera)
+        lookat = np.asarray(scene.base_pos_w(), dtype=np.float64) + np.asarray(args.video_lookat_offset, dtype=np.float64)
+        capture = RolloutVideo(
+            scene.model,
+            scene.data,
+            args.video_out,
+            control_dt=runtime_cfg.control_dt,
+            every=int(args.video_every),
+            lookat=lookat,
+            azimuth=az,
+            elevation=el,
+            distance=dist,
+        )
 
     default_q = runtime_cfg.action_adapter.default_q.copy()
     kp, kd = runtime_cfg.sim_kp.copy(), runtime_cfg.sim_kd.copy()
-    head_idx = list(HEAD_INDICES)
+    head_idx = list(profile.passive_indices)   # (3, 4) on the A3; empty on the G1
+    num_joints = profile.num_joints
     net_clear_z = table.net_height + physics.ball_radius
     contact_radius = args.contact_radius
     dt = runtime_cfg.control_dt
@@ -259,7 +308,7 @@ def run_eval(args) -> dict:
         """
         state = scene.read_robot_state()
         target = lifecycle.update(source.poll(), state)
-        obs = build_observation(state, target, last_action, default_q, base_target_xy)
+        obs = build_observation(state, target, last_action, default_q, base_target_xy, num_joints=num_joints)
         raw_action = policy.infer_target(
             obs,
             target.time_to_strike,
@@ -269,13 +318,16 @@ def run_eval(args) -> dict:
         # Applied action = raw with the passive head columns zeroed, matching both
         # the deploy runner and training's zeroed last_action feedback.
         applied_action = np.asarray(raw_action, dtype=np.float64).copy()
-        if runtime_cfg.passive_neck:
+        if runtime_cfg.passive_neck and head_idx:
             applied_action[head_idx] = 0.0
         q_des = runtime_cfg.action_adapter.decode(applied_action)
-        if runtime_cfg.passive_neck:
+        if runtime_cfg.passive_neck and head_idx:
             q_des[head_idx] = default_q[head_idx]
         scene.write_targets(q_des, kp, kd)
-        return scene.step(), applied_action
+        result = scene.step()
+        if capture is not None:
+            capture.tick()
+        return result, applied_action
 
     def _park_ball():
         """Drop the ball out of play (past the far edge) between rally serves."""
@@ -291,7 +343,7 @@ def run_eval(args) -> dict:
     scene.reset_stand()
     lifecycle = SwingLifecycle(runtime_cfg.lifecycle)
     source = QueueRacketCommandSource()
-    last_action = np.zeros(31, dtype=np.float64)
+    last_action = np.zeros(num_joints, dtype=np.float64)
     base_target_xy = scene.base_pos_w()[:2].copy()
     max_rest_ticks = max(1, int(round(args.max_rest_seconds / dt)))
     transitions_seen: set = set()
@@ -312,7 +364,7 @@ def run_eval(args) -> dict:
             scene.reset_stand()
             lifecycle = SwingLifecycle(runtime_cfg.lifecycle)
             source = QueueRacketCommandSource()
-            last_action = np.zeros(31, dtype=np.float64)
+            last_action = np.zeros(num_joints, dtype=np.float64)
             base_target_xy = scene.base_pos_w()[:2].copy()
         elif trial > 0:
             # Continuous rally: keep the policy running (no reset, no teleport)
@@ -325,6 +377,8 @@ def run_eval(args) -> dict:
                 if lifecycle.phase.value == "ready":
                     break
 
+        if capture is not None and trial > 0:
+            capture.mark()
         scene.set_ball(serve_pos, serve_vel)
         task_counter += 1
         task_id = task_counter
@@ -385,6 +439,13 @@ def run_eval(args) -> dict:
         )
         accumulator.add_bool(success)
 
+    if capture is not None:
+        n_frames = capture.num_frames
+        written = capture.close()
+        print(
+            f"[mujoco_eval] video: {written} ({n_frames} frames)" if written else "[mujoco_eval] video: no frames captured",
+            file=sys.stderr,
+        )
     scene.close()
     if continuous:
         _names = {FOREHAND: "FH", BACKHAND: "BH"}
@@ -396,18 +457,42 @@ def run_eval(args) -> dict:
             file=sys.stderr,
         )
     print(
-        f"[mujoco_eval] mode={args.eval_mode} serves={accumulator.attempts} "
+        f"[mujoco_eval] robot={profile.name} mode={args.eval_mode} serves={accumulator.attempts} "
         f"returns={accumulator.successes} success_rate={accumulator.value:.4f}",
         file=sys.stderr,
     )
     return accumulator.as_dict()
 
 
+def _resolve_serve_ranges(args, robot: str) -> dict:
+    """The robot's example serve bands, with any ``--serve-*`` CLI overrides applied."""
+    ranges = {key: tuple(value) for key, value in SERVE_RANGES[robot].items()}
+    for key, attr in (("y_fh", "serve_y_fh"), ("y_bh", "serve_y_bh"), ("z", "serve_z")):
+        override = getattr(args, attr, None)
+        if override is not None:
+            lo, hi = (float(override[0]), float(override[1]))
+            if lo > hi:
+                raise ValueError(f"--{attr.replace('_', '-')} expects LO HI with LO <= HI, got {override}")
+            ranges[key] = (lo, hi)
+    return ranges
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--robot", choices=sorted(_RUNTIME_CONFIGS), default=DEFAULT_ROBOT,
+        help="Robot profile: agibot_a3 (31 joints, 110-D; default) or unitree_g1 (29 joints, 104-D). "
+             "Selects the default runtime config, joint order, MJCF names and serve bands.",
+    )
     parser.add_argument("--onnx", default=None, help="Exported policy.onnx (default: from runtime config).")
-    parser.add_argument("--model-xml", default=None, help="a3_pingpong MJCF (default: from runtime config).")
-    parser.add_argument("--runtime-config", default=None, help="hope_pingpong_runtime.yaml (default: shipped).")
+    parser.add_argument("--model-xml", default=None, help="Robot MJCF (default: from runtime config).")
+    parser.add_argument("--runtime-config", default=None, help="Runtime YAML (default: the shipped one for --robot).")
+    parser.add_argument("--serve-y-fh", nargs=2, type=float, default=None, metavar=("LO", "HI"),
+                        help="Forehand strike-point y band (robot frame, m); default per robot.")
+    parser.add_argument("--serve-y-bh", nargs=2, type=float, default=None, metavar=("LO", "HI"),
+                        help="Backhand strike-point y band (robot frame, m); default per robot.")
+    parser.add_argument("--serve-z", nargs=2, type=float, default=None, metavar=("LO", "HI"),
+                        help="Strike height band above the table surface (m); default per robot.")
     parser.add_argument("--reference-dir", default=None, help="Dir containing the reference deploy package.")
     parser.add_argument("--num-serves", type=int, default=50, help="Number of served balls (denominator).")
     parser.add_argument(
@@ -436,6 +521,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0, help="RNG seed for the example serve distribution.")
     parser.add_argument("--view", action="store_true", help="Launch the MuJoCo passive viewer (debug only).")
     parser.add_argument("--json-out", default=None, help="Also write {'success_rate': ...} to this file.")
+    parser.add_argument("--video-out", default=None,
+                        help="Write an offscreen mp4 of the whole session here (needs MUJOCO_GL=egl or osmesa, "
+                             "imageio + imageio-ffmpeg).")
+    parser.add_argument("--video-every", type=int, default=2,
+                        help="Render every N-th control tick (default 2 -> 25 fps at 50 Hz control).")
+    parser.add_argument("--video-camera", nargs=3, type=float, default=(330.0, -22.0, 3.4), metavar=("AZ", "EL", "DIST"),
+                        help="Free-camera azimuth/elevation (deg) and distance (m) around the look-at point.")
+    parser.add_argument("--video-lookat-offset", nargs=3, type=float, default=(0.5, 0.0, 0.1), metavar=("DX", "DY", "DZ"),
+                        help="Look-at point = robot base at spawn + this offset (default leans toward the table).")
     return parser.parse_args()
 
 

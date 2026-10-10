@@ -44,6 +44,7 @@ class MotionLoader:
         body_indexes: Sequence[int] | torch.Tensor,
         device: str = "cpu",
         articulation_body_count: int | None = None,
+        articulation_joint_count: int | None = None,
     ):
         # Motion arrays are selected in NumPy before transfer to the simulator.
         # Live articulation indexes may already reside on the GPU.
@@ -59,6 +60,15 @@ class MotionLoader:
             data = np.load(f)
             if self.fps is None:
                 self.fps = data["fps"]
+            clip_joint_count = int(np.asarray(data["joint_pos"]).shape[-1])
+            if articulation_joint_count is not None and clip_joint_count != articulation_joint_count:
+                # A clip retargeted to a different robot (e.g. the 31-joint A3 pair on the 29-joint
+                # Unitree G1) must fail here with both counts, not as a shape error deep in a reward.
+                raise ValueError(
+                    f"motion file {f!r} stores {clip_joint_count} joints per frame but the live "
+                    f"articulation has {articulation_joint_count} joints. Reference clips are robot-"
+                    "specific: retarget the forehand/backhand pair to this robot (docs/REPLACE_MOTIONS.md)."
+                )
             jp.append(torch.tensor(data["joint_pos"], dtype=torch.float32, device=device))
             jv.append(torch.tensor(data["joint_vel"], dtype=torch.float32, device=device))
             bp.append(
@@ -311,6 +321,7 @@ class MotionCommand(CommandTerm):
             self.body_indexes,
             device=self.device,
             articulation_body_count=len(self.robot.body_names),
+            articulation_joint_count=len(self.robot.joint_names),
         )
         # GROUNDING preflight (2026-07-03): the actor obs consumes the RAW clip-world anchor quat,
         # and the racket-target boxes are planned in the +X-grounded frame — a clip that was never

@@ -114,9 +114,20 @@ rehearsal and gate sweeps above. See [POLICY_INTERFACE.md](POLICY_INTERFACE.md).
 ## Checkpoints and logging
 
 Checkpoints are written locally to `logs/rsl_rl/<experiment_name>/<timestamp>/` (a periodic
-checkpoint every `save_interval` iterations and a final one). The public launcher uses local
-TensorBoard logging and does not upload runs or checkpoints. Checkpoint selection is yours to do
-with the evaluators above — nothing auto-promotes a checkpoint.
+checkpoint every `save_interval` iterations and a final one). Scalars always go to a local
+TensorBoard event file next to the checkpoints; `logger=wandb` additionally mirrors them (and the
+run config) to Weights & Biases via rsl_rl's `WandbSummaryWriter`:
+
+```bash
+hope_isaac_py scripts/train.py task=HOPEPingPong headless=true logger=wandb wandb_project=hope run_name=v1
+```
+
+Auth comes from `~/.netrc` or `WANDB_API_KEY`; `WANDB_USERNAME` picks the entity, and
+`WANDB_RUN_ID` + `WANDB_RESUME=allow` re-attach a requeued job to the same run. `video=true`
+records `video_length`-step clips every `video_interval` env steps under `<run>/videos/train/`
+and, with `logger=wandb`, uploads each one as `Video/train` at the current iteration (needs a
+working RTX renderer: see [UNITREE_G1.md §3.4](UNITREE_G1.md) for the MuJoCo-rendered fallback).
+Checkpoint selection is yours to do with the evaluators above — nothing auto-promotes a checkpoint.
 
 ## Configuration
 

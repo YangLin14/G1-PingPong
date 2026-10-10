@@ -206,7 +206,7 @@ The competition rulebooks ship at the repository root:
 |------|---------|
 | [README.md](README.md) | Repository orientation and the shortest train → export → evaluate → run commands. New teams should start here. |
 | [QUICKSTART_A3_ISAAC.md](QUICKSTART_A3_ISAAC.md) | Step-by-step fresh-clone A3/Isaac setup. |
-| `docs/` | Task guides ([TRAIN_POLICY](docs/TRAIN_POLICY.md), [REPLACE_MOTIONS](docs/REPLACE_MOTIONS.md), [RUN_ON_AGIBOT](docs/RUN_ON_AGIBOT.md), [OPTITRACK](docs/OPTITRACK.md), [EXTENDING_HOPE_PINGPONG](docs/EXTENDING_HOPE_PINGPONG.md), [REMOVED_FROM_STARTER](docs/REMOVED_FROM_STARTER.md)) and the public contracts ([POLICY_INTERFACE](docs/POLICY_INTERFACE.md), [PLANNER_INTERFACE](docs/PLANNER_INTERFACE.md), `docs/interfaces/`). |
+| `docs/` | Task guides ([TRAIN_POLICY](docs/TRAIN_POLICY.md), [REPLACE_MOTIONS](docs/REPLACE_MOTIONS.md), [RUN_ON_AGIBOT](docs/RUN_ON_AGIBOT.md), [OPTITRACK](docs/OPTITRACK.md), [EXTENDING_HOPE_PINGPONG](docs/EXTENDING_HOPE_PINGPONG.md), [UNITREE_G1](docs/UNITREE_G1.md), [REMOVED_FROM_STARTER](docs/REMOVED_FROM_STARTER.md)) and the public contracts ([POLICY_INTERFACE](docs/POLICY_INTERFACE.md), [PLANNER_INTERFACE](docs/PLANNER_INTERFACE.md), `docs/interfaces/`). |
 | [A3_ASSETS.md](A3_ASSETS.md) | Asset map for the racket-equipped A3 URDF, the generated Isaac copy, joint order, and the Agibot-provided A3 reference materials. |
 | [REFERENCE_DOCS.md](REFERENCE_DOCS.md) | Index of preserved architecture, rules, mocap, training, and deployment reference documents. |
 | [ROADMAP.md](ROADMAP.md) | What is shipped, what is out of scope by design, and what comes next. |
@@ -220,6 +220,7 @@ The competition rulebooks ship at the repository root:
 | `a3_deploy/` | The native C++ deploy runner, gate/rehearsal script suite, parity harness, and deploy runbooks (`a3_deploy_example/`); the MuJoCo/AimRT simulation fork with the real ball plant (`A3_MuJoCo_Sim/`); and the optional user-supplied URDF override location (`URDF/`). |
 | [`apps/a3_mujoco_serve/`](apps/a3_mujoco_serve/README.md) | Self-contained deterministic serve contribution: official A3 MuJoCo model/racket contact, legal-serve physics search, DLS IK, all-joint CSV export, replay validation, and the PR #18 high-level A3 runtime. |
 | [agibot/](agibot/README.md) | A3 source robot models, vendor deploy/simulation references, clock synchronization and mounting hardware, including the v3 marker shell and serving gripper STL. See the folder README for the complete map, printing units and hardware-specific guidance. |
+| [unitree/](unitree/README.md) | Vendored Unitree G1 (`g1_29dof_rev_1_0`, BSD-3-Clause) description plus the generated racket-equipped `g1_29dof_pingpang` URDF/MJCF, the mount generator and its tests. Consumed by the G1 Isaac asset prep and the MuJoCo evaluator ([docs/UNITREE_G1.md](docs/UNITREE_G1.md)). |
 | `mocap/` | Motion-capture frame/topic contract ([mocap/README.md](mocap/README.md)) and the preserved mocap reference documents (EN/ZH). |
 
 ## System Architecture
@@ -324,7 +325,7 @@ The table below reports current repository implementation coverage.
 | Robot | DOF | Status |
 |-------|-----|--------|
 | Agibot Expedition A3 | 31 actuated | Shipped end-to-end path: Isaac Lab training (deploy-grade `hitter_pure` rally line), ONNX export with fail-closed metadata, Isaac/MuJoCo evaluation gates, native C++ deploy runner — exercised on real A3 hardware — plus the Agibot vendor deploy example. |
-| Unitree G1 | 29 | Discussed in the preserved reference design documents (`HOPE_*_Reference_Setup.md`) only; no shipped code path. |
+| Unitree G1 | 29 | Isaac Lab training + MuJoCo sim-to-sim path: vendored Unitree description with a generated racket-equipped URDF/MJCF (`unitree/`), `HOPE-HitterPingPong-UnitreeG1-v0` task, 104-D `hitter_pure_unitree_g1` contract, exporter and MuJoCo evaluator `--robot unitree_g1`. Trains from derived G1 clips (joint-space transfer of the A3 pair); no deploy runner. See [docs/UNITREE_G1.md](docs/UNITREE_G1.md). |
 
 ## Coordinate Frame Convention
 

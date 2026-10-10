@@ -26,16 +26,24 @@ from pathlib import Path
 
 from .config import RuntimeConfig
 from .racket_command import ExampleCommandFeed, QueueRacketCommandSource
+from .robot_profile import PROFILES
 from .ros_command_source import DEFAULT_COMMAND_TOPIC
 from .runner import PingPongReferenceRunner
 
-_DEFAULT_CONFIG = Path(__file__).resolve().parents[2] / "config" / "hope_pingpong_runtime.yaml"
+_CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
+_DEFAULT_CONFIGS = {
+    "agibot_a3": _CONFIG_DIR / "hope_pingpong_runtime.yaml",
+    "unitree_g1": _CONFIG_DIR / "hope_pingpong_runtime_unitree_g1.yaml",
+}
+_DEFAULT_CONFIG = _DEFAULT_CONFIGS["agibot_a3"]
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="a3_deploy_onnx_ref_pingpong", description=__doc__)
-    p.add_argument("--config", type=Path, default=_DEFAULT_CONFIG,
-                   help="runtime YAML (default: the shipped config)")
+    p.add_argument("--config", type=Path, default=None,
+                   help="runtime YAML (default: the shipped config for --robot)")
+    p.add_argument("--robot", choices=sorted(PROFILES), default="agibot_a3",
+                   help="robot profile: agibot_a3 (31 joints, default) or unitree_g1 (29 joints)")
     p.add_argument("--backend", choices=["mujoco", "aimrt"], default="mujoco",
                    help="mujoco = in-process (default); aimrt = live-sim seam")
     p.add_argument("--onnx", type=Path, default=None, help="override the ONNX policy path")
@@ -60,7 +68,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    cfg = RuntimeConfig.load(args.config)
+    config_path = args.config if args.config is not None else _DEFAULT_CONFIGS[args.robot]
+    cfg = RuntimeConfig.load(config_path, profile=args.robot)
     if args.onnx is not None:
         cfg.onnx_path = args.onnx.resolve()
     if args.model_xml is not None:
@@ -80,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         from .sim_bridge import MujocoDirectBridge
 
         bridge = MujocoDirectBridge(
-            cfg.model_xml_path, control_dt=cfg.control_dt, launch_viewer=args.view
+            cfg.model_xml_path, control_dt=cfg.control_dt, launch_viewer=args.view, profile=cfg.profile
         )
     else:
         from .sim_bridge import AimrtSimBridge

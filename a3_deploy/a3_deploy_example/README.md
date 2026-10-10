@@ -112,6 +112,11 @@ AimRT MuJoCo sim) over the vendor body-drive interface — operational guidance 
 - `config/hope_pingpong_runtime.yaml` — the 110-D runtime config for the Python
   harness. It selects model_21800 by default and uses the exported PD arrays only
   to realize its targets in simulation; it never configures a robot backend.
+- `config/hope_pingpong_runtime_unitree_g1.yaml` and
+  `config/action_adapter_unitree_g1.yaml` — the 104-D / 29-joint Unitree G1
+  equivalents, selected with `python -m a3_deploy_onnx_ref_pingpong --robot unitree_g1`
+  (`RobotProfile UNITREE_G1`; the A3 stays the default). No G1 policy or hardware
+  runner ships; see [`docs/UNITREE_G1.md`](../../docs/UNITREE_G1.md).
 
 ## Running on real hardware
 

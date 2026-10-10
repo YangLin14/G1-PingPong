@@ -28,11 +28,28 @@ from dataclasses import dataclass
 import numpy as np
 import yaml
 
-# Repo-root-relative locations of the two shared contract files.
-SHARED_ADAPTER_RELPATH = os.path.join(
-    "a3_deploy", "a3_deploy_example", "config", "action_adapter.yaml"
-)
-JOINT_ORDER_RELPATH = os.path.join("hope_training", "config", "joint_order_agibot_a3.yaml")
+# Repo-root-relative locations of the shared contract files, keyed by robot. The Agibot A3 is the
+# default everywhere so existing callers are unchanged; the Unitree G1 is selected explicitly.
+DEFAULT_ROBOT = "agibot_a3"
+SHARED_ADAPTER_RELPATHS = {
+    "agibot_a3": os.path.join("a3_deploy", "a3_deploy_example", "config", "action_adapter.yaml"),
+    "unitree_g1": os.path.join("a3_deploy", "a3_deploy_example", "config", "action_adapter_unitree_g1.yaml"),
+}
+JOINT_ORDER_RELPATHS = {
+    "agibot_a3": os.path.join("hope_training", "config", "joint_order_agibot_a3.yaml"),
+    "unitree_g1": os.path.join("hope_training", "config", "joint_order_unitree_g1.yaml"),
+}
+_EXPECTED_COUNTS = {"agibot_a3": 31, "unitree_g1": 29}
+# Backward-compatible A3 aliases.
+SHARED_ADAPTER_RELPATH = SHARED_ADAPTER_RELPATHS[DEFAULT_ROBOT]
+JOINT_ORDER_RELPATH = JOINT_ORDER_RELPATHS[DEFAULT_ROBOT]
+
+
+def _robot_key(robot: str | None) -> str:
+    key = DEFAULT_ROBOT if robot is None else str(robot).strip().lower()
+    if key not in JOINT_ORDER_RELPATHS:
+        raise ValueError(f"unknown robot {robot!r}; known: {sorted(JOINT_ORDER_RELPATHS)}")
+    return key
 
 
 def _find_upward(relpath: str, start: str | None = None) -> str:
@@ -51,19 +68,24 @@ def _find_upward(relpath: str, start: str | None = None) -> str:
     )
 
 
-def find_shared_action_adapter_config() -> str:
-    """Absolute path of the canonical shared ``action_adapter.yaml``."""
-    return _find_upward(SHARED_ADAPTER_RELPATH)
+def find_shared_action_adapter_config(robot: str | None = None) -> str:
+    """Absolute path of the canonical shared action-adapter YAML for ``robot`` (default: A3)."""
+    return _find_upward(SHARED_ADAPTER_RELPATHS[_robot_key(robot)])
 
 
-def load_joint_order(path: str | None = None) -> tuple[str, ...]:
-    """The canonical 31-joint order from ``hope_training/config/joint_order_agibot_a3.yaml``."""
-    path = path or _find_upward(JOINT_ORDER_RELPATH)
+def load_joint_order(path: str | None = None, *, robot: str | None = None) -> tuple[str, ...]:
+    """The canonical joint order for ``robot`` (31 joints for the A3, 29 for the G1).
+
+    ``path`` overrides the location; the entry count is still validated against the robot.
+    """
+    key = _robot_key(robot)
+    path = path or _find_upward(JOINT_ORDER_RELPATHS[key])
     with open(path, "r", encoding="utf-8") as fh:
         doc = yaml.safe_load(fh)
     order = tuple(str(n) for n in doc["joint_order"])
-    if len(order) != 31 or len(set(order)) != 31:
-        raise ValueError(f"joint order must list 31 unique joints, got {len(order)}")
+    expected = _EXPECTED_COUNTS[key]
+    if len(order) != expected or len(set(order)) != expected:
+        raise ValueError(f"joint order for {key} must list {expected} unique joints, got {len(order)}")
     return order
 
 
@@ -100,7 +122,7 @@ class ActionAdapterConfig:
 
 
 def _resolve_per_joint(spec, joint_names: tuple[str, ...], field_name: str) -> np.ndarray:
-    """Accept an ordered length-31 list or a ``{joint_name: value}`` map (same as deploy)."""
+    """Accept an ordered length-N list or a ``{joint_name: value}`` map (same as deploy)."""
     n = len(joint_names)
     if isinstance(spec, dict):
         missing = [name for name in joint_names if name not in spec]
@@ -114,11 +136,11 @@ def _resolve_per_joint(spec, joint_names: tuple[str, ...], field_name: str) -> n
 
 
 def load_action_adapter_config(
-    path: str | None = None, joint_names: tuple[str, ...] | None = None
+    path: str | None = None, joint_names: tuple[str, ...] | None = None, *, robot: str | None = None
 ) -> ActionAdapterConfig:
-    """Parse the shared adapter YAML into canonical-order arrays."""
-    path = path or find_shared_action_adapter_config()
-    joint_names = joint_names or load_joint_order()
+    """Parse the shared adapter YAML into canonical-order arrays (``robot`` defaults to the A3)."""
+    path = path or find_shared_action_adapter_config(robot)
+    joint_names = joint_names or load_joint_order(robot=robot)
     with open(path, "r", encoding="utf-8") as fh:
         doc = yaml.safe_load(fh)
 

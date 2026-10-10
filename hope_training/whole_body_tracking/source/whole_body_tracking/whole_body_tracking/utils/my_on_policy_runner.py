@@ -87,10 +87,17 @@ class MotionOnPolicyRunner(OnPolicyRunner):
             bind_projection(lower, upper, active)
 
     def _prepare_logging_writer(self) -> None:
-        """Keep scalar logs local; cloud logger backends are unsupported."""
+        """Scalar logs always go to the local tensorboard file; ``wandb`` mirrors them to W&B.
+
+        rsl_rl's ``WandbSummaryWriter`` subclasses the tensorboard writer, so the local event file
+        (and the local checkpoints) stay authoritative. Any other backend is rejected.
+        """
         logger_type = str(self.cfg.get("logger", "tensorboard")).lower()
-        if logger_type != "tensorboard":
-            raise ValueError("HOPE supports only the local tensorboard logger")
+        if logger_type not in ("tensorboard", "wandb"):
+            raise ValueError(
+                "HOPE supports only the local tensorboard logger (optionally mirrored to wandb); "
+                f"got logger={logger_type!r}"
+            )
         super()._prepare_logging_writer()
 
     @staticmethod

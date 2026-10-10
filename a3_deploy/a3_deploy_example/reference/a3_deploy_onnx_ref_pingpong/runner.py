@@ -26,7 +26,7 @@ import time
 import numpy as np
 
 from .config import RuntimeConfig
-from .joint_order import HEAD_INDICES, NUM_JOINTS
+from .joint_order import HEAD_INDICES, NUM_JOINTS  # noqa: F401  (A3 constants, kept for importers)
 from .lifecycle import SwingLifecycle
 from .observation import build_observation
 from .onnx_policy import OnnxPolicy
@@ -47,14 +47,17 @@ class PingPongReferenceRunner:
         self.cfg = cfg
         self.bridge = bridge
         self.source = command_source
-        self.policy = policy or OnnxPolicy(cfg.onnx_path)
+        self.policy = policy or OnnxPolicy(cfg.onnx_path, profile=cfg.profile)
         self.lifecycle = SwingLifecycle(cfg.lifecycle)
 
         self.default_q = cfg.action_adapter.default_q.copy()
         self.kp = cfg.sim_kp.copy()
         self.kd = cfg.sim_kd.copy()
 
-        self.last_action = np.zeros(NUM_JOINTS, dtype=np.float64)
+        # Passive (held) action columns come from the robot profile: (3, 4) on the A3, none on the G1.
+        self._passive_idx = list(cfg.profile.passive_indices)
+        self._num_joints = int(cfg.profile.num_joints)
+        self.last_action = np.zeros(self._num_joints, dtype=np.float64)
         self.base_target_xy: np.ndarray | None = None
 
     def run(self, max_ticks: int | None = None, realtime: bool = False,
@@ -78,7 +81,8 @@ class PingPongReferenceRunner:
                 target = self.lifecycle.update(cmd, state)
 
                 obs = build_observation(
-                    state, target, self.last_action, self.default_q, self.base_target_xy
+                    state, target, self.last_action, self.default_q, self.base_target_xy,
+                    num_joints=self._num_joints,
                 )
                 infer_target = getattr(self.policy, "infer_target", None)
                 if callable(infer_target):
@@ -94,13 +98,13 @@ class PingPongReferenceRunner:
                 # actuated, so they are zeroed before feedback — training exposes the
                 # same zeroed columns in its last_action observation.
                 applied_action = np.asarray(raw_action, dtype=np.float64).copy()
-                if self.cfg.passive_neck:
-                    applied_action[_HEAD_IDX] = 0.0
+                if self.cfg.passive_neck and self._passive_idx:
+                    applied_action[self._passive_idx] = 0.0
                 self.last_action = applied_action.copy()
 
                 q_des = self.cfg.action_adapter.decode(applied_action)
-                if self.cfg.passive_neck:
-                    q_des[_HEAD_IDX] = self.default_q[_HEAD_IDX]
+                if self.cfg.passive_neck and self._passive_idx:
+                    q_des[self._passive_idx] = self.default_q[self._passive_idx]
 
                 self.bridge.write_targets(q_des, self.kp, self.kd)
                 self.bridge.step()

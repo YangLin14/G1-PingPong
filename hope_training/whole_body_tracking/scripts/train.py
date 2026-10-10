@@ -263,6 +263,8 @@ def _run(cfg):
         agent_cfg.max_iterations = int(cfg.max_iterations)
     if cfg.run_name is not None:
         agent_cfg.run_name = str(cfg.run_name)
+    agent_cfg.logger = str(cfg.get("logger", "tensorboard")).lower()
+    agent_cfg.wandb_project = str(cfg.get("wandb_project", "hope"))
 
     # 4) local logging directory.
     log_root = os.path.abspath(os.path.join("logs", "rsl_rl", agent_cfg.experiment_name))
@@ -271,6 +273,11 @@ def _run(cfg):
         log_dir += f"_{agent_cfg.run_name}"
     log_dir = os.path.join(log_root, log_dir)
     print(f"[train.py] experiment={agent_cfg.experiment_name} | log_dir={log_dir}", flush=True)
+    if agent_cfg.logger == "wandb":
+        # Keep the W&B run files next to the local run instead of a stray ./wandb in the launch dir.
+        os.makedirs(log_dir, exist_ok=True)
+        os.environ.setdefault("WANDB_DIR", log_dir)
+        print(f"[train.py] logger=wandb project={agent_cfg.wandb_project} (WANDB_DIR={os.environ['WANDB_DIR']})", flush=True)
 
     # 5) build env, (optionally) record video, wrap for rsl_rl.
     render_mode = "rgb_array" if cfg.video else None
@@ -294,17 +301,25 @@ def _run(cfg):
         except ImportError:
             print("[train.py] NOTE: actor_observation_contract validator not available; skipping.", flush=True)
 
+    video_env = None
     if cfg.video:
-        env = gym.wrappers.RecordVideo(
+        from whole_body_tracking.utils.wandb_video import WandbRecordVideo
+
+        video_interval = int(cfg.video_interval)
+        # Also capture one early clip (iteration 2) so a fresh run shows a rollout right away.
+        early_step = 2 * int(agent_cfg.num_steps_per_env)
+        video_env = env = WandbRecordVideo(
             env,
             video_folder=os.path.join(log_dir, "videos", "train"),
-            step_trigger=lambda step: step % int(cfg.video_interval) == 0,
+            step_trigger=lambda step: step % video_interval == 0 or step == early_step,
             video_length=int(cfg.video_length),
             disable_logger=True,
         )
     env = RslRlVecEnvWrapper(env)
 
     runner = HOPEOnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+    if video_env is not None:
+        video_env.step_provider = lambda: int(runner.current_learning_iteration)
     runner.add_git_repo_to_log(__file__)
 
     # 6) optional resume from a local checkpoint (strict: weights + optimizer + iteration counter).

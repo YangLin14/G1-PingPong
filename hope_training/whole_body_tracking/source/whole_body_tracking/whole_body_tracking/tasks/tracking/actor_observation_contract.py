@@ -132,39 +132,56 @@ HITTER_FOOTWORK = ActorObservationContract(
     ),
 )
 
-HITTER_PURE = ActorObservationContract(
-    name="hitter_pure",
-    obs_mode="hitter_pure",
-    total_dim=110,
-    terms=(
-        # HITTER (arXiv:2508.21043) Table I EXACT structure, sized for the A3's 31 joints:
-        # proprioception + goal ONLY. The 62-D reference joint stream is CRITIC-ONLY in the paper
-        # (and here); swing_type is not observed anywhere (deploy infers fh/bh outside the policy,
-        # §V-B-3). Target vectors are WORLD-frame with the explicit base forward vector e_base,x.
-        ActorObservationTerm("base_ang_vel", 3, "imu", "pelvis angular velocity in the body frame"),
-        ActorObservationTerm("joint_pos", 31, "encoders", "joint position offset from default"),
-        ActorObservationTerm("joint_vel", 31, "encoders", "joint velocities"),
-        ActorObservationTerm("actions", 31, "runtime_state", "previous policy action"),
-        ActorObservationTerm("projected_gravity", 3, "imu", "gravity direction in the base frame"),
-        ActorObservationTerm(
-            "base_forward_xy", 2, "imu_yaw_aligned", "base forward unit vector e_base,x (world xy)"
+def hitter_pure_contract(num_joints: int, *, name: str = "hitter_pure") -> ActorObservationContract:
+    """The HITTER ``hitter_pure`` actor layout sized for a robot with ``num_joints`` policy joints.
+
+    HITTER (arXiv:2508.21043) Table I EXACT structure: proprioception + goal ONLY. The 62-D
+    reference joint stream is CRITIC-ONLY in the paper (and here); swing_type is not observed
+    anywhere (deploy infers fh/bh outside the policy, §V-B-3). Target vectors are WORLD-frame with
+    the explicit base forward vector e_base,x. ``total_dim = 17 + 3 * num_joints`` (110 for the
+    31-joint Agibot A3, 104 for the 29-joint Unitree G1).
+    """
+    num_joints = int(num_joints)
+    if num_joints <= 0:
+        raise ValueError(f"num_joints must be positive, got {num_joints}")
+    return ActorObservationContract(
+        name=name,
+        obs_mode=name,
+        total_dim=17 + 3 * num_joints,
+        terms=(
+            ActorObservationTerm("base_ang_vel", 3, "imu", "pelvis angular velocity in the body frame"),
+            ActorObservationTerm("joint_pos", num_joints, "encoders", "joint position offset from default"),
+            ActorObservationTerm("joint_vel", num_joints, "encoders", "joint velocities"),
+            ActorObservationTerm("actions", num_joints, "runtime_state", "previous policy action"),
+            ActorObservationTerm("projected_gravity", 3, "imu", "gravity direction in the base frame"),
+            ActorObservationTerm(
+                "base_forward_xy", 2, "imu_yaw_aligned", "base forward unit vector e_base,x (world xy)"
+            ),
+            ActorObservationTerm(
+                "base_target_delta_xy",
+                2,
+                "planner_plus_mocap",
+                "target base position minus current base position, world xy (Δ=0 on mocap dropout)",
+            ),
+            ActorObservationTerm(
+                "racket_target_rel_base",
+                3,
+                "planner_plus_mocap",
+                "target racket position relative to the base, world frame",
+            ),
+            ActorObservationTerm("racket_target_vel_w", 3, "planner", "desired racket velocity in the world frame"),
+            ActorObservationTerm("time_to_strike", 1, "reference_clock", "time remaining until strike"),
         ),
-        ActorObservationTerm(
-            "base_target_delta_xy",
-            2,
-            "planner_plus_mocap",
-            "target base position minus current base position, world xy (Δ=0 on mocap dropout)",
-        ),
-        ActorObservationTerm(
-            "racket_target_rel_base",
-            3,
-            "planner_plus_mocap",
-            "target racket position relative to the base, world frame",
-        ),
-        ActorObservationTerm("racket_target_vel_w", 3, "planner", "desired racket velocity in the world frame"),
-        ActorObservationTerm("time_to_strike", 1, "reference_clock", "time remaining until strike"),
-    ),
-)
+    )
+
+
+# The shipped Agibot A3 deploy contract (31 joints, 110-D). Kept as the literal module constant the
+# exporter, the tests and the reference runner compare against by identity.
+HITTER_PURE = hitter_pure_contract(31, name="hitter_pure")
+
+# The Unitree G1 (29 joints, no passive neck columns, 104-D). Same term structure; a different
+# contract NAME so a G1 policy can never be loaded by an A3 runner (and vice versa).
+HITTER_PURE_UNITREE_G1 = hitter_pure_contract(29, name="hitter_pure_unitree_g1")
 
 HITTER_PURE_V15 = ActorObservationContract(
     name="hitter_pure_v15",
@@ -242,11 +259,13 @@ CONTRACTS = {
     DEPLOY_PARITY.name: DEPLOY_PARITY,
     HITTER_FOOTWORK.name: HITTER_FOOTWORK,
     HITTER_PURE.name: HITTER_PURE,
+    HITTER_PURE_UNITREE_G1.name: HITTER_PURE_UNITREE_G1,
     HITTER_PURE_V15.name: HITTER_PURE_V15,
     FULL.obs_mode: FULL,
     DEPLOY_PARITY.obs_mode: DEPLOY_PARITY,
     HITTER_FOOTWORK.obs_mode: HITTER_FOOTWORK,
     HITTER_PURE.obs_mode: HITTER_PURE,
+    HITTER_PURE_UNITREE_G1.obs_mode: HITTER_PURE_UNITREE_G1,
     HITTER_PURE_V15.obs_mode: HITTER_PURE_V15,
     **{alias: DEPLOY_PARITY for alias in DEPLOY_PARITY.legacy_names},
 }
@@ -287,7 +306,7 @@ def total_policy_dim_from_env(env) -> int:
 def infer_actor_observation_contract(env) -> ActorObservationContract | None:
     layout = policy_layout_from_env(env)
     total_dim = total_policy_dim_from_env(env)
-    for contract in (FULL, DEPLOY_PARITY, HITTER_FOOTWORK, HITTER_PURE, HITTER_PURE_V15):
+    for contract in (FULL, DEPLOY_PARITY, HITTER_FOOTWORK, HITTER_PURE, HITTER_PURE_UNITREE_G1, HITTER_PURE_V15):
         if layout == contract.layout and total_dim == contract.total_dim:
             return contract
     return None

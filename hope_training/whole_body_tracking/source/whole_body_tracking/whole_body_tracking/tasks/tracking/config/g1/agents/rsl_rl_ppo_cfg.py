@@ -41,3 +41,29 @@ class G1FlatLowFreqPPORunnerCfg(G1FlatPPORunnerCfg):
         self.num_steps_per_env = round(self.num_steps_per_env * LOW_FREQ_SCALE)
         self.algorithm.gamma = self.algorithm.gamma ** (1 / LOW_FREQ_SCALE)
         self.algorithm.lam = self.algorithm.lam ** (1 / LOW_FREQ_SCALE)
+
+
+##
+# HOPE ping-pong runners (shared hyper-parameters from cfg/algo/ppo.yaml, as the A3's agents/ppo.py).
+# experiment_name must match cfg/task/HOPEPingPongUnitreeG1.yaml so both launch paths log together.
+##
+
+from whole_body_tracking.utils.ppo_cfg import load_ppo_params, runner_kwargs  # noqa: E402
+
+_HOPE_KW = runner_kwargs(load_ppo_params(), "unitree_g1_hope")
+
+
+@configclass
+class HOPEUnitreeG1PPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = _HOPE_KW["num_steps_per_env"]
+    max_iterations = _HOPE_KW["max_iterations"]
+    save_interval = _HOPE_KW["save_interval"]
+    experiment_name = _HOPE_KW["experiment_name"]
+    empirical_normalization = _HOPE_KW["empirical_normalization"]
+    policy = _HOPE_KW["policy"]
+    algorithm = _HOPE_KW["algorithm"]
+
+
+@configclass
+class HitterPingPongUnitreeG1PPORunnerCfg(HOPEUnitreeG1PPORunnerCfg):
+    experiment_name = "unitree_g1_hitter_pingpong"

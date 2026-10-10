@@ -30,47 +30,62 @@ import numpy as np
 
 from .observation import CONTRACT_NAME, OBS_DIM
 from .joint_order import JOINT_NAMES, NUM_JOINTS
+from .robot_profile import AGIBOT_A3, RobotProfile, resolve_profile
 
 
-def validate_embedded_joint_order(embedded: str) -> None:
+def validate_embedded_joint_order(embedded: str, expected=JOINT_NAMES) -> None:
     """Reject a non-empty embedded ``joint_order`` that mismatches the canonical order.
 
     If the exporter embedded the joint order, it must equal the canonical order
     this runner assumes for every obs/action column — a mismatch means every joint
     column would be silently permuted. An empty string (metadata absent) passes.
+    ``expected`` defaults to the A3 order; pass ``profile.joint_names`` for another robot.
     """
     if not embedded:
         return
     embedded_names = tuple(embedded.split(","))
-    if embedded_names != tuple(JOINT_NAMES):
+    if embedded_names != tuple(expected):
         raise ValueError(
             "ONNX metadata joint_order does not match this runner's canonical "
             f"joint order.\n  onnx:      {list(embedded_names)}\n"
-            f"  canonical: {list(JOINT_NAMES)}\n"
+            f"  canonical: {list(expected)}\n"
             "Re-export the policy from an asset whose articulation enumerates "
-            "joints in the canonical order (joint_order_agibot_a3.yaml)."
+            "joints in the canonical order (hope_training/config/joint_order_<robot>.yaml), "
+            "or select the matching robot profile (--robot)."
         )
 
 
-def validate_embedded_contract(embedded: str) -> None:
-    """Reject a non-empty embedded ``contract`` that is not the 110-D hitter_pure.
+def validate_embedded_contract(embedded: str, expected: str = CONTRACT_NAME, obs_dim: int = OBS_DIM) -> None:
+    """Reject a non-empty embedded ``contract`` that is not the expected hitter_pure layout.
 
-    An empty string (metadata absent) passes.
+    An empty string (metadata absent) passes. Defaults to the A3's 110-D ``hitter_pure``.
     """
     if not embedded:
         return
-    if embedded != CONTRACT_NAME:
+    if embedded != expected:
         raise ValueError(
             f"ONNX metadata contract '{embedded}' does not match this runner's "
-            f"observation contract '{CONTRACT_NAME}' ({OBS_DIM}-D). Export the "
-            "policy from a task using the hitter_pure actor observation contract."
+            f"observation contract '{expected}' ({obs_dim}-D). Export the "
+            f"policy from a task using the {expected} actor observation contract "
+            "(or select the matching robot profile)."
         )
 
 
 class OnnxPolicy:
-    def __init__(self, onnx_path: str | Path, providers: list[str] | None = None) -> None:
+    # Robot profile (joint order / dims / passive columns). Class-level default so objects built
+    # without __init__ (tests use ``OnnxPolicy.__new__``) behave as the historical A3 runner.
+    _profile: RobotProfile = AGIBOT_A3
+
+    def __init__(
+        self,
+        onnx_path: str | Path,
+        providers: list[str] | None = None,
+        profile: str | RobotProfile | None = None,
+    ) -> None:
         import onnxruntime as ort  # imported lazily so the module imports without ORT
 
+        self._profile = resolve_profile(profile)
+        prof = self._profile
         onnx_path = str(onnx_path)
         if not Path(onnx_path).is_file():
             raise FileNotFoundError(f"ONNX policy not found: {onnx_path}")
@@ -100,25 +115,29 @@ class OnnxPolicy:
         self._input_name = obs_input.name
         self._time_step_name = "time_step" if "time_step" in inputs else None
         self._output_name = action_output.name
-        self._validate_shape(obs_input.shape, OBS_DIM, "observation input")
+        self._validate_shape(obs_input.shape, prof.obs_dim, "observation input")
         if self._time_step_name is not None:
             self._validate_shape(inputs[self._time_step_name].shape, 1, "time_step input")
-        self._validate_shape(action_output.shape, NUM_JOINTS, "raw_action output")
+        self._validate_shape(action_output.shape, prof.num_joints, "raw_action output")
 
         meta = self._sess.get_modelmeta().custom_metadata_map or {}
-        validate_embedded_joint_order(meta.get("joint_order", ""))
-        validate_embedded_contract(meta.get("contract", meta.get("actor_obs_contract", "")))
+        validate_embedded_joint_order(meta.get("joint_order", ""), prof.joint_names)
+        validate_embedded_contract(
+            meta.get("contract", meta.get("actor_obs_contract", "")), prof.contract_name, prof.obs_dim
+        )
 
         policy_names = tuple(filter(None, meta.get("joint_names", "").split(",")))
         if policy_names:
-            if len(policy_names) != NUM_JOINTS or set(policy_names) != set(JOINT_NAMES):
-                raise ValueError("ONNX joint_names must be a permutation of the 31 A3 joints")
-            sdk_index = {name: index for index, name in enumerate(JOINT_NAMES)}
+            if len(policy_names) != prof.num_joints or set(policy_names) != set(prof.joint_names):
+                raise ValueError(
+                    f"ONNX joint_names must be a permutation of the {prof.num_joints} {prof.name} joints"
+                )
+            sdk_index = {name: index for index, name in enumerate(prof.joint_names)}
             self._policy_to_sdk = np.asarray(
                 [sdk_index[name] for name in policy_names], dtype=np.int64
             )
         else:
-            self._policy_to_sdk = np.arange(NUM_JOINTS, dtype=np.int64)
+            self._policy_to_sdk = np.arange(prof.num_joints, dtype=np.int64)
 
         self._clip_lengths = self._parse_pair(meta.get("clip_seg_lengths", ""), int)
         self._strike_phases = self._parse_pair(meta.get("clip_strike_phases", ""), float)
@@ -158,12 +177,17 @@ class OnnxPolicy:
         raw = strike - float(time_to_strike) / max(float(step_dt), 1.0e-6)
         return max(start, min(start + length - 1, self._round_positive(raw)))
 
+    @property
+    def profile(self) -> RobotProfile:
+        return self._profile
+
     def _observation_to_policy_order(self, obs: np.ndarray) -> np.ndarray:
-        x = np.asarray(obs, dtype=np.float32).reshape(OBS_DIM).copy()
-        for slc in (slice(3, 34), slice(34, 65), slice(65, 96)):
+        prof = self._profile
+        x = np.asarray(obs, dtype=np.float32).reshape(prof.obs_dim).copy()
+        for slc in (prof.joint_pos_slice, prof.joint_vel_slice, prof.actions_slice):
             sdk_values = x[slc].copy()
             x[slc] = sdk_values[self._policy_to_sdk]
-        return x.reshape(1, OBS_DIM)
+        return x.reshape(1, prof.obs_dim)
 
     def infer(self, obs: np.ndarray, time_step: int = 0) -> np.ndarray:
         """Run one actor pass and return raw action in MuJoCo/SDK joint order."""
@@ -171,8 +195,9 @@ class OnnxPolicy:
         if self._time_step_name is not None:
             feeds[self._time_step_name] = np.asarray([[time_step]], dtype=np.float32)
         policy_action = self._sess.run([self._output_name], feeds)[0]
-        policy_action = np.asarray(policy_action, dtype=np.float32).reshape(NUM_JOINTS)
-        sdk_action = np.empty(NUM_JOINTS, dtype=np.float32)
+        n = self._profile.num_joints
+        policy_action = np.asarray(policy_action, dtype=np.float32).reshape(n)
+        sdk_action = np.empty(n, dtype=np.float32)
         sdk_action[self._policy_to_sdk] = policy_action
         return sdk_action
 

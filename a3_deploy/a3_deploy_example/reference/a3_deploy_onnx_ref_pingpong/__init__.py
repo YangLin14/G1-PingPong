@@ -18,6 +18,8 @@ Public modules:
   sim_bridge       -- MuJoCo (default) and AimRT-process (seam) bridges
   config           -- runtime config loader
   runner           -- the 50 Hz control loop
+  robot_profile    -- explicit robot selection (Agibot A3 default; Unitree G1, 29 DOF / 104-D)
+  joint_order_unitree_g1 -- the 29-DOF Unitree G1 joint order
 """
 
 from __future__ import annotations
@@ -35,9 +37,15 @@ from .racket_command import (
     RacketCommand,
     RacketCommandSource,
 )
+from .robot_profile import AGIBOT_A3, PROFILES, UNITREE_G1, RobotProfile, resolve_profile
 from .ros_command_source import RosRacketCommandSource, parse_flat_racket_command
 
 __all__ = [
+    "AGIBOT_A3",
+    "PROFILES",
+    "UNITREE_G1",
+    "RobotProfile",
+    "resolve_profile",
     "ActionAdapter",
     "RuntimeConfig",
     "JOINT_NAMES",

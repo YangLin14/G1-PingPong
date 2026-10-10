@@ -47,6 +47,14 @@ OBS_DIM: int = 110
 _ACTION_DIM: int = NUM_JOINTS
 
 
+def obs_dim_for(num_joints: int) -> int:
+    """``hitter_pure`` observation size for a robot with ``num_joints`` policy joints (17 + 3 N)."""
+    return 17 + 3 * int(num_joints)
+
+
+assert obs_dim_for(NUM_JOINTS) == OBS_DIM, "A3 hitter_pure layout must stay 110-D"
+
+
 @dataclass
 class RobotState:
     """Proprioceptive robot state consumed by the observation builder.
@@ -78,8 +86,14 @@ def build_observation(
     last_action: np.ndarray,
     default_q: np.ndarray,
     base_target_xy: np.ndarray,
+    num_joints: int = NUM_JOINTS,
 ) -> np.ndarray:
-    """Return the 110-D observation as a contiguous ``float32`` vector."""
+    """Return the ``hitter_pure`` observation (110-D for the A3) as a contiguous ``float32`` vector.
+
+    ``num_joints`` sizes the three joint blocks (31 -> 110-D A3 default; 29 -> 104-D Unitree G1).
+    """
+    n = int(num_joints)
+    obs_dim = obs_dim_for(n)
     q = np.asarray(state.q, dtype=np.float64)
     qd = np.asarray(state.qd, dtype=np.float64)
     default_q = np.asarray(default_q, dtype=np.float64)
@@ -87,22 +101,24 @@ def build_observation(
     base_pos = np.asarray(state.base_pos_w, dtype=np.float64)
     base_quat = quat.normalize(state.base_quat_w)
 
-    if q.shape[0] != NUM_JOINTS or qd.shape[0] != NUM_JOINTS:
-        raise ValueError(f"joint vectors must be length {NUM_JOINTS}")
-    if last_action.shape[0] != _ACTION_DIM:
-        raise ValueError(f"last_action must be length {_ACTION_DIM}")
+    if q.shape[0] != n or qd.shape[0] != n:
+        raise ValueError(f"joint vectors must be length {n}")
+    if last_action.shape[0] != n:
+        raise ValueError(f"last_action must be length {n}")
+    if default_q.shape[0] != n:
+        raise ValueError(f"default_q must be length {n}")
 
-    obs = np.empty(OBS_DIM, dtype=np.float64)
+    obs = np.empty(obs_dim, dtype=np.float64)
     o = 0
     obs[o:o + 3] = state.base_ang_vel_b;                       o += 3          # base_ang_vel
-    obs[o:o + NUM_JOINTS] = q - default_q;                     o += NUM_JOINTS  # joint_pos
-    obs[o:o + NUM_JOINTS] = qd;                                o += NUM_JOINTS  # joint_vel
-    obs[o:o + NUM_JOINTS] = last_action;                       o += NUM_JOINTS  # actions (applied)
+    obs[o:o + n] = q - default_q;                              o += n          # joint_pos
+    obs[o:o + n] = qd;                                         o += n          # joint_vel
+    obs[o:o + n] = last_action;                                o += n          # actions (applied)
     obs[o:o + 3] = quat.projected_gravity_body(base_quat);     o += 3          # projected_gravity
     obs[o:o + 2] = quat.base_forward_xy(base_quat);            o += 2          # base_forward_xy
     obs[o:o + 2] = np.asarray(base_target_xy)[:2] - base_pos[:2]; o += 2       # base_target_delta_xy
     obs[o:o + 3] = np.asarray(target.pos_w) - base_pos;        o += 3          # racket_target_rel_base
     obs[o:o + 3] = np.asarray(target.vel_w);                   o += 3          # racket_target_vel_w
     obs[o] = float(target.time_to_strike);                     o += 1          # time_to_strike
-    assert o == OBS_DIM, o
+    assert o == obs_dim, o
     return obs.astype(np.float32)

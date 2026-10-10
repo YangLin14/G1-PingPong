@@ -21,6 +21,10 @@ paths, Isaac preparation and joint-order contract.
 | `a3_deploy/` | No (deploy path) | HOPE's deploy line: the native C++ runner, packaging, and the AimRT MuJoCo sim copy the deploy scripts drive (`a3_deploy/A3_MuJoCo_Sim/`). See [docs/RUN_ON_AGIBOT.md](docs/RUN_ON_AGIBOT.md). |
 | `apps/a3_mujoco_serve/` | No | Self-contained [MuJoCo → DLS IK → CSV → high-level A3 application](apps/a3_mujoco_serve/README.md), including the fully A3-tested PR #18 reference motion and [demo video](apps/a3_mujoco_serve/assets/validated/pr18_a3_serve_demo.mp4). |
 
+> The Unitree G1 has the same asset flow (vendored description, generated racket-equipped
+> variant, prepared Isaac copy, canonical joint order) under `unitree/` and
+> `scripts/prepare_g1_isaac_asset.py`; see [docs/UNITREE_G1.md](docs/UNITREE_G1.md).
+
 ## Source URDF
 
 The source package is:

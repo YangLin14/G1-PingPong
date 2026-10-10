@@ -115,6 +115,24 @@ reference material; it is not third-party runtime code.
 
 ---
 
+## Unitree G1 description (`unitree/`)
+
+- Location: `unitree/URDF/g1_description/`
+- License: BSD-3-Clause
+- Copyright: Copyright (c) 2016-2022 HangZhou YuShu TECHNOLOGY CO.,LTD. ("Unitree Robotics")
+- Origin: `unitreerobotics/unitree_ros`, `robots/g1_description/` at commit
+  `5994d4faef0a9cadd3287f8de0199a67eeb2a259` (the `g1_29dof_rev_1_0` URDF, its MJCF export and
+  the 35 STL meshes they reference).
+
+The upstream files are vendored verbatim (checksums in `unitree/URDF/g1_description/SHA256SUMS`)
+with the BSD-3-Clause license text retained in `unitree/URDF/g1_description/LICENSE`. The
+racket-equipped `unitree/URDF/g1_29dof_pingpang/` variant, the generator script and the tests
+around it are HOPE contributions under Apache-2.0; its two blade meshes are copied from the
+Agibot A3 ping-pong URDF package (`agibot/URDF/A3T2.5-URDF-std-pingpang/meshes/`, see the Agibot
+section above).
+
+---
+
 ## Runtime dependencies (not redistributed)
 
 The training, planner, evaluation, and reference-runner code depend on third-party Python and

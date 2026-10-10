@@ -103,6 +103,9 @@ To use your own vendor-supplied copy instead, place it under `a3_deploy/URDF/` (
 [`a3_deploy/URDF/README.md`](a3_deploy/URDF/README.md)) and add
 `--source-root a3_deploy/URDF/<your_a3_package>`.
 
+For the Unitree G1 the equivalent is `hope_isaac_py scripts/prepare_g1_isaac_asset.py --force`
+followed by `scripts/check_g1_asset_isaac.py`; see [`docs/UNITREE_G1.md`](docs/UNITREE_G1.md).
+
 ## 3. Understand the training launcher (`hope_isaac_py`)
 
 `setup_train_env.sh` puts the working-tree package source first on `PYTHONPATH` and defines a

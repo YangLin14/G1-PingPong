@@ -1,0 +1,42 @@
+# g1_hope_backhand: Unitree G1 reference clip derived from the published A3 clip hope_backhand.npz by joint-space transfer (see provenance). Regenerate with
+#   python3 hope_training/whole_body_tracking/scripts/retarget_a3_clip_to_g1.py
+name: g1_hope_backhand
+swing_side: -1
+fps: 50
+frame_count: 109
+frame_time_s: 0.02
+duration_s: 2.16
+body_schema: compact_tracked_bodies_v1
+provenance: 'joint-space transfer of hope_backhand.npz (Agibot A3) onto the Unitree
+  G1 by hope_training/whole_body_tracking/scripts/retarget_a3_clip_to_g1.py: joints
+  copied by name (head dropped), clamped to the G1 URDF limits; root displacement
+  scaled by 0.7099, root height offset +0.0163 m for floor contact; body poses/velocities
+  by MuJoCo FK + central differences. Joint-space style only: reach and contact geometry
+  are the G1''s, not the A3''s.'
+license: Apache-2.0
+strike_frame: 48
+strike_phase: 0.44444444
+strike_time_s: 0.96
+recover_end_frame: 108
+joint_order: [left_hip_pitch_joint, right_hip_pitch_joint, waist_yaw_joint, left_hip_roll_joint,
+  right_hip_roll_joint, waist_roll_joint, left_hip_yaw_joint, right_hip_yaw_joint,
+  waist_pitch_joint, left_knee_joint, right_knee_joint, left_shoulder_pitch_joint,
+  right_shoulder_pitch_joint, left_ankle_pitch_joint, right_ankle_pitch_joint, left_shoulder_roll_joint,
+  right_shoulder_roll_joint, left_ankle_roll_joint, right_ankle_roll_joint, left_shoulder_yaw_joint,
+  right_shoulder_yaw_joint, left_elbow_joint, right_elbow_joint, left_wrist_roll_joint,
+  right_wrist_roll_joint, left_wrist_pitch_joint, right_wrist_pitch_joint, left_wrist_yaw_joint,
+  right_wrist_yaw_joint]
+anchor_body: torso_link
+root_body: pelvis
+racket_link: right_wrist_yaw_link
+racket_body: pingpang_red_Link
+mount_offset_xyz: [0.21, 0.015, 0.01]
+blade_normal_axis: y
+blade_normal_sign: -1.0
+robot: unitree_g1
+source_clip: hope_backhand.npz
+tracked_bodies: [pelvis, left_hip_roll_link, left_knee_link, left_ankle_roll_link,
+  right_hip_roll_link, right_knee_link, right_ankle_roll_link, torso_link, left_shoulder_roll_link,
+  left_elbow_link, left_wrist_yaw_link, right_shoulder_roll_link, right_elbow_link,
+  right_wrist_yaw_link]
+clamped_joints_rad: {}

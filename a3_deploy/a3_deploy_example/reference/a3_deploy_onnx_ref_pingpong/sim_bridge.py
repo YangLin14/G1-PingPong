@@ -28,8 +28,9 @@ from pathlib import Path
 
 import numpy as np
 
-from .joint_order import JOINT_NAMES, NUM_JOINTS
+from .joint_order import JOINT_NAMES, NUM_JOINTS  # noqa: F401  (A3 constants, kept for importers)
 from .observation import RobotState
+from .robot_profile import AGIBOT_A3, RobotProfile, resolve_profile
 
 
 class SimBridge(ABC):
@@ -62,10 +63,14 @@ class MujocoDirectBridge(SimBridge):
         model_xml_path: str | Path,
         control_dt: float = 0.02,
         launch_viewer: bool = False,
+        profile: str | RobotProfile | None = AGIBOT_A3,
     ) -> None:
         import mujoco  # lazy import
 
         self._mj = mujoco
+        self.profile = resolve_profile(profile)
+        joint_names = self.profile.joint_names
+        num_joints = self.profile.num_joints
         model_xml_path = str(model_xml_path)
         if not Path(model_xml_path).is_file():
             raise FileNotFoundError(f"MJCF model not found: {model_xml_path}")
@@ -76,7 +81,7 @@ class MujocoDirectBridge(SimBridge):
         self._substeps = max(1, int(round(self.control_dt / self.model.opt.timestep)))
 
         # Free (pelvis) joint address block.
-        free_jid = self._joint_id("pelvis_free_joint", required=False)
+        free_jid = self._joint_id(self.profile.base_free_joint, required=False)
         if free_jid < 0:
             # Fall back to the first free joint in the model.
             free_jid = int(np.argmax(self.model.jnt_type == mujoco.mjtJoint.mjJNT_FREE))
@@ -85,11 +90,11 @@ class MujocoDirectBridge(SimBridge):
 
         # Per-controlled-joint qpos/qvel addresses and driving actuator indices,
         # resolved by joint identity (robust to actuator naming).
-        self._q_adr = np.zeros(NUM_JOINTS, dtype=int)
-        self._v_adr = np.zeros(NUM_JOINTS, dtype=int)
-        self._act_idx = np.full(NUM_JOINTS, -1, dtype=int)
+        self._q_adr = np.zeros(num_joints, dtype=int)
+        self._v_adr = np.zeros(num_joints, dtype=int)
+        self._act_idx = np.full(num_joints, -1, dtype=int)
         trn_joint = self.model.actuator_trnid[:, 0]
-        for i, name in enumerate(JOINT_NAMES):
+        for i, name in enumerate(joint_names):
             jid = self._joint_id(name, required=True)
             self._q_adr[i] = int(self.model.jnt_qposadr[jid])
             self._v_adr[i] = int(self.model.jnt_dofadr[jid])
@@ -103,12 +108,12 @@ class MujocoDirectBridge(SimBridge):
         self._ctrl_limited = self.model.actuator_ctrllimited[self._act_idx].astype(bool)
 
         # Pelvis gyro sensor address (base angular velocity, body frame).
-        self._gyro_adr = self._sensor_adr("pelvis_imu_gyro", dim=3)
+        self._gyro_adr = self._sensor_adr(self.profile.gyro_sensor, dim=3)
 
         # Latched targets.
-        self._q_des = np.zeros(NUM_JOINTS)
-        self._kp = np.zeros(NUM_JOINTS)
-        self._kd = np.zeros(NUM_JOINTS)
+        self._q_des = np.zeros(num_joints)
+        self._kp = np.zeros(num_joints)
+        self._kd = np.zeros(num_joints)
 
         self._viewer = None
         if launch_viewer:
@@ -159,9 +164,10 @@ class MujocoDirectBridge(SimBridge):
         )
 
     def write_targets(self, q_des: np.ndarray, kp: np.ndarray, kd: np.ndarray) -> None:
-        self._q_des = np.asarray(q_des, dtype=np.float64).reshape(NUM_JOINTS)
-        self._kp = np.asarray(kp, dtype=np.float64).reshape(NUM_JOINTS)
-        self._kd = np.asarray(kd, dtype=np.float64).reshape(NUM_JOINTS)
+        n = self.profile.num_joints
+        self._q_des = np.asarray(q_des, dtype=np.float64).reshape(n)
+        self._kp = np.asarray(kp, dtype=np.float64).reshape(n)
+        self._kd = np.asarray(kd, dtype=np.float64).reshape(n)
 
     def _apply_pd(self) -> None:
         d = self.data

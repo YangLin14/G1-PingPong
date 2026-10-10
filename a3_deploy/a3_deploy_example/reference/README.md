@@ -31,7 +31,9 @@ Flags: `--backend {mujoco,aimrt}`, `--onnx`, `--model-xml`, `--view`, `--realtim
 
 | Module | Responsibility |
 | --- | --- |
-| `joint_order.py` | The 31-DOF Agibot A3 joint order (the single order used everywhere). |
+| `joint_order.py` | The 31-DOF Agibot A3 joint order (the single order used everywhere for the A3). |
+| `joint_order_unitree_g1.py` | The 29-DOF Unitree G1 joint order (no passive columns). |
+| `robot_profile.py` | `RobotProfile` (joint order, passive columns, contract, MJCF names): `AGIBOT_A3` is the default everywhere, `UNITREE_G1` is selected explicitly with `--robot unitree_g1` / `policy.joint_order` in the runtime YAML; never inferred from a joint count. |
 | `quaternion.py` | `(w,x,y,z)` quaternion helpers (projected gravity, base forward). |
 | `observation.py` | `build_observation(...) -> float32[110]` — the exact `hitter_pure` layout. |
 | `action_adapter.py` | Shared ActionAdapter: `q_des = default_q + raw*scale`, then clamp. |
