@@ -317,6 +317,15 @@ a 2-serve MuJoCo eval.
 | `g1_v2a` | recipe v2 (variant A) | joint-space `g1_hope_*` | see `squeue -n hope-g1-train` / W&B project `hope-g1` | running |
 | `g1_v2b` | recipe v2 (variant B) | IK `g1ik_hope_*` | idem | running |
 
+**A3 baseline for comparison (in-Isaac `scripts/evaluate.py`, model_21800, 256 envs x 4000
+steps, job 4257):** 5286 strikes, contacted 100 % (racket within 10 cm of the target at the
+strike frame), mean contact error 2.7 cm (median 2.6 cm), net-clear 0, success_rate 0.0. The
+shipped analytic metric models the return as a no-spin ball leaving with the racket velocity, which
+at 1.5-2.6 m/s from 0.1-0.5 m above the table never reaches net height, so its `success_rate` is 0
+for the published A3 policy too. Compare G1 checkpoints on `attempts`, `contacted` and
+`mean_contact_error_m` (printed by `evaluate.py` since recipe v2), on the exact-strike W&B
+metrics, and on the MuJoCo sidecar's contact / fall rates.
+
 Metrics to read on W&B: `Metrics/racket_target/strike_composite_success_exact`
 (position ∧ velocity ∧ normal at the exact strike frame; `strike_success` is a
 known-broken window-exit value), `exact_strike_pos_success_10cm`,

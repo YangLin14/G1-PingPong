@@ -82,6 +82,11 @@ The evaluation story has three layers, cheap to expensive:
 1. **Isaac evaluation** — `scripts/evaluate.py` rolls the checkpoint out across many parallel
    environments and reports the in-Isaac `success_rate` estimate (racket contact, net crossing,
    opponent-half first bounce, judged with the shared no-spin ball model).
+   Since recipe v2 it also prints `attempts`, `contacted`, `net_clear`, `on_opponent` and the mean
+   contact error. Read those rather than the bare rate: the analytic return model (ball leaves with
+   the racket velocity, no spin) never clears the net at realistic racket speeds, and the published
+   `model_21800` scores 5286/5286 contacts (2.7 cm mean error) but 0 net clearances, i.e.
+   `success_rate` 0.0.
 
    ```bash
    hope_isaac_py scripts/evaluate.py --checkpoint <run>/model_<N>.pt \
