@@ -337,3 +337,9 @@ and in the companion `<run>-rollouts` run `Eval/mujoco_contact_rate` /
 below −0.04 m → move the strike plane 0.04 m closer; `velocity_pass` under half
 of `position_pass` at velocity stage 2 → scale the velocity boxes ×0.85; fall
 rate above 2 % → `post_swing_tilt_debt_weight` −1.0.
+
+## 7. Forehand cross-court line (Triton Droids)
+
+A forehand-only recipe with an apex-strike, cross-court question bank, a club-specific success
+metric, a video -> G1 reference pipeline and a container-free cluster setup build on this port:
+[`TRITON_G1_FOREHAND.md`](TRITON_G1_FOREHAND.md) ([繁體中文](TRITON_G1_FOREHAND.zh-TW.md)).
