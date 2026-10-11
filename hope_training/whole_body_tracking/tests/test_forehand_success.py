@@ -64,15 +64,19 @@ def test_default_zone_is_opponent_right_middle_band():
 def test_four_target_zones():
     half_w, half_len = fs.TABLE_WIDTH / 2, 1.37
     b = {name: CFG.with_target(name).zone_bounds() for name in fs.TARGET_ZONES}
-    assert set(b) == {"opp_right_mid", "center_line_deep", "opp_right_side", "opp_right_corner"}
+    assert set(b) == {"opp_right_mid", "center_line_deep", "opp_right_deep", "opp_right_corner"}
     end_band = CFG.far_x - 0.25 * half_len  # within the outer quarter of the half: next to the end line
     side_band = 0.75 * half_w                # outer quarter of the half width: next to the side line
-    (x, y) = b["center_line_deep"]
-    assert y[0] < 0.0 < y[1] and x[0] > end_band and x[1] < CFG.far_x
-    (x, y) = b["opp_right_side"]
-    assert y[0] > side_band and y[1] < half_w and x == b["opp_right_mid"][0]  # mid depth, at the side line
-    (x, y) = b["opp_right_corner"]
-    assert x[0] > end_band and y[0] > side_band and x[1] < CFG.far_x and y[1] < half_w
+    # the three edge zones are lined up along the end line: same depth band, centre -> middle -> corner
+    deep = ["center_line_deep", "opp_right_deep", "opp_right_corner"]
+    assert all(b[n][0] == b[deep[0]][0] for n in deep)
+    assert b[deep[0]][0][0] > end_band and b[deep[0]][0][1] < CFG.far_x
+    (_, y) = b["center_line_deep"]
+    assert y[0] < 0.0 < y[1]
+    assert b["opp_right_deep"][1] == b["opp_right_mid"][1]  # same lateral band as the open-court zone
+    (_, y) = b["opp_right_corner"]
+    assert y[0] > side_band and y[1] < half_w
+    assert b["center_line_deep"][1][1] < b["opp_right_deep"][1][0] < b["opp_right_deep"][1][1] < b["opp_right_corner"][1][0]
     names = list(b)  # no two zones overlap
     for i, m in enumerate(names):
         for n in names[i + 1:]:

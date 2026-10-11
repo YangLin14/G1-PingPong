@@ -5,7 +5,7 @@
 #                 middle depth third of the robot's half, middle band of the robot's right (-y)
 #   strike        at the post-bounce apex (incoming vz = 0), inside the G1 forehand strike box
 #   landing goal  one of four zones on the OPPONENT's right (robot's +y), 25 % each:
-#                 opp_right_mid, center_line_deep, opp_right_side, opp_right_corner; net clearance ~0.25 m
+#                 opp_right_mid, center_line_deep, opp_right_deep, opp_right_corner; net clearance ~0.25 m
 # The virtual-ball reward scores each strike against the row's intended landing point.
 #   hope_isaac_py scripts/train.py task=HOPEPingPongUnitreeG1_FH_XC headless=true run_name=g1_fh_xc
 # =============================================================================

@@ -39,11 +39,12 @@ rallies up to 106 shots), using references made by filming a human, lifting the 
 | D4 | A backhand side-backspin **serve** was planned and **shelved**. | Forehand rally is easier and higher priority. Plan kept in [`plans/SERVE_SIDE_BACKSPIN_PLAN.md`](plans/SERVE_SIDE_BACKSPIN_PLAN.md). |
 | D5 | Train **forehand only**. | One swing is a smaller learning problem; backhand comes later. |
 | D6 | Define success by the club's rally rule (section 3), not HOPE's `success_rate`. | HOPE's analytic `success_rate` never clears the net (0 % even for the published A3 policy). |
-| D7 | **Diagonal rally**: the feed is hit from the **opponent's right** to the robot's right; the robot returns from its right to the **opponent's** right. Four landing zones: one open-court and three along table edges. The feed bounce zone is fixed for now. | Club spec (section 3). Feeding along the same diagonal matches a real cross-court rally. |
+| D7 | **Diagonal rally**: the feed is hit from the **opponent's right** to the robot's right; the robot returns from its right to the **opponent's** right. Four landing zones: one open-court and three lined up along the far end line. The feed bounce zone is fixed for now. | Club spec (section 3). Feeding along the same diagonal matches a real cross-court rally. |
 | D8 | Replace every training question with a G1-specific **apex-strike, cross-court bank**. | The inherited A3 bank strikes falling balls (median incoming vz −0.77 m/s), aims across the full table width, uses A3 reach (0.58 m, z 0.85–1.30 m), and covers only 25 % of questions. |
 | D9 | Make reference motions from **human video** (GVHMR + GMR), as HITTER did. | `g1-port` clips are joint-space copies of the A3 swing; at its strike frame the racket is at ~0.78 m (table height), and the first G1 run was reach-limited (−9 cm x, −10 cm z). |
 | D10 | Do not calibrate metrics against the A3 `model_21800`. | It does not work in our setup; metrics are verified with unit tests on known-good/bad racket states instead. |
 | D11 | Run Isaac on SDSC from a **pip** install instead of the 64 GB container. | Podman cannot run on the BeeGFS home; the pip route needs no sudo. Node workarounds are scripted (section 8). |
+| D13 | **One policy for all landing zones; the zone is chosen by the planner.** Positions are selectable modes (one or several) at run time, not separate policies. | The policy tracks a racket target; the planner/bank turns the chosen landing point into that racket velocity. One policy shares the body skill across zones, costs a quarter of the GPU time, and switches zones between shots without changing controllers. Per-zone evaluation (`target_zone_id`) shows whether a zone needs more weight or fine-tuning. |
 | D12 | A lean HITTER-style reward (upper-body imitation + racket goal + base position + regularization) will be A/B-tested against the 53-term HOPE recipe. | **Pending**: needs the video clip first. |
 
 ---
@@ -77,10 +78,12 @@ Diagonal geometry (both directions use the same diagonal):
 | **Feed** (incoming bounce, robot's half) | middle third | −0.75 … −0.25 (robot's right) | x 0.957–1.413, y −0.572…−0.191 |
 | `opp_right_mid`: open court | middle third | +0.25 … +0.75 | x 2.327–2.783, y 0.191–0.572 |
 | `center_line_deep`: centre line, at the end line | 0.78 … 0.98 | −0.10 … +0.10 | x 2.939–3.213, y −0.076…0.076 |
-| `opp_right_side`: mid depth, at the side line | middle third | 0.78 … 0.98 | x 2.327–2.783, y 0.595–0.747 |
+| `opp_right_deep`: middle of the right half, at the end line | 0.78 … 0.98 | +0.25 … +0.75 | x 2.939–3.213, y 0.191–0.572 |
 | `opp_right_corner`: end line × side line | 0.78 … 0.98 | 0.78 … 0.98 | x 2.939–3.213, y 0.595–0.747 |
 
-The three edge zones share one **edge band**: 2–22 % of the half in from the end line or the side line.
+The three edge zones are **lined up along the end line**: they share the back edge band (the last 2–22 % of
+the half) and go centre line → middle of the right half → corner. A side-line zone at middle depth
+(`opp_right_side`) is kept, commented out, in `TARGET_ZONES` for later.
 The zones do not overlap. The training bank draws the four targets equally (25 % each). The
 policy does not need to be told the target, because the bank solves the racket velocity that sends
 the ball to it, and the policy tracks that velocity.
@@ -151,7 +154,7 @@ the ball to it, and the policy tracks that velocity.
 | `assets/venue_tuple/g1_fh_crosscourt_apex_bank.{npz,receipt.json}` | 50 000-row bank (seed 0, reproducible, 12 500 rows per target zone) + receipt with the full contract and statistics. |
 | `hope_training/slurm/pip_env/` | Container-free install, smoke, training and generic run jobs for SDSC ([README](../hope_training/slurm/pip_env/README.md)). |
 | `hope_training/slurm/video_to_g1/` | Video → G1 clip install script and job ([README](../hope_training/slurm/video_to_g1/README.md)). |
-| `tests/test_forehand_success.py` | 9 tests: the four zones (edge bands, no overlap), feed zone and origin, an apex ball *can* be returned into the zone (grid search), falling ball / missed racket / soft tap / down-the-line all fail, misses count in the denominator. |
+| `tests/test_forehand_success.py` | 9 tests: the four zones (three aligned at the end line, no overlap), feed zone and origin, an apex ball *can* be returned into the zone (grid search), falling ball / missed racket / soft tap / down-the-line all fail, misses count in the denominator. |
 | `tests/test_make_g1_forehand_bank.py` | 4 tests: loader schema; feed/apex/strike-box/speed constraints; the feed comes diagonally from the opponent's right; equal rows per zone and **every row is a success into its own zone**. |
 | `tests/test_gmr_video_clip_to_g1.py` | 3 tests: round trip of a published G1 clip through a fake GMR file (joints < 0.03 rad, bodies < 1 cm, strike frame ±1), sidecar schema, loop blend. |
 | `docs/plans/SERVE_SIDE_BACKSPIN_PLAN.md` | The shelved serve plan (D4). |
@@ -184,10 +187,10 @@ Statistics of the committed bank (50 000 rows, seed 0):
 
 | Quantity | min | mean | p95 | max |
 |---|---|---|---|---|
-| racket speed (m/s) | 1.15 | 2.53 | 3.34 | 3.50 |
+| racket speed (m/s) | 1.15 | 2.72 | 3.38 | 3.50 |
 | apex height above table (m) | 0.13 | 0.24 | 0.32 | 0.34 |
 | incoming speed at contact (m/s) | 1.99 | 3.03 | 3.51 | 3.78 |
-| net clearance (m) | 0.22 | 0.26 | 0.26 | 0.27 |
+| net clearance (m) | 0.23 | 0.26 | 0.26 | 0.27 |
 | landing residual (m) | 0.000 | 0.002 | 0.003 | 0.047 |
 
 12 500 rows per zone, from 4.6 million candidate feeds. Most are rejected because their apex falls
@@ -310,8 +313,9 @@ licensed per person and must never be committed (they are in `.git/info/exclude`
 3. Add the lean HITTER reward recipe and A/B it against the HOPE recipe (D12).
 4. Add an Isaac evaluation script that runs fixed bank questions through `forehand_success` and
    reports success / apex / contact / net / zone rates and the landing error.
-5. Add the other two targets (`center_line`, `opp_right_corner`), with the target as a policy
-   input, and widen the feed distribution.
+5. Zone selection (D13): a `target_zone_ids` filter on the bank for training/eval/play, and the
+   same choice exposed in the deploy planner; per-zone success rates in the evaluation. Then widen
+   the feed distribution.
 6. Before hardware: measure the real racket adapter, refit ball physics on our table, and write a
    G1 deploy runner (the C++ runner is A3-only).
 7. Then balance and footwork (free station), then backhand, then the serve plan.

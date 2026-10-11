@@ -19,11 +19,11 @@ which is the robot's left (+y) half of the far table.
   end line) so that it bounces in the middle depth third of the robot's half, middle band of the
   robot's right half (``FEED_ZONE``) -- the same diagonal the robot returns along;
 * landing targets (``TARGET_ZONES``), opponent-perspective names. One open-court zone plus three
-  zones in the edge band (the outer 2-22 % of the half, next to a table edge):
+  zones lined up along the far end line (the back edge band: the last 2-22 % of the half):
   ``opp_right_mid`` (middle depth third, middle band of the opponent's right half),
-  ``center_line_deep`` (on the centre line at the far end line),
-  ``opp_right_side`` (middle depth third at the opponent's right side line),
-  ``opp_right_corner`` (the corner of the far end line and the right side line).
+  ``center_line_deep`` (on the centre line, at the end line),
+  ``opp_right_deep`` (middle band of the opponent's right half, at the end line),
+  ``opp_right_corner`` (at the end line, next to the right side line: the corner).
 
 Outgoing ball state comes from the same venue-fitted spin contact model and Magnus flight that the
 training reward uses (:mod:`virtual_ball`), evaluated on the ACHIEVED racket state, so the metric
@@ -53,8 +53,10 @@ _EDGE = (0.78, 0.98)  # edge band: 2-22 % of the half in from the end line / sid
 TARGET_ZONES: dict[str, tuple[tuple[float, float], tuple[float, float]]] = {
     "opp_right_mid": (_MID, (0.25, 0.75)),
     "center_line_deep": (_EDGE, (-0.1, 0.1)),
-    "opp_right_side": (_MID, _EDGE),
+    "opp_right_deep": (_EDGE, (0.25, 0.75)),
     "opp_right_corner": (_EDGE, _EDGE),
+    # Future target, disabled for now: middle depth at the opponent's right side line.
+    # "opp_right_side": (_MID, _EDGE),
 }
 FEED_ZONE: tuple[tuple[float, float], tuple[float, float]] = (_MID, (-0.75, -0.25))
 # Where the feed is hit from: crossing the far end line over the opponent's right half (robot's +y),

@@ -49,14 +49,14 @@
           0.07625
         ]
       ],
-      "opp_right_side": [
+      "opp_right_deep": [
         [
-          2.3266666666666667,
-          2.783333333333333
+          2.9386,
+          3.2126
         ],
         [
-          0.59475,
-          0.74725
+          0.190625,
+          0.5718749999999999
         ]
       ],
       "opp_right_corner": [
@@ -73,7 +73,7 @@
     "target_zone_id": [
       "opp_right_mid",
       "center_line_deep",
-      "opp_right_side",
+      "opp_right_deep",
       "opp_right_corner"
     ],
     "strike": "incoming ball at its post-bounce apex (vz = 0)",
@@ -86,7 +86,7 @@
     "targets": [
       "opp_right_mid",
       "center_line_deep",
-      "opp_right_side",
+      "opp_right_deep",
       "opp_right_corner"
     ],
     "seed": 0,
@@ -138,55 +138,55 @@
     "apex_out_of_box": 4399869,
     "station_out_of_range": 5979,
     "feed_not_from_opp_right": 131661,
-    "landing_miss": 59,
+    "landing_miss": 23,
     "net": 0,
-    "speed": 2570,
-    "not_in_zone": 385
+    "speed": 3393,
+    "not_in_zone": 455
   },
   "accepted_summary": {
     "racket_speed_mps": {
       "min": 1.1456960439682007,
-      "mean": 2.525602763581276,
-      "p95": 3.3443932175636286,
+      "mean": 2.7239619767570495,
+      "p95": 3.380196595191955,
       "max": 3.4997897148132324
     },
     "apex_height_above_table_m": {
       "min": 0.13440924882888794,
-      "mean": 0.24061961651086808,
-      "p95": 0.31744986772537226,
+      "mean": 0.2396670259308815,
+      "p95": 0.3152359127998352,
       "max": 0.3399801254272461
     },
     "incoming_speed_mps": {
       "min": 1.9896653890609741,
-      "mean": 3.0250084498929977,
-      "p95": 3.5066273927688596,
+      "mean": 3.031958297343254,
+      "p95": 3.5076038002967835,
       "max": 3.7843141555786133
     },
     "net_clearance_m": {
-      "min": 0.21479205787181854,
-      "mean": 0.25513342657238247,
-      "p95": 0.2619761571288109,
-      "max": 0.26549655199050903
+      "min": 0.22886261343955994,
+      "mean": 0.2564950875580311,
+      "p95": 0.2624815240502357,
+      "max": 0.2656749188899994
     },
     "landing_residual_m": {
       "min": 1.831721601774916e-05,
-      "mean": 0.0015730527319775137,
-      "p95": 0.003327109152451157,
+      "mean": 0.001899129941154024,
+      "p95": 0.0034511781879700706,
       "max": 0.04654315114021301
     },
     "station_y_m": {
       "min": -0.4499921202659607,
-      "mean": -0.2028713006254831,
-      "p95": -0.0009731519530760485,
+      "mean": -0.2023127088457379,
+      "p95": -0.0009256693505449233,
       "max": 0.11849002540111542
     },
     "rows_per_target": {
       "opp_right_mid": 12500,
       "center_line_deep": 12500,
-      "opp_right_side": 12500,
+      "opp_right_deep": 12500,
       "opp_right_corner": 12500
     }
   },
   "bank_path": "g1_fh_crosscourt_apex_bank.npz",
-  "bank_sha256": "1fc9f4b0a3ff51a283b3155226b51542fdfe4a34de35ec01e32289ba7988bb5c"
+  "bank_sha256": "6b88442252da7b022717538b078912707fa4c7207243e3e7bee9405cca116995"
 }

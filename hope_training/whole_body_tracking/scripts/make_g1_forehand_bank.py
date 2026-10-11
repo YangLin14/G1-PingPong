@@ -62,7 +62,7 @@ DEFAULT_OUT = _WBT / "assets" / "venue_tuple" / "g1_fh_crosscourt_apex_bank"
 @dataclasses.dataclass
 class BankCfg:
     rows: int = 50000
-    targets: tuple[str, ...] = ("opp_right_mid", "center_line_deep", "opp_right_side", "opp_right_corner")
+    targets: tuple[str, ...] = ("opp_right_mid", "center_line_deep", "opp_right_deep", "opp_right_corner")
     seed: int = 0
     # pre-bounce incoming ball at the feed bounce (env frame, m/s); spin magnitude in rev/s
     vin_x: tuple[float, float] = (-5.5, -2.5)
