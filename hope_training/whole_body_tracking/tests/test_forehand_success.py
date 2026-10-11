@@ -61,11 +61,28 @@ def test_default_zone_is_opponent_right_middle_band():
     assert CFG.with_target("opp_right_mid").zone_bounds() == CFG.zone_bounds()
 
 
-def test_target_presets_and_feed_zone():
-    (cx, cy) = CFG.with_target("center_line").zone_bounds()
-    assert cy[0] < 0.0 < cy[1]
-    (kx, ky) = CFG.with_target("opp_right_corner").zone_bounds()
-    assert kx[0] > CFG.zone_bounds()[0][1] - 1e-9 and kx[1] < CFG.far_x and ky[1] < fs.TABLE_WIDTH / 2
+def test_four_target_zones():
+    half_w, half_len = fs.TABLE_WIDTH / 2, 1.37
+    b = {name: CFG.with_target(name).zone_bounds() for name in fs.TARGET_ZONES}
+    assert set(b) == {"opp_right_mid", "center_line_deep", "opp_right_side", "opp_right_corner"}
+    end_band = CFG.far_x - 0.25 * half_len  # within the outer quarter of the half: next to the end line
+    side_band = 0.75 * half_w                # outer quarter of the half width: next to the side line
+    (x, y) = b["center_line_deep"]
+    assert y[0] < 0.0 < y[1] and x[0] > end_band and x[1] < CFG.far_x
+    (x, y) = b["opp_right_side"]
+    assert y[0] > side_band and y[1] < half_w and x == b["opp_right_mid"][0]  # mid depth, at the side line
+    (x, y) = b["opp_right_corner"]
+    assert x[0] > end_band and y[0] > side_band and x[1] < CFG.far_x and y[1] < half_w
+    names = list(b)  # no two zones overlap
+    for i, m in enumerate(names):
+        for n in names[i + 1:]:
+            (mx, my), (nx, ny) = b[m], b[n]
+            assert mx[1] <= nx[0] or nx[1] <= mx[0] or my[1] <= ny[0] or ny[1] <= my[0], (m, n)
+
+
+def test_feed_zone_and_origin():
+    (oy, oz) = CFG.feed_origin_bounds()  # hit from the opponent's right = robot's +y, above the table
+    assert 0.0 < oy[0] < oy[1] < fs.TABLE_WIDTH / 2 and CFG.table_surface_z < oz[0] < oz[1]
     (fx, fy) = CFG.feed_bounds()
     # feed bounce: robot's half, middle depth third, middle band of the robot's right (-y)
     assert CFG.table_near_x < fx[0] < fx[1] < CFG.net_x

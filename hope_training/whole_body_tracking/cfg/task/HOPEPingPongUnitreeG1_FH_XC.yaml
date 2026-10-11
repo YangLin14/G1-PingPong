@@ -1,9 +1,11 @@
 # =============================================================================
 # G1 FOREHAND CROSS-COURT APEX recipe (club spec): HOPEPingPongUnitreeG1_FH with EVERY question drawn
 # from assets/venue_tuple/g1_fh_crosscourt_apex_bank (scripts/make_g1_forehand_bank.py):
-#   feed bounce   middle depth third of the robot's half, middle band of the robot's right (-y)
+#   feed          hit diagonally from the opponent's right (robot's +y, far end line), bouncing in the
+#                 middle depth third of the robot's half, middle band of the robot's right (-y)
 #   strike        at the post-bounce apex (incoming vz = 0), inside the G1 forehand strike box
-#   landing goal  middle of the OPPONENT's right half (robot's +y), net clearance ~0.25 m
+#   landing goal  one of four zones on the OPPONENT's right (robot's +y), 25 % each:
+#                 opp_right_mid, center_line_deep, opp_right_side, opp_right_corner; net clearance ~0.25 m
 # The virtual-ball reward scores each strike against the row's intended landing point.
 #   hope_isaac_py scripts/train.py task=HOPEPingPongUnitreeG1_FH_XC headless=true run_name=g1_fh_xc
 # =============================================================================

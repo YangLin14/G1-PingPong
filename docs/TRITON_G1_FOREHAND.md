@@ -39,7 +39,7 @@ rallies up to 106 shots), using references made by filming a human, lifting the 
 | D4 | A backhand side-backspin **serve** was planned and **shelved**. | Forehand rally is easier and higher priority. Plan kept in [`plans/SERVE_SIDE_BACKSPIN_PLAN.md`](plans/SERVE_SIDE_BACKSPIN_PLAN.md). |
 | D5 | Train **forehand only**. | One swing is a smaller learning problem; backhand comes later. |
 | D6 | Define success by the club's rally rule (section 3), not HOPE's `success_rate`. | HOPE's analytic `success_rate` never clears the net (0 % even for the published A3 policy). |
-| D7 | **Cross-court**: from the robot's right to the **opponent's** right. Feed fixed to one zone for now. Three final landing targets. | Club spec (section 3). |
+| D7 | **Diagonal rally**: the feed is hit from the **opponent's right** to the robot's right; the robot returns from its right to the **opponent's** right. Four landing zones: one open-court and three along table edges. The feed bounce zone is fixed for now. | Club spec (section 3). Feeding along the same diagonal matches a real cross-court rally. |
 | D8 | Replace every training question with a G1-specific **apex-strike, cross-court bank**. | The inherited A3 bank strikes falling balls (median incoming vz −0.77 m/s), aims across the full table width, uses A3 reach (0.58 m, z 0.85–1.30 m), and covers only 25 % of questions. |
 | D9 | Make reference motions from **human video** (GVHMR + GMR), as HITTER did. | `g1-port` clips are joint-space copies of the A3 swing; at its strike frame the racket is at ~0.78 m (table height), and the first G1 run was reach-limited (−9 cm x, −10 cm z). |
 | D10 | Do not calibrate metrics against the A3 `model_21800`. | It does not work in our setup; metrics are verified with unit tests on known-good/bad racket states instead. |
@@ -64,17 +64,26 @@ A forehand return is a **success** only if all hold:
    opponent's half.
 4. **Zone.** That first bounce is inside the target zone.
 
-Cross-court geometry: the robot hits from **its right** (−y) to the **opponent's right**, which is
-the robot's **left** half of the far table (+y).
+Diagonal geometry (both directions use the same diagonal):
+
+* **Feed**: hit from the **opponent's right** (the robot's +y half, crossing the far end line 5–45 cm
+  above the table), clears the net and bounces in the feed zone on the **robot's right** (−y).
+* **Return**: the robot hits from **its right** to the **opponent's right**, which is the robot's
+  **left** half of the far table (+y).
 
 | Zone | Depth (fraction of a half, from the net) | Lateral (fraction of half width, +y) | Env-frame box |
 |---|---|---|---|
+| **Feed origin** (far end line) | at x = 3.24 | +0.25 … +0.95 (opponent's right) | y 0.191–0.724, z 0.81–1.21 |
 | **Feed** (incoming bounce, robot's half) | middle third | −0.75 … −0.25 (robot's right) | x 0.957–1.413, y −0.572…−0.191 |
-| `opp_right_mid` (**current training target**) | middle third | +0.25 … +0.75 | x 2.327–2.783, y 0.191–0.572 |
-| `center_line` | middle third | −0.10 … +0.10 | x 2.327–2.783, y −0.076…0.076 |
-| `opp_right_corner` | 2/3 … 0.95 | +0.60 … +0.95 | x 2.783–3.172, y 0.458–0.724 |
+| `opp_right_mid`: open court | middle third | +0.25 … +0.75 | x 2.327–2.783, y 0.191–0.572 |
+| `center_line_deep`: centre line, at the end line | 0.78 … 0.98 | −0.10 … +0.10 | x 2.939–3.213, y −0.076…0.076 |
+| `opp_right_side`: mid depth, at the side line | middle third | 0.78 … 0.98 | x 2.327–2.783, y 0.595–0.747 |
+| `opp_right_corner`: end line × side line | 0.78 … 0.98 | 0.78 … 0.98 | x 2.939–3.213, y 0.595–0.747 |
 
-The final goal is three selectable targets; training starts with `opp_right_mid` and a fixed feed zone.
+The three edge zones share one **edge band**: 2–22 % of the half in from the end line or the side line.
+The zones do not overlap. The training bank draws the four targets equally (25 % each). The
+policy does not need to be told the target, because the bank solves the racket velocity that sends
+the ball to it, and the policy tracks that velocity.
 
 ---
 
@@ -124,14 +133,14 @@ The final goal is three selectable targets; training starts with `opp_right_mid`
 | `tasks/tracking/mdp/hope_commands.py` | New `RacketTargetCommandCfg.active_clip_ids` (clips this recipe trains; empty = both). With a single side: the ability gate checks only that side (otherwise the never-sampled backhand keeps it locked forever), both `fixed_balanced_bank_v1` tuple cohorts are assigned to that side (otherwise `RuntimeError: permanent physical tuple cohort disagrees with MotionCommand clip`), and the bank loader requires rows only for that side. Default behaviour is unchanged. |
 | `cfg/task/HOPEPingPongUnitreeG1_FH.yaml` | Forehand-only variant A recipe: `eval_clip_sequence=[0]`, `fixed_clip_env_fraction_per_clip=0` (no permanent backhand cohort), `active_clip_ids=[0]`. Still uses the A3 bank (baseline). |
 | `cfg/task/HOPEPingPongUnitreeG1_FH_XC.yaml` | `_FH` + the cross-court apex bank at 100 % mix. **Main recipe.** |
-| `utils/forehand_success.py` | The section 3 success definition (`classify_strikes`, `ForehandSuccessTally` with misses in the denominator, `TARGET_ZONES`, `FEED_ZONE`). Isaac-free. |
+| `utils/forehand_success.py` | The section 3 success definition (`classify_strikes`, `ForehandSuccessTally` with misses in the denominator, `TARGET_ZONES`, `FEED_ZONE`, feed origin). Isaac-free. |
 
 ### Tools (`hope_training/whole_body_tracking/scripts/`)
 
 | File | What |
 |---|---|
 | `make_g1_forehand_bank.py` | Generates the question bank (section 6). |
-| `view_feed_bank.py` | MuJoCo visualizer of the bank: feed → bounce → apex → return, with zones and racket target; interactive or MP4. |
+| `view_feed_bank.py` | MuJoCo visualizer of the bank: diagonal feed from the opponent's right → bounce → apex → return, with the feed origin, all zones (current target highlighted) and racket target; interactive or MP4, `--camera behind|top`. |
 | `gvhmr_to_g1_headless.py` | GMR's GVHMR → G1 retarget without its viewer (cluster nodes have no display). |
 | `gmr_video_clip_to_g1.py` | GMR output → HOPE G1 clip: trim, 30 → 50 Hz, heading/xy normalization, joint reorder + limit clamp, loop-closure blend, MuJoCo FK of the 14 tracked bodies, strike frame (peak racket speed or manual), optional MP4 preview. |
 
@@ -139,11 +148,11 @@ The final goal is three selectable targets; training starts with `opp_right_mid`
 
 | Path | What |
 |---|---|
-| `assets/venue_tuple/g1_fh_crosscourt_apex_bank.{npz,receipt.json}` | 50 000-row bank (seed 0, reproducible) + receipt with the full contract and statistics. |
+| `assets/venue_tuple/g1_fh_crosscourt_apex_bank.{npz,receipt.json}` | 50 000-row bank (seed 0, reproducible, 12 500 rows per target zone) + receipt with the full contract and statistics. |
 | `hope_training/slurm/pip_env/` | Container-free install, smoke, training and generic run jobs for SDSC ([README](../hope_training/slurm/pip_env/README.md)). |
 | `hope_training/slurm/video_to_g1/` | Video → G1 clip install script and job ([README](../hope_training/slurm/video_to_g1/README.md)). |
-| `tests/test_forehand_success.py` | 8 tests: zones/feed geometry, an apex ball *can* be returned into the zone (grid search), falling ball / missed racket / soft tap / down-the-line all fail, misses count in the denominator. |
-| `tests/test_make_g1_forehand_bank.py` | 3 tests: loader schema, feed/apex/strike-box/speed constraints, **every row is a success** under the metric. |
+| `tests/test_forehand_success.py` | 9 tests: the four zones (edge bands, no overlap), feed zone and origin, an apex ball *can* be returned into the zone (grid search), falling ball / missed racket / soft tap / down-the-line all fail, misses count in the denominator. |
+| `tests/test_make_g1_forehand_bank.py` | 4 tests: loader schema; feed/apex/strike-box/speed constraints; the feed comes diagonally from the opponent's right; equal rows per zone and **every row is a success into its own zone**. |
 | `tests/test_gmr_video_clip_to_g1.py` | 3 tests: round trip of a published G1 clip through a fake GMR file (joints < 0.03 rad, bodies < 1 cm, strike frame ±1), sidecar schema, loop blend. |
 | `docs/plans/SERVE_SIDE_BACKSPIN_PLAN.md` | The shelved serve plan (D4). |
 
@@ -154,28 +163,37 @@ The final goal is three selectable targets; training starts with `opp_right_mid`
 `make_g1_forehand_bank.py` builds each row in four steps:
 
 1. **Feed.** A bounce point is drawn uniformly in the feed zone, with a pre-bounce velocity
-   (vx −5…−2.5, vy −0.4…0.4, vz −3.5…−1.5 m/s) and a random spin up to 5 rev/s. The venue table
-   contact gives the post-bounce velocity and spin.
+   (vx −5.5…−2.5, vy −2.4…−0.3, vz −3.5…−1.5 m/s) and a random spin up to 5 rev/s. The flight is
+   integrated **backward** from the bounce, and the row is kept only if it crossed the far end line
+   over the opponent's right (y 0.19–0.72 m, 5–45 cm above the table) and cleared the net by 3 cm.
+   That makes it a diagonal feed from the opponent's right. The venue table contact gives the
+   post-bounce velocity and spin.
 2. **Apex.** RK4 flight (2 ms steps) runs to the apex (vz = 0). The row is kept only if the apex is
    inside the G1 forehand strike box: x 0.42–0.50 m in front of the station, z 0.80–1.10 m. The
    station y follows from the recipe's forehand racket offset (−0.38…−0.32 m).
-3. **Return.** A landing target is drawn uniformly in `opp_right_mid`. The racket velocity
-   (face normal along it, the V14 contract) is solved by damped least squares on
-   (landing x, landing y, net clearance − 0.25 m), regularized toward (1.9, 0.3, 1.0) m/s.
+3. **Return.** One of the four target zones is drawn (recorded in `target_zone_id`), then a
+   landing point uniformly inside it. The racket velocity (face normal along it, the V14 contract)
+   is solved by damped least squares on (landing x, landing y, net clearance − 0.25 m), weakly
+   regularized (λ = 1e-3) toward (1.9, 0.3, 1.0) m/s. The deep and edge targets need fast, flat
+   swings, which a stronger pull would forbid.
 4. **Accept.** The row is kept if the landing error is ≤ 5 cm, net clearance is within
-   0.25 ± 0.10 m (and ≥ 3 cm), racket speed ≤ 3.5 m/s, and `classify_strikes` calls it a success.
+   0.25 ± 0.10 m (and ≥ 3 cm), racket speed ≤ 3.5 m/s, and `classify_strikes` calls it a success
+   for its own zone. Generation continues until every zone has its quota (equal rows per zone).
 
 Statistics of the committed bank (50 000 rows, seed 0):
 
 | Quantity | min | mean | p95 | max |
 |---|---|---|---|---|
-| racket speed (m/s) | 1.38 | 1.94 | 2.25 | 2.47 |
-| apex height above table (m) | 0.15 | 0.27 | 0.33 | 0.34 |
-| incoming speed at contact (m/s) | 1.88 | 2.68 | 3.04 | 3.25 |
-| net clearance (m) | 0.23 | 0.30 | 0.33 | 0.35 |
-| landing residual (m) | 0.000 | 0.015 | 0.033 | 0.050 |
+| racket speed (m/s) | 1.15 | 2.53 | 3.34 | 3.50 |
+| apex height above table (m) | 0.13 | 0.24 | 0.32 | 0.34 |
+| incoming speed at contact (m/s) | 1.99 | 3.03 | 3.51 | 3.78 |
+| net clearance (m) | 0.22 | 0.26 | 0.26 | 0.27 |
+| landing residual (m) | 0.000 | 0.002 | 0.003 | 0.047 |
 
-Regenerate (about 2.5 min on a laptop CPU) with:
+12 500 rows per zone, from 4.6 million candidate feeds. Most are rejected because their apex falls
+outside the G1 strike box. The deep/edge zones push the racket speed up to the 3.5 m/s limit.
+
+Regenerate (about 15 min on a laptop CPU) with:
 `python3 hope_training/whole_body_tracking/scripts/make_g1_forehand_bank.py --rows 50000`.
 Changing the seed or physics changes the rows, so **retrain after regenerating**.
 
@@ -213,11 +231,13 @@ python3 -m venv .venv && .venv/bin/pip install -r a3_deploy/a3_deploy_example/re
 # Watch the ball feeding. MuJoCo windows on macOS need mjpython. Because this path has a space,
 # call mjpython through the venv python (its shebang breaks on the space).
 .venv/bin/python .venv/bin/mjpython hope_training/whole_body_tracking/scripts/view_feed_bank.py --rows 30 --speed 0.5
+.venv/bin/python .venv/bin/mjpython hope_training/whole_body_tracking/scripts/view_feed_bank.py --camera top
 .venv/bin/python hope_training/whole_body_tracking/scripts/view_feed_bank.py --rows 8 --record artifacts/feed.mp4
 ```
 
-In the viewer, orange is the feed zone, bright green the training target, faint green the other two
-targets. The yellow trail is the ball; the red disc and arrow are the racket target (face and velocity).
+In the viewer: purple is the feed origin (opponent's right, at the far end line), orange the feed
+bounce zone, faint green the four target zones and bright green the current question's target. The
+yellow trail is the ball; the red disc and arrow are the racket target (face and velocity).
 
 ### Cluster (SDSC Atlantis, `ssh sdsc-scc`)
 

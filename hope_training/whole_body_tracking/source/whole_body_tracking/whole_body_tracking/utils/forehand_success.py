@@ -15,12 +15,15 @@ Court layout (club spec). All frames below are the ROBOT's: env frame, robot fac
 left. The robot plays a cross-court forehand from its right side (-y) to the OPPONENT's right side,
 which is the robot's left (+y) half of the far table.
 
-* feed: the incoming ball's own-side bounce lands in the middle depth third of the robot's half,
-  middle band of the robot's right half (``FEED_ZONE``);
-* landing targets (``TARGET_ZONES``), opponent-perspective names:
-  ``center_line`` (middle depth, on the centre line), ``opp_right_mid`` (middle depth third, middle
-  band of the opponent's right half -- the first training target), ``opp_right_corner`` (deep third,
-  outer band of the opponent's right half, near the corner).
+* feed: hit diagonally from the opponent's right (``FEED_ORIGIN``: the robot's +y half at the far
+  end line) so that it bounces in the middle depth third of the robot's half, middle band of the
+  robot's right half (``FEED_ZONE``) -- the same diagonal the robot returns along;
+* landing targets (``TARGET_ZONES``), opponent-perspective names. One open-court zone plus three
+  zones in the edge band (the outer 2-22 % of the half, next to a table edge):
+  ``opp_right_mid`` (middle depth third, middle band of the opponent's right half),
+  ``center_line_deep`` (on the centre line at the far end line),
+  ``opp_right_side`` (middle depth third at the opponent's right side line),
+  ``opp_right_corner`` (the corner of the far end line and the right side line).
 
 Outgoing ball state comes from the same venue-fitted spin contact model and Magnus flight that the
 training reward uses (:mod:`virtual_ball`), evaluated on the ACHIEVED racket state, so the metric
@@ -45,12 +48,19 @@ NET_HEIGHT = 0.1525
 BALL_RADIUS = 0.02
 
 # (depth_frac, lateral_frac) presets; see the module docstring for the frame conventions.
+_MID = (1.0 / 3.0, 2.0 / 3.0)
+_EDGE = (0.78, 0.98)  # edge band: 2-22 % of the half in from the end line / side line
 TARGET_ZONES: dict[str, tuple[tuple[float, float], tuple[float, float]]] = {
-    "center_line": ((1.0 / 3.0, 2.0 / 3.0), (-0.1, 0.1)),
-    "opp_right_mid": ((1.0 / 3.0, 2.0 / 3.0), (0.25, 0.75)),
-    "opp_right_corner": ((2.0 / 3.0, 0.95), (0.6, 0.95)),
+    "opp_right_mid": (_MID, (0.25, 0.75)),
+    "center_line_deep": (_EDGE, (-0.1, 0.1)),
+    "opp_right_side": (_MID, _EDGE),
+    "opp_right_corner": (_EDGE, _EDGE),
 }
-FEED_ZONE: tuple[tuple[float, float], tuple[float, float]] = ((1.0 / 3.0, 2.0 / 3.0), (-0.75, -0.25))
+FEED_ZONE: tuple[tuple[float, float], tuple[float, float]] = (_MID, (-0.75, -0.25))
+# Where the feed is hit from: crossing the far end line over the opponent's right half (robot's +y),
+# at a plausible racket height above the table (m).
+FEED_ORIGIN_LATERAL: tuple[float, float] = (0.25, 0.95)
+FEED_ORIGIN_HEIGHT: tuple[float, float] = (0.05, 0.45)
 
 
 def _load_virtual_ball():
@@ -108,6 +118,13 @@ class ForehandSuccessCfg:
         # depth on the robot's half is measured from the net back toward the robot's end line
         x = (self.net_x - d1 * half_len, self.net_x - d0 * half_len)
         return x, (l0 * half_w, l1 * half_w)
+
+    def feed_origin_bounds(self) -> tuple[tuple[float, float], tuple[float, float]]:
+        """((y_lo, y_hi), (z_lo, z_hi)) where the feed crosses the far end line (x = far_x)."""
+        half_w = TABLE_WIDTH / 2.0
+        y = (FEED_ORIGIN_LATERAL[0] * half_w, FEED_ORIGIN_LATERAL[1] * half_w)
+        z = (self.table_surface_z + FEED_ORIGIN_HEIGHT[0], self.table_surface_z + FEED_ORIGIN_HEIGHT[1])
+        return y, z
 
     def with_target(self, name: str) -> "ForehandSuccessCfg":
         depth, lateral = TARGET_ZONES[name]

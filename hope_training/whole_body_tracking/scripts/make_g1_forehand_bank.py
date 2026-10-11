@@ -7,11 +7,14 @@ spin model the training reward uses (:mod:`virtual_ball`):
 
 1. **feed**: the incoming ball bounces in ``FEED_ZONE`` -- middle depth third of the robot's half,
    middle band of the robot's right (-y) half -- with a sampled pre-bounce velocity/spin, and the
-   table bounce is applied with the venue table contact constants;
+   table bounce is applied with the venue table contact constants. Integrated backward, the feed must
+   have crossed the far end line over the opponent's right half at a hitting height and cleared the
+   net: it is hit diagonally from the opponent's right, the diagonal the robot returns along;
 2. **apex strike**: the post-bounce flight is integrated to its apex (vz = 0); only rows whose apex
    is inside the G1 forehand strike box are kept, so the ball is always struck at the top;
-3. **return**: a landing target is drawn uniformly in ``TARGET_ZONES[target]`` (default
-   ``opp_right_mid``: middle of the OPPONENT's right half = robot's +y) and the racket velocity
+3. **return**: each row draws one of ``targets`` (default: all four ``TARGET_ZONES``, on the
+   OPPONENT's right = robot's +y, recorded in ``target_zone_id``), a landing point uniformly inside
+   it, and the racket velocity
    (face normal along it, the V14 velocity-normal contract) is solved by damped least squares on
    the predicted landing; rows that miss the target, clip the net or exceed the racket speed limit
    are rejected.
@@ -59,11 +62,11 @@ DEFAULT_OUT = _WBT / "assets" / "venue_tuple" / "g1_fh_crosscourt_apex_bank"
 @dataclasses.dataclass
 class BankCfg:
     rows: int = 50000
-    target: str = "opp_right_mid"
+    targets: tuple[str, ...] = ("opp_right_mid", "center_line_deep", "opp_right_side", "opp_right_corner")
     seed: int = 0
     # pre-bounce incoming ball at the feed bounce (env frame, m/s); spin magnitude in rev/s
-    vin_x: tuple[float, float] = (-5.0, -2.5)
-    vin_y: tuple[float, float] = (-0.4, 0.4)
+    vin_x: tuple[float, float] = (-5.5, -2.5)
+    vin_y: tuple[float, float] = (-2.4, -0.3)  # diagonal: from the opponent's right (+y) to the robot's right
     vin_z: tuple[float, float] = (-3.5, -1.5)
     spin_in_rev_s: float = 5.0
     # G1 forehand strike box (station x = 0): reach plane around recipe v2's 0.46 m, recipe z box
@@ -74,7 +77,7 @@ class BankCfg:
     racket_speed_limit: float = 3.5
     nominal_racket_vel: tuple[float, float, float] = (1.9, 0.3, 1.0)
     solve_iters: int = 12
-    solve_damping: float = 0.05
+    solve_damping: float = 1e-3  # weak pull: deep/edge targets need fast, flat swings
     max_landing_err: float = 0.05
     net_margin: float = 0.03
     net_clearance_target: float = 0.25  # flat rally ball, not a lob (solved jointly with the landing)
@@ -86,6 +89,30 @@ class BankCfg:
 
 def _uniform(g: torch.Generator, n: int, lo: float, hi: float) -> torch.Tensor:
     return lo + (hi - lo) * torch.rand(n, generator=g, dtype=torch.float64)
+
+
+def feed_origin(bounce, v_pre, w_pre, prm, scfg, h: float, steps: int):
+    """Integrate the pre-bounce flight BACKWARD from the bounce. Returns (y, z) where it crosses the far
+    end line, the height where it crosses the net plane, and whether both crossings happened."""
+    n = bounce.shape[0]
+    p, v = bounce.clone(), v_pre.clone()
+    end_yz = torch.zeros(n, 2, dtype=p.dtype)
+    net_z = torch.zeros(n, dtype=p.dtype)
+    at_end = torch.zeros(n, dtype=torch.bool)
+    at_net = torch.zeros(n, dtype=torch.bool)
+    for _ in range(steps):
+        p1, v1 = vb.rk4_step(p, v, w_pre, -h, prm)
+        for plane, hit, store in ((scfg.net_x, at_net, "net"), (scfg.far_x, at_end, "end")):
+            cross = (~hit) & (p[:, 0] < plane) & (p1[:, 0] >= plane)
+            f = ((plane - p[:, 0]) / (p1[:, 0] - p[:, 0]).clamp(min=1e-12)).unsqueeze(-1)
+            q = p + f * (p1 - p)
+            if store == "net":
+                net_z = torch.where(cross, q[:, 2], net_z)
+            else:
+                end_yz = torch.where(cross.unsqueeze(-1), q[:, 1:], end_yz)
+            hit |= cross
+        p, v = p1, v1
+    return end_yz, net_z, at_end & at_net
 
 
 def table_params(prm, venue_yaml: str):
@@ -158,16 +185,24 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
     venue_yaml = vb.default_venue_yaml_path()
     prm = vb.load_venue_params(venue_yaml)
     tprm = table_params(prm, venue_yaml)
-    scfg = fs.ForehandSuccessCfg().with_target(cfg.target)
+    scfg = fs.ForehandSuccessCfg()
     (fx, fy) = scfg.feed_bounds()
-    (zx, zy) = scfg.zone_bounds()
+    (oy, oz) = scfg.feed_origin_bounds()
+    zone_cfgs = [scfg.with_target(t) for t in cfg.targets]
+    zones = torch.tensor([sum(map(list, c.zone_bounds()), []) for c in zone_cfgs])  # (Z, 4) x_lo x_hi y_lo y_hi
 
     accepted: dict[str, list[torch.Tensor]] = {}
-    rejects = {"no_apex": 0, "apex_out_of_box": 0, "station_out_of_range": 0, "landing_miss": 0,
-               "net": 0, "speed": 0, "not_in_zone": 0}
+    rejects = {"no_apex": 0, "apex_out_of_box": 0, "station_out_of_range": 0, "feed_not_from_opp_right": 0,
+               "landing_miss": 0, "net": 0, "speed": 0, "not_in_zone": 0}
     total = 0
     batch = max(4 * cfg.rows, 20000)
-    while sum(len(x) for x in accepted.get("clip", [])) < cfg.rows:
+    quota = -(-cfg.rows // len(cfg.targets))  # equal rows per target zone
+
+    def per_zone_counts() -> list[int]:
+        ids = torch.cat(accepted["target_zone_id"]) if accepted else torch.zeros(0, dtype=torch.int64)
+        return [int((ids == z).sum()) for z in range(len(cfg.targets))]
+
+    while min(per_zone_counts()) < quota:
         n = batch
         total += n
         bounce = torch.stack([
@@ -194,8 +229,20 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
         if not bool(keep.any()):
             continue
         idx = torch.where(keep)[0]
+        end_yz, feed_net_z, crossed = feed_origin(bounce[idx], v_pre[idx], w_pre[idx], prm, scfg,
+                                                  cfg.flight_h, cfg.flight_steps)
+        from_opp_right = crossed & (end_yz[:, 0] >= oy[0]) & (end_yz[:, 0] <= oy[1]) \
+            & (end_yz[:, 1] >= oz[0]) & (end_yz[:, 1] <= oz[1]) \
+            & (feed_net_z > scfg.table_surface_z + fs.NET_HEIGHT + fs.BALL_RADIUS + cfg.net_margin)
+        rejects["feed_not_from_opp_right"] += int((~from_opp_right).sum())
+        idx, end_yz = idx[from_opp_right], end_yz[from_opp_right]
+        if len(idx) == 0:
+            continue
         ball, vin, win = p_apex[idx], v_apex[idx], w_post[idx]
-        target = torch.stack([_uniform(g, len(idx), *zx), _uniform(g, len(idx), *zy)], -1)
+        zone_id = torch.randint(len(cfg.targets), (len(idx),), generator=g)
+        zb = zones[zone_id]
+        target = torch.stack([zb[:, 0] + (zb[:, 1] - zb[:, 0]) * torch.rand(len(idx), generator=g),
+                              zb[:, 2] + (zb[:, 3] - zb[:, 2]) * torch.rand(len(idx), generator=g)], -1)
         v_r = solve_racket(ball, vin, win, target, prm, scfg, cfg)
         land, v_out, w_out = landing(ball, vin, win, v_r, prm, scfg)
         err = torch.linalg.norm(land["land_xy"] - target, dim=-1)
@@ -204,14 +251,18 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
         net_ok = land["net_valid"] & (clearance >= cfg.net_margin) \
             & ((clearance - cfg.net_clearance_target).abs() <= cfg.max_clearance_err)
         speed_ok = torch.linalg.norm(v_r, dim=-1) <= cfg.racket_speed_limit
-        flags = fs.classify_strikes(ball, vin, win, ball, v_r, v_r / torch.linalg.norm(v_r, dim=-1, keepdim=True),
-                                    scfg, prm)
+        n_r = v_r / torch.linalg.norm(v_r, dim=-1, keepdim=True)
+        success = torch.zeros(len(idx), dtype=torch.bool)
+        for z, zcfg in enumerate(zone_cfgs):
+            m = zone_id == z
+            if bool(m.any()):
+                success[m] = fs.classify_strikes(ball[m], vin[m], win[m], ball[m], v_r[m], n_r[m], zcfg, prm)["success"]
         rejects["landing_miss"] += int((~hit).sum())
         rejects["net"] += int((hit & ~net_ok).sum())
         rejects["speed"] += int((hit & net_ok & ~speed_ok).sum())
         good = hit & net_ok & speed_ok
-        rejects["not_in_zone"] += int((good & ~flags["success"]).sum())
-        good &= flags["success"]
+        rejects["not_in_zone"] += int((good & ~success).sum())
+        good &= success
         if not bool(good.any()):
             continue
         sel = torch.where(good)[0]
@@ -234,13 +285,17 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
             "feed_bounce_xy": bounce[k, :2],
             "feed_velocity_pre": v_pre[k],
             "feed_spin_pre": w_pre[k],
+            "feed_origin_yz": end_yz[sel],
+            "target_zone_id": zone_id[sel],
         }
         for name, value in rows.items():
             accepted.setdefault(name, []).append(value)
-        got = sum(len(x) for x in accepted["clip"])
-        print(f"[make_g1_forehand_bank] accepted {got}/{cfg.rows} (drawn {total})", flush=True)
+        print(f"[make_g1_forehand_bank] accepted per target {per_zone_counts()} / {quota} (drawn {total})", flush=True)
 
-    arrays = {name: torch.cat(parts)[: cfg.rows].numpy() for name, parts in accepted.items()}
+    merged = {name: torch.cat(parts) for name, parts in accepted.items()}
+    take = torch.cat([torch.where(merged["target_zone_id"] == z)[0][:quota] for z in range(len(cfg.targets))])
+    take = take[torch.randperm(len(take), generator=g)][: cfg.rows]
+    arrays = {name: value[take].numpy() for name, value in merged.items()}
     for name, value in arrays.items():
         if value.dtype == np.float64:
             arrays[name] = value.astype(np.float32)
@@ -261,8 +316,9 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
             "table_near_x": scfg.table_near_x,
             "table_surface_z": scfg.table_surface_z,
             "feed_zone_xy": [list(fx), list(fy)],
-            "target": cfg.target,
-            "target_zone_xy": [list(zx), list(zy)],
+            "feed_origin": {"crosses_far_end_line_at_x": scfg.far_x, "y": list(oy), "z": list(oz)},
+            "target_zones": {t: [list(b) for b in c.zone_bounds()] for t, c in zip(cfg.targets, zone_cfgs)},
+            "target_zone_id": list(cfg.targets),
             "strike": "incoming ball at its post-bounce apex (vz = 0)",
             "racket_speed_limit_mps": cfg.racket_speed_limit,
             "net_clearance_margin_m": cfg.net_margin,
@@ -278,6 +334,7 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
             "net_clearance_m": stats(arrays["net_clearance_m"]),
             "landing_residual_m": stats(arrays["planner_residual_m"]),
             "station_y_m": stats(arrays["station_xy"][:, 1]),
+            "rows_per_target": {t: int((arrays["target_zone_id"] == z).sum()) for z, t in enumerate(cfg.targets)},
         },
     }
     return arrays, receipt
@@ -286,11 +343,11 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--rows", type=int, default=BankCfg.rows)
-    p.add_argument("--target", default=BankCfg.target, choices=sorted(fs.TARGET_ZONES))
+    p.add_argument("--targets", nargs="+", default=list(BankCfg.targets), choices=sorted(fs.TARGET_ZONES))
     p.add_argument("--seed", type=int, default=BankCfg.seed)
     p.add_argument("--out", default=str(DEFAULT_OUT), help="output path without extension")
     args = p.parse_args(argv)
-    arrays, receipt = generate(BankCfg(rows=args.rows, target=args.target, seed=args.seed))
+    arrays, receipt = generate(BankCfg(rows=args.rows, targets=tuple(args.targets), seed=args.seed))
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     np.savez(out.with_suffix(".npz"), **arrays)

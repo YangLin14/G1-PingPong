@@ -23,7 +23,7 @@ LOADER_FIELDS = {
 
 @pytest.fixture(scope="module")
 def bank():
-    cfg = mk.BankCfg(rows=64, seed=3)
+    cfg = mk.BankCfg(rows=64, seed=3)  # 16 rows per target zone
     arrays, receipt = mk.generate(cfg)
     torch.set_default_dtype(torch.float32)
     return cfg, arrays, receipt
@@ -54,17 +54,28 @@ def test_feed_apex_strike_and_speed(bank):
     assert (np.linalg.norm(a["target_velocity"], axis=-1) <= cfg.racket_speed_limit + 1e-5).all()
 
 
-def test_every_row_is_a_success_into_the_target_zone(bank):
-    cfg, a, _ = bank
-    scfg = mk.fs.ForehandSuccessCfg().with_target(cfg.target)
+def test_feed_comes_diagonally_from_the_opponents_right(bank):
+    _, a, _ = bank
+    (oy, oz) = mk.fs.ForehandSuccessCfg().feed_origin_bounds()
+    y, z = a["feed_origin_yz"][:, 0], a["feed_origin_yz"][:, 1]
+    assert ((y >= oy[0]) & (y <= oy[1]) & (z >= oz[0]) & (z <= oz[1])).all()
+    assert (a["feed_bounce_xy"][:, 1] < 0).all() and (a["feed_velocity_pre"][:, 1] < 0).all()
+
+
+def test_every_row_is_a_success_into_its_target_zone(bank):
+    cfg, a, receipt = bank
+    assert np.bincount(a["target_zone_id"], minlength=len(cfg.targets)).tolist() == [16] * len(cfg.targets)
+    assert receipt["contract"]["target_zone_id"] == list(cfg.targets)
     t = lambda k: torch.as_tensor(a[k], dtype=torch.float64)  # noqa: E731
     ball = t("target_position_offset").clone()
     ball[:, 1] += t("station_xy")[:, 1]  # contact xy is stored relative to the station
     v_r = t("target_velocity")
-    flags = mk.fs.classify_strikes(ball, t("incoming_velocity"), t("incoming_spin"), ball, v_r,
-                                   v_r / torch.linalg.norm(v_r, dim=-1, keepdim=True), scfg)
-    assert bool(flags["success"].all())
-    (zx, zy) = scfg.zone_bounds()
-    assert (a["intended_landing_xy"][:, 1] > 0).all()  # opponent's right = robot's +y
+    n_r = v_r / torch.linalg.norm(v_r, dim=-1, keepdim=True)
+    for z, name in enumerate(cfg.targets):
+        m = torch.as_tensor(a["target_zone_id"] == z)
+        flags = mk.fs.classify_strikes(ball[m], t("incoming_velocity")[m], t("incoming_spin")[m], ball[m],
+                                       v_r[m], n_r[m], mk.fs.ForehandSuccessCfg().with_target(name))
+        assert bool(flags["success"].all()), name
+    assert (a["intended_landing_xy"][:, 1] > -0.08).all()  # opponent's right (+y), centre line included
     assert np.linalg.norm(a["predicted_landing_xy"] - a["intended_landing_xy"], axis=-1).max() <= cfg.max_landing_err
     assert np.abs(a["net_clearance_m"] - cfg.net_clearance_target).max() <= cfg.max_clearance_err
