@@ -1,0 +1,132 @@
+{
+  "schema_version": 2,
+  "contract": {
+    "recipe_revision": 12,
+    "task": "HOPEPingPongUnitreeG1_FH cross-court apex forehand",
+    "robot": "unitree_g1",
+    "frame": "env frame: robot at origin facing +x, +y = robot's left",
+    "table_near_x": 0.5,
+    "table_surface_z": 0.76,
+    "feed_zone_xy": [
+      [
+        0.9566666666666668,
+        1.4133333333333336
+      ],
+      [
+        -0.5718749999999999,
+        -0.190625
+      ]
+    ],
+    "target": "opp_right_mid",
+    "target_zone_xy": [
+      [
+        2.3266666666666667,
+        2.783333333333333
+      ],
+      [
+        0.190625,
+        0.5718749999999999
+      ]
+    ],
+    "strike": "incoming ball at its post-bounce apex (vz = 0)",
+    "racket_speed_limit_mps": 3.5,
+    "net_clearance_margin_m": 0.03,
+    "physics": "ball_physics_venue.yaml"
+  },
+  "generation": {
+    "rows": 50000,
+    "target": "opp_right_mid",
+    "seed": 0,
+    "vin_x": [
+      -5.0,
+      -2.5
+    ],
+    "vin_y": [
+      -0.4,
+      0.4
+    ],
+    "vin_z": [
+      -3.5,
+      -1.5
+    ],
+    "spin_in_rev_s": 5.0,
+    "apex_x": [
+      0.42,
+      0.5
+    ],
+    "apex_z": [
+      0.8,
+      1.1
+    ],
+    "racket_offset_y": [
+      -0.38,
+      -0.32
+    ],
+    "station_y_max": 0.45,
+    "racket_speed_limit": 3.5,
+    "nominal_racket_vel": [
+      1.9,
+      0.3,
+      1.0
+    ],
+    "solve_iters": 12,
+    "solve_damping": 0.05,
+    "max_landing_err": 0.05,
+    "net_margin": 0.03,
+    "net_clearance_target": 0.25,
+    "net_clearance_weight": 1.0,
+    "max_clearance_err": 0.1,
+    "flight_h": 0.002,
+    "flight_steps": 400
+  },
+  "attempts": 1600000,
+  "reject_counts": {
+    "no_apex": 0,
+    "apex_out_of_box": 1545162,
+    "station_out_of_range": 0,
+    "landing_miss": 60,
+    "net": 295,
+    "speed": 0,
+    "not_in_zone": 385
+  },
+  "accepted_summary": {
+    "racket_speed_mps": {
+      "min": 1.3785134553909302,
+      "mean": 1.9356173675394057,
+      "p95": 2.2469074606895445,
+      "max": 2.4647231101989746
+    },
+    "apex_height_above_table_m": {
+      "min": 0.1459488868713379,
+      "mean": 0.27334157415747645,
+      "p95": 0.334203690290451,
+      "max": 0.3399977684020996
+    },
+    "incoming_speed_mps": {
+      "min": 1.877266526222229,
+      "mean": 2.6824933596873284,
+      "p95": 3.0398916602134705,
+      "max": 3.2448525428771973
+    },
+    "net_clearance_m": {
+      "min": 0.22941218316555023,
+      "mean": 0.29546923532009123,
+      "p95": 0.3335518047213554,
+      "max": 0.3499720096588135
+    },
+    "landing_residual_m": {
+      "min": 7.621495024068281e-05,
+      "mean": 0.01463188555882327,
+      "p95": 0.03282898720353841,
+      "max": 0.049584031105041504
+    },
+    "station_y_m": {
+      "min": -0.3186742067337036,
+      "mean": -0.02976530988952195,
+      "p95": 0.1533316224813461,
+      "max": 0.2668588161468506
+    }
+  },
+  "bank_path": "g1_fh_crosscourt_apex_bank.npz",
+  "bank_sha256": "6a658860db5a958c10b59acdb4962b0f46e1b3c5fc200bc840538f4b3d51775a"
+}
