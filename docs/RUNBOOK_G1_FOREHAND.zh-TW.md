@@ -2,7 +2,7 @@
 
 [English](RUNBOOK_G1_FOREHAND.md) · 背景與設計說明：[`TRITON_G1_FOREHAND.zh-TW.md`](TRITON_G1_FOREHAND.zh-TW.md)
 
-日常操作用的指令，可以直接複製貼上。這裡的每個指令都在 2026-10-10 實際跑過。
+日常操作用的指令，可以直接複製貼上。這裡的每個指令都在 2026-10-10 實際跑過。範例裡的 job 編號（4382、4354）是當時正在跑的訓練，請換成 `status.sh` 顯示的編號。在 shell 裡不要輸入尖括號：bash 會把 `<x>` 當成「從檔案 x 讀取輸入」。
 
 * **筆電**：`G1-PingPong` 資料夾（macOS），指令都從 repo 根目錄開始執行。
 * **叢集**：`ssh sdsc-scc`，repo 在 `~/hope/HOPE`，叢集上的指令都先 `cd ~/hope/HOPE`。
@@ -47,7 +47,7 @@ bash hope_training/slurm/pip_env/status.sh 4382                        # 只看�
 原始 log 和 TensorBoard：
 
 ```bash
-tail -f ~/hope/slurm_logs/hope-g1-fh-diag-<jobid>.out
+tail -f ~/hope/slurm_logs/hope-g1-fh-diag-4382.out    # 數字是 job 編號
 # 在筆電上執行，然後打開 http://localhost:6006
 ssh -L 6006:localhost:6006 sdsc-scc '~/hope/isaac-venv/bin/tensorboard --port 6006 \
   --logdir ~/hope/HOPE/hope_training/whole_body_tracking/logs/rsl_rl/unitree_g1_hitter_pingpong'
@@ -59,8 +59,10 @@ ssh -L 6006:localhost:6006 sdsc-scc '~/hope/isaac-venv/bin/tensorboard --port 60
 
 ```bash
 cd ~/hope/HOPE
-# 在正在跑的 job 的資源裡執行：馬上開始，不用另外占配額（約 1 分鐘）
-bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job <jobid> g1_fh_diag
+# 在這個 run 自己的 job 裡執行（用 run 名稱自動找到 job）：馬上開始，不用另外占配額（約 1 分鐘）
+bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job auto g1_fh_diag
+# 或自己指定 job 編號（從 status.sh / squeue 看；直接打數字，不要打 <...>）
+bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job 4382 g1_fh_diag
 # 或者另外送一個小 job（8 GB），例如訓練已經結束的時候
 sbatch hope_training/slurm/pip_env/eval_checkpoint.sh g1_fh_diag
 ```
@@ -167,7 +169,7 @@ cd ~/hope/HOPE && sbatch --export=ALL,VIDEO=$HOME/hope/mocap/videos/forehand.mp4
 | 狀況 | 解法 |
 |---|---|
 | job 卡在 `PENDING (AssocGrpCpuLimit)` / `(AssocGrpMemLimit)` | 社團的 32 CPU / 96 GB 配額滿了（`status.sh` 可以看到誰在用）。等一下、停掉 baseline，或者少要一點資源（`--mem`、`--cpus-per-task`；訓練實際約用 8 GB RAM、5 GB GPU 記憶體）。 |
-| 想快速評估，但配額滿了 | 用 `eval_checkpoint.sh --in-job <正在跑的 jobid> ...`，在現有 job 的資源裡執行。 |
+| 想快速評估，但配額滿了 | 用 `eval_checkpoint.sh --in-job auto <run 名稱>`，在這個 run 現有 job 的資源裡執行。 |
 | `status.sh` 顯示 "errors in the log" | `grep -n -A30 Traceback <log>`。Isaac 遇到 Python 錯誤後常常不會自己結束，要用 `scancel` 停掉。 |
 | Kit 報 `No device could be created`、匯入 URDF 後卡住、`/tmp` 沒有權限 | 節點的修正設定不見了：重新執行 `sbatch hope_training/slurm/pip_env/install_isaac.sbatch`（它會重新產生 `setup_train_env.local.sh`）。 |
 | Mac 上 MuJoCo 視窗開不起來 | 改用 `.venv/bin/python .venv/bin/mjpython ...`（路徑有空格的問題）；`--record out.mp4` 不需要開視窗。 |

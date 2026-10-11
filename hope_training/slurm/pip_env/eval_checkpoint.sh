@@ -1,7 +1,8 @@
 #!/bin/bash
 # Export a training checkpoint to ONNX and watch it in MuJoCo (stats JSON + MP4).
 # Run from the repository root, in one of two ways:
-#   bash  hope_training/slurm/pip_env/eval_checkpoint.sh --in-job 4382 g1_fh_diag   # inside a running job's
+#   bash  hope_training/slurm/pip_env/eval_checkpoint.sh --in-job auto g1_fh_diag   # inside the run's job
+#         (or --in-job 4382 to name the job yourself)
 #         allocation (srun --overlap): no extra quota, starts immediately; uses a few GB of its GPU
 #   sbatch hope_training/slurm/pip_env/eval_checkpoint.sh g1_fh_diag                 # as its own small job
 # Optional 2nd argument: a checkpoint path (default: the newest model_*.pt of the run).
@@ -19,6 +20,13 @@
 set -euo pipefail
 if [ "${1:-}" = "--in-job" ]; then
   job=$2; shift 2
+  if [ "$job" = "auto" ]; then  # the running job whose training log is for this run name
+    for j in $(squeue -h -u "$USER" -t RUNNING -o %i); do
+      grep -qsE "^\[(fh-)?train\] job=$j .* run=${1:-}( |$)" "${HOPE_LOGS:-$HOME/hope/slurm_logs}"/*-"$j".out && { job=$j; break; }
+    done
+    [ "$job" = "auto" ] && { echo "no running training job for run '${1:-}' (squeue -u $USER)" >&2; exit 1; }
+    echo "[eval] using job $job"
+  fi
   exec srun --overlap --jobid "$job" --ntasks=1 --cpus-per-task=1 bash "$(readlink -f "$0")" "$@"
 fi
 source "${SLURM_SUBMIT_DIR:-$PWD}/hope_training/slurm/pip_env/env.sh" 2>/dev/null || source "$HOME/hope/HOPE/hope_training/slurm/pip_env/env.sh"

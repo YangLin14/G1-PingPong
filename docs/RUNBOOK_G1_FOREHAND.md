@@ -2,7 +2,9 @@
 
 [繁體中文版](RUNBOOK_G1_FOREHAND.zh-TW.md) · Background and design: [`TRITON_G1_FOREHAND.md`](TRITON_G1_FOREHAND.md)
 
-Copy-paste commands for daily work. Every command here was run on 2026-10-10.
+Copy-paste commands for daily work. Every command here was run on 2026-10-10. Job numbers in the
+examples (4382, 4354) are the runs at that time; replace them with yours from `status.sh`. Never type
+angle brackets in the shell: bash reads `<x>` as "read from file x".
 
 * **Laptop**: the `G1-PingPong` checkout (macOS). Commands start in the repo root.
 * **Cluster**: `ssh sdsc-scc`, repo at `~/hope/HOPE`. Cluster commands start with `cd ~/hope/HOPE`.
@@ -49,7 +51,7 @@ analytic metric never clears the net.
 Raw log and TensorBoard:
 
 ```bash
-tail -f ~/hope/slurm_logs/hope-g1-fh-diag-<jobid>.out
+tail -f ~/hope/slurm_logs/hope-g1-fh-diag-4382.out    # the number is the job id
 # on the laptop, then open http://localhost:6006
 ssh -L 6006:localhost:6006 sdsc-scc '~/hope/isaac-venv/bin/tensorboard --port 6006 \
   --logdir ~/hope/HOPE/hope_training/whole_body_tracking/logs/rsl_rl/unitree_g1_hitter_pingpong'
@@ -61,8 +63,10 @@ ssh -L 6006:localhost:6006 sdsc-scc '~/hope/isaac-venv/bin/tensorboard --port 60
 
 ```bash
 cd ~/hope/HOPE
-# inside the running job's allocation: starts immediately, needs no extra quota (~1 min)
-bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job <jobid> g1_fh_diag
+# inside the run's own job (found by run name): starts immediately, needs no extra quota (~1 min)
+bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job auto g1_fh_diag
+# same, naming the job number yourself (from status.sh / squeue; type the number, not <...>)
+bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job 4382 g1_fh_diag
 # or as its own small job (8 GB), e.g. when the run has ended
 sbatch hope_training/slurm/pip_env/eval_checkpoint.sh g1_fh_diag
 ```
@@ -183,7 +187,7 @@ Trim with `START=`/`END=` (source frames, 30 Hz) and override the strike with `S
 | Symptom | Fix |
 |---|---|
 | Job `PENDING (AssocGrpCpuLimit)` / `(AssocGrpMemLimit)` | The club's 32 CPU / 96 GB cap is full (`status.sh` shows who uses it). Wait, stop the baseline, or ask for less (`--mem`, `--cpus-per-task`; training needs ~8 GB RAM and ~5 GB GPU). |
-| Want a quick eval but the quota is full | `eval_checkpoint.sh --in-job <running jobid> ...` runs inside an existing allocation. |
+| Want a quick eval but the quota is full | `eval_checkpoint.sh --in-job auto <run>` runs inside the run's existing allocation. |
 | `status.sh` prints "errors in the log" | `grep -n -A30 Traceback <log>`. Isaac often keeps running after a Python error; `scancel` it. |
 | Kit `No device could be created`, hang after URDF import, `/tmp` permission errors | Node workarounds missing: rerun `sbatch hope_training/slurm/pip_env/install_isaac.sbatch` (it renders `setup_train_env.local.sh`). |
 | MuJoCo window does not open on the Mac | Use `.venv/bin/python .venv/bin/mjpython ...` (path-with-space issue); `--record out.mp4` needs no window. |
