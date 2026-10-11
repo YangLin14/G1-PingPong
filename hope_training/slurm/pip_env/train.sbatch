@@ -11,7 +11,7 @@
 #SBATCH --open-mode=append
 #SBATCH --gres=rtx2080ti:1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=24G
+#SBATCH --mem=16G
 #SBATCH --output=%x-%j.out
 set -uo pipefail
 source "$SLURM_SUBMIT_DIR/hope_training/slurm/pip_env/env.sh" 2>/dev/null || source "$HOME/hope/HOPE/hope_training/slurm/pip_env/env.sh"

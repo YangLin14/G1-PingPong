@@ -1,6 +1,6 @@
 # Triton Droids: Unitree G1 forehand cross-court rally
 
-[繁體中文版](TRITON_G1_FOREHAND.zh-TW.md)
+[繁體中文版](TRITON_G1_FOREHAND.zh-TW.md) · Day-to-day commands: [RUNBOOK_G1_FOREHAND.md](RUNBOOK_G1_FOREHAND.md)
 
 This document records what the Triton Droids team built on top of HOPE and the club's G1 port,
 why each decision was made, how the whole system works end to end, and how to run every piece.

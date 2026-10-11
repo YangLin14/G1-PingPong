@@ -1,6 +1,6 @@
 # Triton Droids：Unitree G1 正手斜線對打
 
-[English](TRITON_G1_FOREHAND.md)
+[English](TRITON_G1_FOREHAND.md) · 日常操作指令：[RUNBOOK_G1_FOREHAND.zh-TW.md](RUNBOOK_G1_FOREHAND.zh-TW.md)
 
 這份文件記錄 Triton Droids 在 HOPE 和社團 G1 移植版上做了哪些事：每個決定的理由、整套系統從頭到尾怎麼運作，以及每個部分怎麼執行。
 狀態為 **2026-10-10**：G1 實機還沒到，目前只在模擬中進行，但所有設計都保留了之後上實機（sim-to-real）的路徑。

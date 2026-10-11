@@ -22,6 +22,10 @@ sbatch hope_training/slurm/pip_env/run.sbatch scripts/evaluate.py --task HOPE-Hi
 | `run.sbatch` | run any `hope_isaac_py` command on one GPU |
 | `train.sbatch` | requeue-safe training with resume and a fixed iteration total |
 | `g1_smoke.sbatch` | G1 pre-flight: asset, joint order, plant replay, 2-iteration train, export, MuJoCo eval |
+| `status.sh` | one-screen status: jobs, club quota, iteration and key metrics per run |
+| `eval_checkpoint.sh` | newest (or given) checkpoint -> ONNX -> MuJoCo stats + MP4; `--in-job <id>` runs inside a running job, or `sbatch` it |
+
+Day-to-day commands: [`docs/RUNBOOK_G1_FOREHAND.md`](../../../docs/RUNBOOK_G1_FOREHAND.md).
 
 Node workarounds (all applied by `install_isaac.sbatch`; each was a real failure):
 
