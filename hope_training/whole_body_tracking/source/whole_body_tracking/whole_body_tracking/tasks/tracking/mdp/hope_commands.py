@@ -536,6 +536,11 @@ class RacketTargetCommand(CommandTerm):
         self._ability_curriculum_enabled = (
             self._ability_curriculum_mode == "one_way_strike_gate_v1"
         )
+        self._active_clip_ids = tuple(int(c) for c in cfg.active_clip_ids) or (0, 1)
+        if not set(self._active_clip_ids) <= {0, 1} or len(set(self._active_clip_ids)) != len(
+            self._active_clip_ids
+        ):
+            raise ValueError(f"active_clip_ids must be distinct ids from (0, 1), got {cfg.active_clip_ids}")
         for name in (
             "ability_min_exact_samples_per_side",
             "ability_min_completion_per_side",
@@ -657,8 +662,11 @@ class RacketTargetCommand(CommandTerm):
                 raise ValueError(
                     "fixed_balanced_bank_v1 reserves more environments than exist"
                 )
-            self._venue_tuple_cohort[:quota] = 0
-            self._venue_tuple_cohort[quota : 2 * quota] = 1
+            if len(self._active_clip_ids) == 1:
+                self._venue_tuple_cohort[: 2 * quota] = self._active_clip_ids[0]
+            else:
+                self._venue_tuple_cohort[:quota] = 0
+                self._venue_tuple_cohort[quota : 2 * quota] = 1
             self._venue_tuple_cohort_fraction = (
                 float(2 * quota) / float(max(self.num_envs, 1))
             )
@@ -3704,7 +3712,7 @@ class RacketTargetCommand(CommandTerm):
             raise RuntimeError("tuple bank clip array must contain only 0=FH and 1=BH")
         minimum_per_side = int(self.cfg.venue_tuple_bank_min_rows_per_side)
         counts = {side: int(np.count_nonzero(clip == side)) for side in (0, 1)}
-        if any(counts[side] < minimum_per_side for side in (0, 1)):
+        if any(counts[side] < minimum_per_side for side in self._active_clip_ids):
             raise RuntimeError(
                 "tuple bank is not balanced/large enough: "
                 f"counts={counts}, required_per_side={minimum_per_side}"
@@ -9052,38 +9060,32 @@ class RacketTargetCommand(CommandTerm):
                 "one_way_strike_gate_v1 requires forehand and backhand clips"
             )
         fh_id, bh_id = clip_ids
-        exact_fh = float(self._exact_n_acc_c[fh_id])
-        exact_bh = float(self._exact_n_acc_c[bh_id])
-        starts_fh = float(self._swing_starts_acc_c[fh_id])
-        starts_bh = float(self._swing_starts_acc_c[bh_id])
-        completion_fh = min(exact_fh / max(starts_fh, 1.0e-6), 1.0)
-        completion_bh = min(exact_bh / max(starts_bh, 1.0e-6), 1.0)
-        position_fh = self._exact_pass_pos_acc_c[fh_id] / max(
-            exact_fh, 1.0e-6
-        )
-        position_bh = self._exact_pass_pos_acc_c[bh_id] / max(
-            exact_bh, 1.0e-6
-        )
+        exact_c, completion_c, position_c = {}, {}, {}
+        for c in clip_ids:
+            exact_c[c] = float(self._exact_n_acc_c[c])
+            starts = float(self._swing_starts_acc_c[c])
+            completion_c[c] = min(exact_c[c] / max(starts, 1.0e-6), 1.0)
+            position_c[c] = self._exact_pass_pos_acc_c[c] / max(exact_c[c], 1.0e-6)
+        completion_fh, completion_bh = completion_c[fh_id], completion_c[bh_id]
+        position_fh, position_bh = position_c[fh_id], position_c[bh_id]
+        gated = self._active_clip_ids
         composite = self._exact_pass_comp_acc / max(
             self._exact_n_acc, 1.0e-6
         )
         post_fall = self._poststrike_fall_acc / max(
             self._swing_starts_acc, 1.0e-6
         )
-        enough_samples = (
-            exact_fh >= float(self.cfg.ability_min_exact_samples_per_side)
-            and exact_bh >= float(self.cfg.ability_min_exact_samples_per_side)
+        enough_samples = all(
+            exact_c[c] >= float(self.cfg.ability_min_exact_samples_per_side)
+            for c in gated
         )
         gate_condition = bool(
             enough_samples
-            and completion_fh
-            >= float(self.cfg.ability_min_completion_per_side)
-            and completion_bh
-            >= float(self.cfg.ability_min_completion_per_side)
-            and position_fh
-            >= float(self.cfg.ability_min_position_pass_per_side)
-            and position_bh
-            >= float(self.cfg.ability_min_position_pass_per_side)
+            and all(
+                completion_c[c] >= float(self.cfg.ability_min_completion_per_side)
+                and position_c[c] >= float(self.cfg.ability_min_position_pass_per_side)
+                for c in gated
+            )
             and composite >= float(self.cfg.ability_min_composite)
             and post_fall <= float(self.cfg.ability_max_post_fall)
         )
@@ -11039,6 +11041,11 @@ class RacketTargetCommandCfg(CommandTermCfg):
     ability_min_composite: float = 0.03
     ability_max_post_fall: float = 0.10
     ability_gate_dwell_steps: int = 250
+    # Clip ids this recipe actually trains. Empty = both (forehand 0, backhand 1). A single-side
+    # recipe (e.g. forehand-only with MotionCommand.eval_clip_sequence=(0,)) lists only its side:
+    # the ability gate then checks only that side (a never-sampled side would keep it locked
+    # forever) and both fixed_balanced_bank_v1 tuple cohorts are assigned to it.
+    active_clip_ids: tuple[int, ...] = ()
     base_mocap_robustness_ramp_steps: int = 8000
 
     # --- V15 HUGWBC lower-body command -------------------------------------------------------
