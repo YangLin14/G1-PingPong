@@ -41,3 +41,11 @@ total; a 4096-env trainer uses about 12 GB of host RAM (`--mem=24G`) and 8 s per
 two variants plus their sidecars fit side by side. `HOPE_G1_VIDEO=1` (in-Isaac `RecordVideo`)
 is off by default because Isaac Sim 5.1's RTX renderer crashes on NVIDIA driver 610.43
 (isaac-sim/IsaacSim#650); the sidecar's MuJoCo-rendered rollouts are the mp4 source.
+
+## Without the container: `pip_env/` and `video_to_g1/`
+
+[`pip_env/`](pip_env/README.md) runs the same Isaac stack from a pip-installed Isaac Sim 5.1 venv
+(no 64 GB image, no sudo) and documents the node workarounds it needs; [`video_to_g1/`](video_to_g1/README.md)
+turns a phone video of a human swing into a G1 reference clip (GVHMR + GMR, the HITTER pipeline).
+Both are part of the forehand cross-court line described in
+[`docs/TRITON_G1_FOREHAND.md`](../../docs/TRITON_G1_FOREHAND.md).

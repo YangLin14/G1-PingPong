@@ -1,0 +1,14 @@
+# Machine-local overrides for setup_train_env.sh on SDSC Atlantis (sdsc-scc) without the container.
+# install_isaac.sbatch renders this into hope_training/whole_body_tracking/setup_train_env.local.sh
+# (git-ignored), replacing @ISAAC_VENV@, @ISAACLAB@ and @SYSLIBS@.
+ISAAC_PYTHON="@ISAAC_VENV@/bin/python"
+ISAACLAB_ROOT="@ISAACLAB@"
+export OMNI_KIT_ACCEPT_EULA=YES
+export TERM="${TERM:-xterm-256color}"
+# Kit's bundled Vulkan loader does not find the node's nvidia_icd.x86_64.json -> "No device could be created".
+export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.x86_64.json
+# /tmp/isaaclab and /tmp/IsaacLab on shared nodes belong to whoever created them first.
+export TMPDIR="/tmp/$USER"; mkdir -p "$TMPDIR"
+# libneuray (MDL materials) needs libGLU.so.1, absent on the nodes; without it Kit spins forever in
+# Neuray::LoadModule. Extracted from the Rocky 10 mesa-libGLU RPM by install_isaac.sbatch.
+export LD_LIBRARY_PATH="@SYSLIBS@/usr/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
