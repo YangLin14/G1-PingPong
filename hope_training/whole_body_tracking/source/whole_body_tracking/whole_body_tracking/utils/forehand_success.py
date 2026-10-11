@@ -21,7 +21,8 @@ which is the robot's left (+y) half of the far table.
 * landing targets (``TARGET_ZONES``), opponent-perspective names. One open-court zone plus three
   zones lined up along the far end line (the back edge band: the last 2-22 % of the half):
   ``opp_right_mid`` (middle depth third, middle band of the opponent's right half),
-  ``center_line_deep`` (on the centre line, at the end line),
+  ``center_line_deep`` (beside the centre line on the opponent's right, at the end line; the inner
+  edge stays a ball radius off the line so a landing never touches it),
   ``opp_right_deep`` (middle band of the opponent's right half, at the end line),
   ``opp_right_corner`` (at the end line, next to the right side line: the corner).
 
@@ -52,7 +53,7 @@ _MID = (1.0 / 3.0, 2.0 / 3.0)
 _EDGE = (0.78, 0.98)  # edge band: 2-22 % of the half in from the end line / side line
 TARGET_ZONES: dict[str, tuple[tuple[float, float], tuple[float, float]]] = {
     "opp_right_mid": (_MID, (0.25, 0.75)),
-    "center_line_deep": (_EDGE, (-0.1, 0.1)),
+    "center_line_deep": (_EDGE, (0.03, 0.23)),  # 2.3 cm off the centre line (> ball radius)
     "opp_right_deep": (_EDGE, (0.25, 0.75)),
     "opp_right_corner": (_EDGE, _EDGE),
     # Future target, disabled for now: middle depth at the opponent's right side line.

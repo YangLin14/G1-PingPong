@@ -72,7 +72,7 @@ def test_four_target_zones():
     assert all(b[n][0] == b[deep[0]][0] for n in deep)
     assert b[deep[0]][0][0] > end_band and b[deep[0]][0][1] < CFG.far_x
     (_, y) = b["center_line_deep"]
-    assert y[0] < 0.0 < y[1]
+    assert y[0] > fs.BALL_RADIUS and y[1] - y[0] == pytest.approx(0.2 * half_w)  # off the centre line
     assert b["opp_right_deep"][1] == b["opp_right_mid"][1]  # same lateral band as the open-court zone
     (_, y) = b["opp_right_corner"]
     assert y[0] > side_band and y[1] < half_w

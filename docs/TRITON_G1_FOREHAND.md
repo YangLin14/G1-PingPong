@@ -77,12 +77,14 @@ Diagonal geometry (both directions use the same diagonal):
 | **Feed origin** (far end line) | at x = 3.24 | +0.25 … +0.95 (opponent's right) | y 0.191–0.724, z 0.81–1.21 |
 | **Feed** (incoming bounce, robot's half) | middle third | −0.75 … −0.25 (robot's right) | x 0.957–1.413, y −0.572…−0.191 |
 | `opp_right_mid`: open court | middle third | +0.25 … +0.75 | x 2.327–2.783, y 0.191–0.572 |
-| `center_line_deep`: centre line, at the end line | 0.78 … 0.98 | −0.10 … +0.10 | x 2.939–3.213, y −0.076…0.076 |
+| `center_line_deep`: beside the centre line (opponent's right side of it), at the end line | 0.78 … 0.98 | +0.03 … +0.23 | x 2.939–3.213, y 0.023–0.175 |
 | `opp_right_deep`: middle of the right half, at the end line | 0.78 … 0.98 | +0.25 … +0.75 | x 2.939–3.213, y 0.191–0.572 |
 | `opp_right_corner`: end line × side line | 0.78 … 0.98 | 0.78 … 0.98 | x 2.939–3.213, y 0.595–0.747 |
 
 The three edge zones are **lined up along the end line**: they share the back edge band (the last 2–22 % of
-the half) and go centre line → middle of the right half → corner. A side-line zone at middle depth
+the half) and go centre line → middle of the right half → corner. The centre-line zone sits just on the
+opponent's-right side of the line: its inner edge is 2.3 cm off the line (more than a ball radius),
+so a landing in it never touches the line. A side-line zone at middle depth
 (`opp_right_side`) is kept, commented out, in `TARGET_ZONES` for later.
 The zones do not overlap. The training bank draws the four targets equally (25 % each). The
 policy does not need to be told the target, because the bank solves the racket velocity that sends
@@ -187,7 +189,7 @@ Statistics of the committed bank (50 000 rows, seed 0):
 
 | Quantity | min | mean | p95 | max |
 |---|---|---|---|---|
-| racket speed (m/s) | 1.15 | 2.72 | 3.38 | 3.50 |
+| racket speed (m/s) | 1.15 | 2.73 | 3.38 | 3.50 |
 | apex height above table (m) | 0.13 | 0.24 | 0.32 | 0.34 |
 | incoming speed at contact (m/s) | 1.99 | 3.03 | 3.51 | 3.78 |
 | net clearance (m) | 0.23 | 0.26 | 0.26 | 0.27 |

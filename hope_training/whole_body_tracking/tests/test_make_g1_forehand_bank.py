@@ -76,6 +76,6 @@ def test_every_row_is_a_success_into_its_target_zone(bank):
         flags = mk.fs.classify_strikes(ball[m], t("incoming_velocity")[m], t("incoming_spin")[m], ball[m],
                                        v_r[m], n_r[m], mk.fs.ForehandSuccessCfg().with_target(name))
         assert bool(flags["success"].all()), name
-    assert (a["intended_landing_xy"][:, 1] > -0.08).all()  # opponent's right (+y), centre line included
+    assert (a["intended_landing_xy"][:, 1] > mk.fs.BALL_RADIUS).all()  # opponent's right, clear of the centre line
     assert np.linalg.norm(a["predicted_landing_xy"] - a["intended_landing_xy"], axis=-1).max() <= cfg.max_landing_err
     assert np.abs(a["net_clearance_m"] - cfg.net_clearance_target).max() <= cfg.max_clearance_err
