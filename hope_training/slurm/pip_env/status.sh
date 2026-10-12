@@ -16,6 +16,8 @@ METRICS=(
   "virtual ball: legal return rate|Metrics/racket_target/virtual_legal_rate_forehand"
   "virtual ball: landing error (m)|Metrics/racket_target/virtual_landing_error_m_forehand"
   "falls (share of episode ends)|Episode_Termination/base_fell_tilt"
+  "rally-pace share of swings|Metrics/motion/rally_pace_swing"
+  "virtual-ball timing jitter (s)|Metrics/racket_target/virtual_timing_jitter_s"
   "seconds per iteration|Iteration time"
 )
 

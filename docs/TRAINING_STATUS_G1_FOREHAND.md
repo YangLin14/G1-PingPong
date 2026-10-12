@@ -7,10 +7,11 @@ This file is the running record of our training runs: what we measure, how we me
 status check so far. Add a new entry to section 5 each time you check a run (newest at the top), and
 a new row to section 4 whenever you run the per-zone evaluation. All times are Pacific (cluster time).
 
-**Latest (2026-10-11 20:40):** `g1_fh_diag` (job 4382) is running at iteration ~2400 / 20 000, about
-38 h to go. Club success of `model_2300` in Isaac: **11.1 %** overall (24.5 % in the middle zone,
-2.3 % in the corner). In MuJoCo with a real ball `model_2400` meets 10/12 balls but only 3/12 clear
-the net, mostly because it strikes 15–40 ms early (section 4).
+**Latest (2026-10-11 21:10):** two runs. `g1_fh_diag` (job 4382, main) at ~2600 / 20 000. New `g1_fh_rally`
+(job 5560) trains the same task at real rally timing, warm-started at 2600, ~26 h for 12 000 iterations.
+Club success of `model_2300` in Isaac: **11.1 %** (24.5 % middle zone, 2.3 % corner). At real rally pace in
+MuJoCo the current policy meets only 38 % of balls and falls on 44 % (section 5), which is what `g1_fh_rally`
+is for.
 
 ---
 
@@ -76,7 +77,9 @@ timing needs a real simulated ball (MuJoCo) or the real robot; that is a later s
 
 | Job | Run name | Task (questions) | Started | State | Last iteration | Note |
 |---|---|---|---|---|---|---|
-| 4382 | `g1_fh_diag` | `HOPEPingPongUnitreeG1_FH_XC` (our bank: diagonal feed, apex, 4 zones) | 10-10 20:12 | **running** | ~2370 | **main run**; requeued once (section 5) |
+| 5560 | `g1_fh_rally` | `HOPEPingPongUnitreeG1_FH_XC_RALLY` (faster-feed bank + rally pace + timing jitter, D14) | 10-11 21:04 | **running** | 2604 → 14 600 | warm start from `g1_fh_diag` `model_2600`; 2 GPUs requested because of a broken GPU (section 5) |
+| 4382 | `g1_fh_diag` | `HOPEPingPongUnitreeG1_FH_XC` (our bank: diagonal feed, apex, 4 zones) | 10-10 20:12 | **running** | ~2600 | **main run**; requeued once (section 5) |
+| 5554 | `g1_fh_rally` | as 5560 | 10-11 21:02 | failed at start | – | assigned the broken GPU |
 | 4354 | `g1_fh` | `HOPEPingPongUnitreeG1_FH` (inherited A3-geometry questions) | 10-10 18:07 | failed (node crash), not resumed | 2196 | baseline; kept at `model_2100` |
 | 4381 | `g1_fh_diag` | earlier bank version | 10-10 20:03 | cancelled after 3 min | – | superseded by the zone fix |
 | 4379 | `g1_fh_diag` | earlier bank version | 10-10 19:54 | cancelled after 2 min | – | superseded |
@@ -182,6 +185,23 @@ touch the ball; use `eval_bank` for the forehand.
 ---
 
 ## 5. Status log (newest first)
+
+### 2026-10-11 21:10 — rally pace measured; new run `g1_fh_rally` started
+* MuJoCo `--rally-pace` (next feed hit 0.7–1.0 s after our contact, known only at launch), `model_2400`,
+  same 16 questions:
+
+  | condition | contact | timing OK | over net | falls | lead | strike-to-strike |
+  |---|---:|---:|---:|---:|---:|---:|
+  | announced 0.9 s ahead (training condition) | 88 % | 38 % | 19 % | 0 % | 0.90 s | 2.3 s |
+  | announced at launch | 69 % | 50 % | 19 % | 0 % | 0.59 s | 2.0 s |
+  | **real rally pace** | **38 %** | 25 % | 12 % | **44 %** | 0.57 s | **1.5 s** |
+* Training changes (decision D14): rally-pace reference clock, ±30 ms virtual-ball timing jitter, a
+  faster-feed bank (4.4–8.5 m/s, end line → apex 0.38–0.85 s). Slower feeds are impossible with the
+  middle-third bounce and fixed strike plane. `check_rally_pace.py` in Isaac (pace forced to 100 %):
+  swing entry at time-to-strike 0.40–0.82 s (median 0.62), strike-to-strike median 1.52 s, jitter 30 ms.
+* First submission 5554 died: zixian's GPU `0000:61:00.0` no longer answers the driver since the
+  outage and Slurm hands it out first. `train.sbatch` now falls back to a healthy device; 5560 asks for
+  2 GPUs. Worth reporting to SDSC.
 
 ### 2026-10-11 20:40 — first per-zone evaluations (Isaac and MuJoCo)
 * New tools: `eval_forehand.sh` (Isaac, club success per zone), `progress.sh`, and `--serve-bank` in

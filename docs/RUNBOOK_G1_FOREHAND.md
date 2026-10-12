@@ -16,6 +16,7 @@ angle brackets in the shell: bash reads `<x>` as "read from file x".
 | Run name | Task | Purpose |
 |---|---|---|
 | `g1_fh_diag` | `HOPEPingPongUnitreeG1_FH_XC` | **Main run.** G1 forehand: diagonal feed from the opponent's right, apex strike, four landing zones. |
+| `g1_fh_rally` | `HOPEPingPongUnitreeG1_FH_XC_RALLY` | Same task at real rally timing (late swing entry, short follow-through, ±30 ms timing jitter, faster feeds), warm-started from `g1_fh_diag` (decision D14). Job 5560. |
 | `g1_fh` | `HOPEPingPongUnitreeG1_FH` | Baseline. Also a G1 forehand, but with HOPE's inherited A3-geometry questions (falling-ball strikes, landings anywhere). For comparison only. |
 
 Both runs are on the **G1**. Neither trains the A3 robot.

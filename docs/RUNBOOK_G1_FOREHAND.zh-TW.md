@@ -14,6 +14,7 @@
 | Run 名稱 | 任務設定 | 用途 |
 |---|---|---|
 | `g1_fh_diag` | `HOPEPingPongUnitreeG1_FH_XC` | **主要訓練**。G1 正手：從對手右邊斜對角餵球、最高點擊球、四個落點。 |
+| `g1_fh_rally` | `HOPEPingPongUnitreeG1_FH_XC_RALLY` | 同一個任務，用真實對打的節奏訓練（揮拍晚開始、收拍時間短、±30 ms 時機誤差、更快的來球），從 `g1_fh_diag` 接續（決策 D14）。Job 5560。 |
 | `g1_fh` | `HOPEPingPongUnitreeG1_FH` | Baseline。一樣是 G1 正手，但用的是 HOPE 原本照 A3 幾何設計的題目（在球往下掉時擊球、落點分佈在整個台面），只拿來比較。 |
 
 兩個都是 **G1**，都不是在訓練 A3。
