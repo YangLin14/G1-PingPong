@@ -4,7 +4,8 @@
 
 This document records what the Triton Droids team built on top of HOPE and the club's G1 port,
 why each decision was made, how the whole system works end to end, and how to run every piece.
-Status as of **2026-10-10**: simulation only (the G1 has not arrived); everything is designed so the
+Run-by-run numbers and status checks live in [`TRAINING_STATUS_G1_FOREHAND.md`](TRAINING_STATUS_G1_FOREHAND.md).
+Status as of **2026-10-12**: simulation only (the G1 has not arrived); everything is designed so the
 sim-to-real path stays open.
 
 ---
@@ -44,9 +45,10 @@ rallies up to 106 shots), using references made by filming a human, lifting the 
 | D9 | Make reference motions from **human video** (GVHMR + GMR), as HITTER did. | `g1-port` clips are joint-space copies of the A3 swing; at its strike frame the racket is at ~0.78 m (table height), and the first G1 run was reach-limited (−9 cm x, −10 cm z). |
 | D10 | Do not calibrate metrics against the A3 `model_21800`. | It does not work in our setup; metrics are verified with unit tests on known-good/bad racket states instead. |
 | D11 | Run Isaac on SDSC from a **pip** install instead of the 64 GB container. | Podman cannot run on the BeeGFS home; the pip route needs no sudo. Node workarounds are scripted (section 8). |
-| D13 | **One policy for all landing zones; the zone is chosen by the planner.** Positions are selectable modes (one or several) at run time, not separate policies. | The policy tracks a racket target; the planner/bank turns the chosen landing point into that racket velocity. One policy shares the body skill across zones, costs a quarter of the GPU time, and switches zones between shots without changing controllers. Per-zone evaluation (`target_zone_id`) shows whether a zone needs more weight or fine-tuning. |
-| D14 | **Train at real rally timing, in a separate run (`g1_fh_rally`, task `HOPEPingPongUnitreeG1_FH_XC_RALLY`), warm-started from `g1_fh_diag`.** Up to 60 % of follow-up swings enter the clip late (time-to-strike 0.4–0.83 s, no hold) and the previous follow-through ends 0.7–1.0 s after its strike; the virtual ball arrives ±30 ms off the clock; feeds are faster (4.5–8.4 m/s). All ramped in over 3000 iterations. | MuJoCo at real cadence (`--rally-pace`) dropped contact from 88 % to 38 % with falls on 44 % of balls: training gave 0.83 s of lead and ~3 s between strikes, a rally gives 0.4–0.8 s and ~1.5 s. Late entry is what the deploy reference clock does when the planner's time-to-strike is short, so no clip time-warp is needed. Slower feeds are impossible with the middle-third bounce and a fixed strike plane (the apex would be in front of the robot); they need forward footwork. The main run keeps going untouched as the comparison. |
 | D12 | A lean HITTER-style reward (upper-body imitation + racket goal + base position + regularization) will be A/B-tested against the 53-term HOPE recipe. | **Pending**: needs the video clip first. |
+| D13 | **One policy for all landing zones; the zone is chosen by the planner.** Positions are selectable modes (one or several) at run time, not separate policies. | The policy tracks a racket target; the planner/bank turns the chosen landing point into that racket velocity. One policy shares the body skill across zones, costs a quarter of the GPU time, and switches zones between shots without changing controllers. Per-zone evaluation (`target_zone_id`) shows whether a zone needs more weight or fine-tuning. |
+| D14 | **Train at real rally timing, in a separate run (`g1_fh_rally`, task `HOPEPingPongUnitreeG1_FH_XC_RALLY`), warm-started from `g1_fh_diag`.** Up to 60 % of follow-up swings enter the clip late (time-to-strike 0.4–0.83 s, no hold) and the previous follow-through ends 0.7–1.0 s after its strike; the virtual ball arrives ±30 ms off the clock; feeds are faster (4.4–8.5 m/s before the bounce, was 4.4–6.6). All ramped in over 3000 iterations. | MuJoCo at real cadence (`--rally-pace`) dropped contact from 88 % to 38 % with falls on 44 % of balls: training gave 0.83 s of lead and ~3 s between strikes, a rally gives 0.4–0.8 s and ~1.5 s. Late entry is what the deploy reference clock does when the planner's time-to-strike is short, so no clip time-warp is needed. Slower feeds are impossible with the middle-third bounce and a fixed strike plane (the apex would be in front of the robot); they need forward footwork. The main run keeps going untouched as the comparison. |
+| D15 | **A requeued run continues its step-keyed ramps; a warm start from another run restarts them.** `train.sbatch` passes `restore_step_counter=true` only when it resumes the run's own newest checkpoint. | Cluster outages and preemption requeue jobs. `runner.load` restores weights and optimizer but left `env.common_step_counter` at 0, so the rally-pace and timing-jitter ramps started over after every requeue. The counter is already saved in the checkpoint's exact-resume state. |
 
 ---
 
@@ -139,13 +141,22 @@ the ball to it, and the policy tracks that velocity.
 | `tasks/tracking/mdp/hope_commands.py` | New `RacketTargetCommandCfg.active_clip_ids` (clips this recipe trains; empty = both). With a single side: the ability gate checks only that side (otherwise the never-sampled backhand keeps it locked forever), both `fixed_balanced_bank_v1` tuple cohorts are assigned to that side (otherwise `RuntimeError: permanent physical tuple cohort disagrees with MotionCommand clip`), and the bank loader requires rows only for that side. Default behaviour is unchanged. |
 | `cfg/task/HOPEPingPongUnitreeG1_FH.yaml` | Forehand-only variant A recipe: `eval_clip_sequence=[0]`, `fixed_clip_env_fraction_per_clip=0` (no permanent backhand cohort), `active_clip_ids=[0]`. Still uses the A3 bank (baseline). |
 | `cfg/task/HOPEPingPongUnitreeG1_FH_XC.yaml` | `_FH` + the cross-court apex bank at 100 % mix. **Main recipe.** |
-| `utils/forehand_success.py` | The section 3 success definition (`classify_strikes`, `ForehandSuccessTally` with misses in the denominator, `TARGET_ZONES`, `FEED_ZONE`, feed origin). Isaac-free. |
+| `cfg/task/HOPEPingPongUnitreeG1_FH_XC_RALLY.yaml` | `_FH_XC` + the faster-feed bank + rally pace (`rally_pace_prob` 0.6) + ±30 ms timing jitter, ramped over 72 000 env steps (3000 iterations). Recipe of the `g1_fh_rally` run (D14). |
+| `tasks/tracking/mdp/commands.py` | `MotionCommand` rally pace (`rally_pace_prob`, `rally_pace_ramp_steps`, `rally_pace_start_tts_range`, `rally_pace_post_strike_range`): when a swing follows a swing, the clip is entered late (time-to-strike 0.4–0.83 s, no hold) and the previous follow-through is cut 0.7–1.0 s after its strike. Metrics `rally_pace_swing`, `rally_pace_prob`. Off by default. |
+| `tasks/tracking/mdp/hope_commands.py` (also) | `vb_timing_jitter_s` / `vb_timing_jitter_ramp_steps`: at the strike frame the virtual ball is moved ballistically by τ ~ U(−s, s), so the policy must hit a ball that is slightly early or late. Metric `virtual_timing_jitter_s`. Off by default. |
+| `scripts/train.py`, `cfg/train.yaml` | `restore_step_counter` (D15). |
+| `utils/forehand_success.py` | The section 3 success definition (`classify_strikes`, `ForehandSuccessTally` with misses in the denominator, `TARGET_ZONES`, `FEED_ZONE`, feed origin). The tally is a funnel (contact → over the net → on the opponent's half → in the zone); `ZoneSuccessReport` splits it per zone. Isaac-free. |
 
 ### Tools (`hope_training/whole_body_tracking/scripts/`)
 
 | File | What |
 |---|---|
-| `make_g1_forehand_bank.py` | Generates the question bank (section 6). |
+| `make_g1_forehand_bank.py` | Generates the question bank (section 6). `--vin-x/--vin-y/--vin-z/--spin-rev-s` set the feed range. |
+| `evaluate_forehand.py` (+ `cfg/evaluate_forehand.yaml`) | Club success rate per zone in Isaac: deterministic policy, 512 envs × 60 s, zone from each question's intended landing. |
+| `mujoco_forehand_bank.py` | Bank questions for MuJoCo: feed start state at the far end line, NumPy venue flight model, closed-loop apex planner that re-solves the racket velocity after the real bounce. |
+| `mujoco_eval_onnx.py` (extended) | `--serve-bank` (real ball fed from our bank), `--zones`, `--feed-lead-s`, `--rally-pace` / `--rally-gap-s` (next feed 0.7–1.0 s after our contact, announced only at launch); club scoring per ball and per zone. Default mode unchanged. |
+| `mujoco_pingpong_scene.py` (extended) | Opt-in Magnus force, target-zone drawing, ball spin, and the venue table-bounce model (MuJoCo's own bounce put the apex 20–40 cm too deep). |
+| `check_rally_pace.py` | Isaac check of the rally-pace clock and timing jitter (swing entry time, strike-to-strike interval, falls). |
 | `view_feed_bank.py` | MuJoCo visualizer of the bank: diagonal feed from the opponent's right → bounce → apex → return, with the feed origin, all zones (current target highlighted) and racket target; interactive or MP4, `--camera behind|top`. |
 | `gvhmr_to_g1_headless.py` | GMR's GVHMR → G1 retarget without its viewer (cluster nodes have no display). |
 | `gmr_video_clip_to_g1.py` | GMR output → HOPE G1 clip: trim, 30 → 50 Hz, heading/xy normalization, joint reorder + limit clamp, loop-closure blend, MuJoCo FK of the 14 tracked bodies, strike frame (peak racket speed or manual), optional MP4 preview. |
@@ -155,11 +166,13 @@ the ball to it, and the policy tracks that velocity.
 | Path | What |
 |---|---|
 | `assets/venue_tuple/g1_fh_crosscourt_apex_bank.{npz,receipt.json}` | 50 000-row bank (seed 0, reproducible, 12 500 rows per target zone) + receipt with the full contract and statistics. |
-| `hope_training/slurm/pip_env/` | Container-free install, smoke, training and generic run jobs for SDSC ([README](../hope_training/slurm/pip_env/README.md)). |
+| `assets/venue_tuple/g1_fh_crosscourt_apex_bank_wide.{npz,receipt.json}` | Faster-feed bank for `_FH_XC_RALLY` (section 6). Force-added: `assets/venue_tuple/*` is gitignored. |
+| `hope_training/slurm/pip_env/` | Container-free install, smoke, training and generic run jobs for SDSC ([README](../hope_training/slurm/pip_env/README.md)). `train.sbatch` adds `INIT_CHECKPOINT` (warm start from another run), a healthy-GPU fallback and `restore_step_counter`; `status.sh`, `progress.sh`, `eval_checkpoint.sh` (MuJoCo videos: examples, bank, rally pace), `eval_forehand.sh` (Isaac per-zone). Usage in the [runbook](RUNBOOK_G1_FOREHAND.md). |
 | `hope_training/slurm/video_to_g1/` | Video → G1 clip install script and job ([README](../hope_training/slurm/video_to_g1/README.md)). |
-| `tests/test_forehand_success.py` | 9 tests: the four zones (three aligned at the end line, no overlap), feed zone and origin, an apex ball *can* be returned into the zone (grid search), falling ball / missed racket / soft tap / down-the-line all fail, misses count in the denominator. |
+| `tests/test_forehand_success.py` | 12 tests: the four zones (three aligned at the end line, no overlap), feed zone and origin, an apex ball *can* be returned into the zone (grid search), falling ball / missed racket / soft tap / down-the-line all fail, misses count in the denominator, funnel counts, per-zone report. |
 | `tests/test_make_g1_forehand_bank.py` | 4 tests: loader schema; feed/apex/strike-box/speed constraints; the feed comes diagonally from the opponent's right; equal rows per zone and **every row is a success into its own zone**. |
 | `tests/test_gmr_video_clip_to_g1.py` | 3 tests: round trip of a published G1 clip through a fake GMR file (joints < 0.03 rad, bodies < 1 cm, strike frame ±1), sidecar schema, loop blend. |
+| `tests/test_mujoco_forehand_bank.py` | 3 tests: the MuJoCo-side flight and planner reproduce the bank's apex and racket velocity. |
 | `docs/plans/SERVE_SIDE_BACKSPIN_PLAN.md` | The shelved serve plan (D4). |
 
 ---
@@ -203,6 +216,18 @@ Regenerate (about 15 min on a laptop CPU) with:
 `python3 hope_training/whole_body_tracking/scripts/make_g1_forehand_bank.py --rows 50000`.
 Changing the seed or physics changes the rows, so **retrain after regenerating**.
 
+**Faster-feed bank** (`g1_fh_crosscourt_apex_bank_wide`, used by `_FH_XC_RALLY`): same steps with
+pre-bounce vx −7.5…−1.8, vy −3.0…−0.2, vz −4.5…−1.0 m/s and spin up to 8 rev/s; 50 000 rows from
+7 million candidates. Feed speed before the bounce 4.4–8.5 m/s (mean 6.6), end line → apex
+0.38–0.85 s (mean 0.51), incoming speed at contact 2.0–5.1 m/s. Feeds slower than ~4.4 m/s cannot
+bounce in the middle third and still peak inside the fixed strike box; they need forward footwork.
+
+```bash
+python3 hope_training/whole_body_tracking/scripts/make_g1_forehand_bank.py --rows 50000 \
+  --vin-x -7.5 -1.8 --vin-y -3.0 -0.2 --vin-z -4.5 -1.0 --spin-rev-s 8 \
+  --out hope_training/whole_body_tracking/assets/venue_tuple/g1_fh_crosscourt_apex_bank_wide
+```
+
 ---
 
 ## 7. End-to-end pipeline
@@ -213,11 +238,14 @@ Changing the seed or physics changes the rows, so **retrain after regenerating**
  club rules ──► forehand_success.py ──► make_g1_forehand_bank ──► question bank ───┤
                                                                                    ▼
                                      Isaac Lab PPO (task HOPEPingPongUnitreeG1_FH_XC, SDSC, ~45 h)
+                                                                                   │ warm start
+                                                                                   ▼
+                                     rally-timing run (task _FH_XC_RALLY: faster feeds, rally pace, jitter)
                                                                                    │ checkpoints
                                                                                    ▼
-            evaluation: forehand_success metric (Isaac)  ·  export_onnx --robot unitree_g1
+            evaluation: evaluate_forehand.py, per-zone club success (Isaac)  ·  export_onnx --robot unitree_g1
                                                                                    ▼
-                          MuJoCo sim-to-sim (mujoco_eval_onnx.py --robot unitree_g1)
+          MuJoCo sim-to-sim with a real ball (mujoco_eval_onnx.py: bank feeds, rally pace, club scoring)
                                                                                    ▼
                        hardware: G1 runner + mocap + planner  [not built yet; C++ runner is A3-only]
 ```
@@ -232,7 +260,8 @@ Changing the seed or physics changes the rows, so **retrain after regenerating**
 cd G1-PingPong
 python3 -m venv .venv && .venv/bin/pip install -r a3_deploy/a3_deploy_example/reference/requirements.txt torch pytest imageio imageio-ffmpeg
 .venv/bin/python -m pytest -q unitree/tests hope_training/whole_body_tracking/tests/test_forehand_success.py \
-  hope_training/whole_body_tracking/tests/test_make_g1_forehand_bank.py hope_training/whole_body_tracking/tests/test_gmr_video_clip_to_g1.py
+  hope_training/whole_body_tracking/tests/test_make_g1_forehand_bank.py hope_training/whole_body_tracking/tests/test_gmr_video_clip_to_g1.py \
+  hope_training/whole_body_tracking/tests/test_mujoco_forehand_bank.py
 
 # Watch the ball feeding. MuJoCo windows on macOS need mjpython. Because this path has a space,
 # call mjpython through the venv python (its shebang breaks on the space).
@@ -248,7 +277,12 @@ yellow trail is the ball; the red disc and arrow are the racket target (face and
 ### Cluster (SDSC Atlantis, `ssh sdsc-scc`)
 
 * Account `tritondroids`. The whole club shares **32 CPUs / 96 GB / 8 GPUs**. Isaac needs an RTX
-  GPU, so use `--gres=rtx2080ti:1` (node `zixian`, 11 GB, driver 610.43).
+  GPU, so use `--gres=rtx2080ti:1` (node `zixian`, 11 GB, driver 610.43). One training run uses one GPU.
+* `zixian`'s 8 GPUs are also open to other accounts (on 10-11 an `scc` job held 4), so the club quota
+  of 8 does not mean 8 are free. Jobs in QOS `normal` (4 h limit) can preempt QOS `long` (training);
+  `train.sbatch` requeues and resumes from the newest checkpoint (up to 100 iterations are redone).
+* After the 10-11 outage GPU `0000:61:00.0` stopped answering the driver for a day; it was fixed on
+  10-12. `train.sbatch` still falls back to a working device if CUDA does not come up.
 * Layout: `~/hope/{HOPE (this repo), isaac-venv, IsaacLab, syslibs, mocap, slurm_logs}`.
 * Submit every job **from the repository root**.
 
@@ -256,8 +290,11 @@ yellow trail is the ball; the red disc and arrow are the racket target (face and
 sbatch hope_training/slurm/pip_env/install_isaac.sbatch                    # once
 bash   hope_training/slurm/video_to_g1/install_mocap.sh                    # once (+ SMPL/SMPL-X, see its README)
 sbatch --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC hope_training/slurm/pip_env/g1_smoke.sbatch
-sbatch --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC,RUN_NAME=g1_fh_xc hope_training/slurm/pip_env/train.sbatch
-squeue -u $USER; tail -f hope-g1-train-<jobid>.out
+sbatch --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC,RUN_NAME=g1_fh_diag hope_training/slurm/pip_env/train.sbatch
+# warm start a new run from another run's checkpoint (TOTAL_ITERS is absolute):
+sbatch --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC_RALLY,RUN_NAME=g1_fh_rally,TOTAL_ITERS=14600,INIT_CHECKPOINT=<.../model_2600.pt> \
+  hope_training/slurm/pip_env/train.sbatch
+bash hope_training/slurm/pip_env/status.sh            # every run: iteration, key metrics, newest checkpoint
 # TensorBoard on the laptop:
 ssh -L 6006:localhost:6006 sdsc-scc '~/hope/isaac-venv/bin/tensorboard --port 6006 \
   --logdir ~/hope/HOPE/hope_training/whole_body_tracking/logs/rsl_rl/unitree_g1_hitter_pingpong'
@@ -288,20 +325,30 @@ licensed per person and must never be committed (they are in `.git/info/exclude`
 
 ---
 
-## 9. Results so far (2026-10-10)
+## 9. Results so far (2026-10-12)
+
+Full tables, curves and the status log are in
+[`TRAINING_STATUS_G1_FOREHAND.md`](TRAINING_STATUS_G1_FOREHAND.md). Summary:
 
 * Environment: Isaac Sim 5.1 + Isaac Lab 0.54.2 boot and train on the 2080 Ti. The G1 smoke passes
   all steps. The Isaac/MuJoCo plant replay matches `g1-port`'s numbers (0.023 rad, 0.047 m, fall
   onset 1.34 s vs 1.40 s).
 * Video pipeline: verified on GVHMR's example video (person height 1.73 m, 10 m/s peak racket
-  speed); converter round trip within 0.012 rad / 1.6 mm.
-* Training runs on `rtx2080ti`, 4096 envs, about 8 s/iteration with two runs sharing a node:
+  speed); converter round trip within 0.012 rad / 1.6 mm. Our own forehand video is not recorded yet.
+* Runs (4096 envs, ~8 s/iteration):
 
-  | Job | Task | Status at last check |
+  | Run | Task | Latest (10-12 14:00) |
   |---|---|---|
-  | 4354 `g1_fh` | `_FH` (A3 bank, baseline) | iter 602: pos-within-10 cm 7.8 %, composite 0, falls 39 % of terminations |
-  | 4367 `g1_fh_xc` | `_FH_XC` (**main**) | iter 240: early; no strikes yet |
+  | `g1_fh_diag` (**main**) | `_FH_XC` | iteration 3814 / 20 000: racket ≤10 cm 89 %, contact 62 %, legal return 39 %, falls 7.7 % |
+  | `g1_fh_rally` | `_FH_XC_RALLY` (D14), warm start at 2600 | iteration 4713 / 14 600: racket ≤10 cm 92 %, contact 64 %, legal 39 %, falls 3.6 %, rally pace 26 % of swings, jitter 21 ms |
+  | `g1_fh` (baseline) | `_FH` (A3 bank) | stopped at 2196 |
 
+* Club success in Isaac (`evaluate_forehand.py`, 8100 balls): `g1_fh_diag` `model_2300` **11.1 %**
+  (24.5 % `opp_right_mid`, 6.2 % `center_line_deep`, 11.3 % `opp_right_deep`, 2.3 % corner; contact
+  92 %, over the net 91 %, legal 79 %). The baseline `g1_fh` `model_2100` reaches 4.6 %.
+* MuJoCo with a real ball fed from the bank: `model_2400` makes contact on 10 of 12 but strikes
+  15–40 ms before the apex, and none land in the zone yet. At real rally pace (`--rally-pace`) contact
+  drops from 88 % to 38 % and the robot falls on 44 % of balls. This is why `g1_fh_rally` exists.
 * HOPE upstream issues found along the way: commit `00e2e96` made the Gate 3 table in
   `a3_pingpong.xml` collide with the robot (it pins the racket arm in the standalone evaluator), and
   the evaluator's default geometry does not match Gate 3 (0.30 m vs 0.50 m to the table edge).
@@ -312,20 +359,18 @@ licensed per person and must never be committed (they are in `.git/info/exclude`
 ## 10. Next steps
 
 1. Record the forehand video, convert it with `video_to_g1`, and inspect the preview.
-2. Train `_FH_XC` with the human clip (`motion_file=...`; update `strike_phase_per_clip`).
+2. Train `_FH_XC` with the human clip (`motion_file=...`; update `strike_phase_per_clip`). A shorter
+   pre-strike segment also helps the lead-time problem.
 3. Add the lean HITTER reward recipe and A/B it against the HOPE recipe (D12).
 4. ~~Isaac evaluation with `forehand_success`, per zone~~: done (2026-10-11),
-   `scripts/evaluate_forehand.py` / `eval_forehand.sh`; results in
-   [`TRAINING_STATUS_G1_FOREHAND.md`](TRAINING_STATUS_G1_FOREHAND.md).
+   `scripts/evaluate_forehand.py` / `eval_forehand.sh`.
 5. Zone selection (D13): a `target_zone_ids` filter on the bank for training/eval/play, and the
-   same choice exposed in the deploy planner. Then widen
-   the feed distribution.
-6. Close the real-ball gap found by the MuJoCo bank evaluation
-   ([`TRAINING_STATUS_G1_FOREHAND.md`](TRAINING_STATUS_G1_FOREHAND.md) section 4): the policy strikes
-   15–40 ms before the apex, MuJoCo's racket contact returns the ball lower than the venue paddle
-   model, and the swing clip needs ~0.83 s of lead while a fast feed flies 0.5–0.8 s. Candidates:
-   timing noise/delay on the virtual strike in training, a racket-contact model check against MuJoCo,
-   a later swing start (or a shorter pre-strike clip).
+   same choice exposed in the deploy planner. (Wider feeds: done with the faster-feed bank.)
+6. Close the real-ball gap found by the MuJoCo bank evaluation. Done so far (D14): timing jitter on
+   the virtual strike, a late swing start at rally pace, faster feeds. Still open: check MuJoCo's racket
+   contact against the venue paddle model (MuJoCo returns the ball lower), then compare `g1_fh_rally`
+   with `g1_fh_diag` on `eval_rally` / `eval_bank` / Isaac zones once the ramps are full (~iteration 5600).
 7. Before hardware: measure the real racket adapter, refit ball physics on our table, and write a
    G1 deploy runner (the C++ runner is A3-only).
-7. Then balance and footwork (free station), then backhand, then the serve plan.
+8. Then balance and footwork (free station; also needed for feeds slower than ~4.4 m/s), then
+   backhand, then the serve plan.

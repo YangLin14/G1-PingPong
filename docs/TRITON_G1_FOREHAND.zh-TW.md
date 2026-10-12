@@ -2,8 +2,8 @@
 
 [English](TRITON_G1_FOREHAND.md) · 日常操作指令：[RUNBOOK_G1_FOREHAND.zh-TW.md](RUNBOOK_G1_FOREHAND.zh-TW.md)
 
-這份文件記錄 Triton Droids 在 HOPE 和社團 G1 移植版上做了哪些事：每個決定的理由、整套系統從頭到尾怎麼運作，以及每個部分怎麼執行。
-狀態為 **2026-10-10**：G1 實機還沒到，目前只在模擬中進行，但所有設計都保留了之後上實機（sim-to-real）的路徑。
+這份文件記錄 Triton Droids 在 HOPE 和社團 G1 移植版上做了哪些事：每個決定的理由、整套系統從頭到尾怎麼運作，以及每個部分怎麼執行。每個 run 的數字和每次的狀態檢查記錄在 [`TRAINING_STATUS_G1_FOREHAND.zh-TW.md`](TRAINING_STATUS_G1_FOREHAND.zh-TW.md)。
+狀態為 **2026-10-12**：G1 實機還沒到，目前只在模擬中進行，但所有設計都保留了之後上實機（sim-to-real）的路徑。
 
 ---
 
@@ -37,9 +37,10 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 | D9 | 參考動作改用**真人影片**製作（GVHMR + GMR），跟 HITTER 一樣。 | `g1-port` 的 clip 是直接把 A3 的關節角度套到 G1 上；擊球那一幀球拍只在約 0.78 m（桌面高度），第一版 G1 訓練也有搆不到的問題（x 少 9 cm、z 少 10 cm）。 |
 | D10 | 不拿 A3 的 `model_21800` 來校準指標。 | 它在我們的環境裡打不到球；改用單元測試，給定「已知會成功」和「已知會失敗」的球拍狀態來驗證指標。 |
 | D11 | 在 SDSC 上用 **pip** 安裝 Isaac，不用 64 GB 的容器。 | 叢集的 home 是 BeeGFS，podman 在上面跑不起來；pip 安裝不需要 sudo。節點上的問題都寫成腳本處理（第 8 節）。 |
-| D13 | **四個落點共用同一個策略，由規劃器決定打哪一個。** 落點是執行時可以切換的模式（可以選一個或多個），不是分開訓練的策略。 | 策略只負責追蹤球拍目標；規劃器（題庫）會把選定的落點換算成對應的球拍速度。共用一個策略可以讓不同落點共享身體技能，GPU 時間只要四分之一，而且換落點時不用切換控制器、動作不會突然改變。評估時可以按落點分別統計（`target_zone_id`），看哪個落點需要多練或微調。 |
-| D14 | **用真實對打的時間節奏訓練，開一個獨立的 run（`g1_fh_rally`，task `HOPEPingPongUnitreeG1_FH_XC_RALLY`），從 `g1_fh_diag` 接續權重。** 最多 60% 的後續揮拍會晚開始（距離擊球 0.4–0.83 秒、沒有等待），前一拍的收拍在擊球後 0.7–1.0 秒就結束；虛擬球到達時間有 ±30 ms 誤差；來球更快（4.5–8.4 m/s）。三項都在 3000 個 iteration 內逐步加入。 | MuJoCo 真實對打節奏（`--rally-pace`）下，接觸率從 88% 掉到 38%，44% 的球會跌倒：訓練時有 0.83 秒預告、兩拍之間約 3 秒，真實對打只有 0.4–0.8 秒和約 1.5 秒。「晚開始」正是部署時規劃器給的時間比較短時，參考時鐘會做的事，所以不需要把動作做時間壓縮。在彈跳點固定於中間三分之一、擊球平面固定的情況下，較慢的來球物理上做不到（最高點會在機器人前面），需要往前移動的步伐才行。主要 run 繼續跑不動，作為對照。 |
 | D12 | 照 HITTER 寫一個精簡版獎勵（上半身模仿、球拍目標、站位、平滑項），跟 HOPE 的 53 項獎勵做 A/B 比較。 | **尚未進行**：要先有影片做出來的 clip。 |
+| D13 | **四個落點共用同一個策略，由規劃器決定打哪一個。** 落點是執行時可以切換的模式（可以選一個或多個），不是分開訓練的策略。 | 策略只負責追蹤球拍目標；規劃器（題庫）會把選定的落點換算成對應的球拍速度。共用一個策略可以讓不同落點共享身體技能，GPU 時間只要四分之一，而且換落點時不用切換控制器、動作不會突然改變。評估時可以按落點分別統計（`target_zone_id`），看哪個落點需要多練或微調。 |
+| D14 | **用真實對打的時間節奏訓練，開一個獨立的 run（`g1_fh_rally`，task `HOPEPingPongUnitreeG1_FH_XC_RALLY`），從 `g1_fh_diag` 接續權重。** 最多 60% 的後續揮拍會晚開始（距離擊球 0.4–0.83 秒、沒有等待），前一拍的收拍在擊球後 0.7–1.0 秒就結束；虛擬球到達時間有 ±30 ms 誤差；來球更快（反彈前 4.4–8.5 m/s，原本 4.4–6.6）。三項都在 3000 個 iteration 內逐步加入。 | MuJoCo 真實對打節奏（`--rally-pace`）下，接觸率從 88% 掉到 38%，44% 的球會跌倒：訓練時有 0.83 秒預告、兩拍之間約 3 秒，真實對打只有 0.4–0.8 秒和約 1.5 秒。「晚開始」正是部署時規劃器給的時間比較短時，參考時鐘會做的事，所以不需要把動作做時間壓縮。在彈跳點固定於中間三分之一、擊球平面固定的情況下，較慢的來球物理上做不到（最高點會在機器人前面），需要往前移動的步伐才行。主要 run 繼續跑不動，作為對照。 |
+| D15 | **同一個 run 被 requeue 後，依步數漸進的設定會接著走；從別的 run 接續權重時則從頭開始。** `train.sbatch` 只有在接續這個 run 自己最新的 checkpoint 時才會加上 `restore_step_counter=true`。 | 叢集停機和被搶佔都會讓 job requeue。`runner.load` 會還原權重和 optimizer，但 `env.common_step_counter` 會停在 0，所以對打節奏和時機誤差的漸進比例每次 requeue 都從頭開始。這個計數器本來就存在 checkpoint 的 exact-resume 狀態裡。 |
 
 ---
 
@@ -108,13 +109,22 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 | `tasks/tracking/mdp/hope_commands.py` | 新增 `RacketTargetCommandCfg.active_clip_ids`，代表這個設定實際訓練哪幾手（空的 = 正反手都練）。只練一手時有三個效果：(1) 能力門檻只檢查那一手，否則永遠抽不到的反手會讓門檻一直打不開；(2) `fixed_balanced_bank_v1` 的兩組固定題目都分給那一手，否則會報錯 `permanent physical tuple cohort disagrees with MotionCommand clip`；(3) 題庫載入器只要求那一手有足夠的題目。沒有設定時，行為跟原本完全一樣。 |
 | `cfg/task/HOPEPingPongUnitreeG1_FH.yaml` | 只練正手的 variant A 設定：`eval_clip_sequence=[0]`、`fixed_clip_env_fraction_per_clip=0`（不再有永久的反手環境）、`active_clip_ids=[0]`。還在用 A3 題庫，當作 baseline。 |
 | `cfg/task/HOPEPingPongUnitreeG1_FH_XC.yaml` | 在 `_FH` 的基礎上加上斜線最高點題庫，比例 100%。**這是主要的訓練設定。** |
-| `utils/forehand_success.py` | 第 3 節的成功判定：`classify_strikes`、`ForehandSuccessTally`（分母包含沒打到的球）、`TARGET_ZONES`、`FEED_ZONE`、餵球起點。不需要 Isaac 也能執行。 |
+| `cfg/task/HOPEPingPongUnitreeG1_FH_XC_RALLY.yaml` | `_FH_XC` 加上更快來球的題庫、對打節奏（`rally_pace_prob` 0.6）、±30 ms 時機誤差，在 72,000 個環境步數（3000 個 iteration）內逐步加入。是 `g1_fh_rally` 用的設定（D14）。 |
+| `tasks/tracking/mdp/commands.py` | `MotionCommand` 的對打節奏（`rally_pace_prob`、`rally_pace_ramp_steps`、`rally_pace_start_tts_range`、`rally_pace_post_strike_range`）：連續揮拍時，下一拍從 clip 的中段開始（距離擊球 0.4–0.83 秒、沒有等待），前一拍的收拍在擊球後 0.7–1.0 秒就切掉。指標 `rally_pace_swing`、`rally_pace_prob`。預設關閉。 |
+| `tasks/tracking/mdp/hope_commands.py`（另外） | `vb_timing_jitter_s` / `vb_timing_jitter_ramp_steps`：擊球那一幀的虛擬球會沿著飛行軌跡往前或往後移 τ ~ U(−s, s)，所以策略要學會打稍早或稍晚到的球。指標 `virtual_timing_jitter_s`。預設關閉。 |
+| `scripts/train.py`、`cfg/train.yaml` | `restore_step_counter`（D15）。 |
+| `utils/forehand_success.py` | 第 3 節的成功判定：`classify_strikes`、`ForehandSuccessTally`（分母包含沒打到的球）、`TARGET_ZONES`、`FEED_ZONE`、餵球起點。統計是一層一層的漏斗（接觸 → 過網 → 落在對方半場 → 落在目標區），`ZoneSuccessReport` 再按落點分開。不需要 Isaac 也能執行。 |
 
 ### 工具（`hope_training/whole_body_tracking/scripts/`）
 
 | 檔案 | 用途 |
 |---|---|
-| `make_g1_forehand_bank.py` | 產生題庫（第 6 節）。 |
+| `make_g1_forehand_bank.py` | 產生題庫（第 6 節）。`--vin-x/--vin-y/--vin-z/--spin-rev-s` 設定來球範圍。 |
+| `evaluate_forehand.py`（+ `cfg/evaluate_forehand.yaml`） | 在 Isaac 裡按落點算社團成功率：確定性策略、512 個環境 × 60 秒，每一球的落點區由題目的目標落點決定。 |
+| `mujoco_forehand_bank.py` | 把題庫的題目搬到 MuJoCo：遠端底線的餵球初始狀態、NumPy 版的 venue 飛行模型、閉迴路的最高點規劃器（真的反彈之後會重新解一次球拍速度）。 |
+| `mujoco_eval_onnx.py`（擴充） | `--serve-bank`（用我們的題庫餵真的球）、`--zones`、`--feed-lead-s`、`--rally-pace` / `--rally-gap-s`（我們擊球後 0.7–1.0 秒對手就回下一球，球發出時才知道打哪裡）；每一球、每個落點都用社團規則計分。預設模式不變。 |
+| `mujoco_pingpong_scene.py`（擴充） | 可選的 Magnus 力、畫出目標區、球的旋轉，以及 venue 的桌面反彈模型（MuJoCo 自己的反彈會讓最高點深 20–40 cm）。 |
+| `check_rally_pace.py` | 在 Isaac 檢查對打節奏的時鐘和時機誤差（揮拍開始時間、兩拍間隔、跌倒）。 |
 | `view_feed_bank.py` | 在 MuJoCo 裡播放題庫的每一題：從對手右邊斜對角餵球 → 反彈 → 最高點 → 回球，同時畫出餵球起點、所有區域（目前的目標會亮起來）和球拍目標；可以開互動視窗或輸出 MP4，鏡頭可選 `--camera behind|top`。 |
 | `gvhmr_to_g1_headless.py` | GMR 的「GVHMR → G1」轉換，但不開視窗（叢集節點沒有螢幕）。 |
 | `gmr_video_clip_to_g1.py` | 把 GMR 的輸出轉成 HOPE 的 G1 clip：裁切、30 → 50 Hz、對齊朝向和位置、重排關節順序並限制在關節範圍內、把結尾混接回開頭讓 clip 可以循環、用 MuJoCo 算出 14 個身體部位的姿態、標記擊球幀（自動取球拍速度最快的一幀，或手動指定），可選擇輸出 MP4 預覽。 |
@@ -124,11 +134,13 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 | 路徑 | 內容 |
 |---|---|
 | `assets/venue_tuple/g1_fh_crosscourt_apex_bank.{npz,receipt.json}` | 5 萬題的題庫（seed 0，可以重現，每個落點各 12,500 題）和 receipt，receipt 記錄了完整的產生規格和統計數字。 |
-| `hope_training/slurm/pip_env/` | 不用容器的 SDSC 安裝、smoke 測試、訓練、通用執行腳本（[README](../hope_training/slurm/pip_env/README.md)）。 |
+| `assets/venue_tuple/g1_fh_crosscourt_apex_bank_wide.{npz,receipt.json}` | `_FH_XC_RALLY` 用的快球題庫（第 6 節）。因為 `assets/venue_tuple/*` 在 gitignore 裡，所以是用 force-add 加進來的。 |
+| `hope_training/slurm/pip_env/` | 不用容器的 SDSC 安裝、smoke 測試、訓練、通用執行腳本（[README](../hope_training/slurm/pip_env/README.md)）。`train.sbatch` 新增 `INIT_CHECKPOINT`（從別的 run 接續權重）、自動改用正常 GPU、`restore_step_counter`；另有 `status.sh`、`progress.sh`、`eval_checkpoint.sh`（MuJoCo 影片：範例球、題庫、對打節奏）、`eval_forehand.sh`（Isaac 分區評估）。用法見 [runbook](RUNBOOK_G1_FOREHAND.zh-TW.md)。 |
 | `hope_training/slurm/video_to_g1/` | 「影片 → G1 clip」的安裝腳本和 Slurm 腳本（[README](../hope_training/slurm/video_to_g1/README.md)）。 |
-| `tests/test_forehand_success.py` | 9 個測試：四個落點（三個沿底線排成一排、互不重疊）、餵球區和餵球起點、最高點擊球**確實可以**打進目標區（用網格搜尋證明）、往下掉的球／沒打到／太輕／打直線都判定失敗、沒打到的球有算進分母。 |
+| `tests/test_forehand_success.py` | 12 個測試：四個落點（三個沿底線排成一排、互不重疊）、餵球區和餵球起點、最高點擊球**確實可以**打進目標區（用網格搜尋證明）、往下掉的球／沒打到／太輕／打直線都判定失敗、沒打到的球有算進分母、漏斗統計、分區報告。 |
 | `tests/test_make_g1_forehand_bank.py` | 4 個測試：符合載入器的格式；符合餵球區／最高點／擊球範圍／球拍速度的限制；餵球確實從對手右邊斜對角過來；每個落點題數相同，而且**每一題用它自己的落點檢查都是成功**。 |
 | `tests/test_gmr_video_clip_to_g1.py` | 3 個測試：把現有的 G1 clip 偽裝成 GMR 輸出再轉回來（關節誤差 < 0.03 rad、身體位置誤差 < 1 cm、擊球幀誤差 ±1），sidecar 格式正確，結尾混接正確。 |
+| `tests/test_mujoco_forehand_bank.py` | 3 個測試：MuJoCo 端的飛行模型和規劃器算出來的最高點、球拍速度跟題庫一致。 |
 | `docs/plans/SERVE_SIDE_BACKSPIN_PLAN.md` | 暫緩的發球計畫（D4）。 |
 
 ---
@@ -158,6 +170,17 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 `python3 hope_training/whole_body_tracking/scripts/make_g1_forehand_bank.py --rows 50000`。
 換 seed 或改物理參數，題目內容就會改變，所以**重新產生之後要重新訓練**。
 
+**快球題庫**（`g1_fh_crosscourt_apex_bank_wide`，`_FH_XC_RALLY` 使用）：步驟一樣，但反彈前速度改成
+vx −7.5…−1.8、vy −3.0…−0.2、vz −4.5…−1.0 m/s，旋轉最多 8 轉/秒；從 700 萬個候選中篩出 5 萬題。
+反彈前來球速度 4.4–8.5 m/s（平均 6.6），從遠端底線到最高點 0.38–0.85 秒（平均 0.51），擊球瞬間來球速度 2.0–5.1 m/s。
+比約 4.4 m/s 更慢的球，沒辦法同時在中間三分之一反彈、又在固定的擊球範圍內到最高點，需要往前跨步才行。
+
+```bash
+python3 hope_training/whole_body_tracking/scripts/make_g1_forehand_bank.py --rows 50000 \
+  --vin-x -7.5 -1.8 --vin-y -3.0 -0.2 --vin-z -4.5 -1.0 --spin-rev-s 8 \
+  --out hope_training/whole_body_tracking/assets/venue_tuple/g1_fh_crosscourt_apex_bank_wide
+```
+
 ---
 
 ## 7. 端到端流程
@@ -168,11 +191,14 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
  社團規則 ──► forehand_success.py ──► make_g1_forehand_bank ──► 題庫 ──────────────┤
                                                                                    ▼
                                      Isaac Lab PPO（任務 HOPEPingPongUnitreeG1_FH_XC，SDSC，約 45 小時）
+                                                                                   │ 接續權重
+                                                                                   ▼
+                                     真實對打節奏的 run（任務 _FH_XC_RALLY：快球、對打節奏、時機誤差）
                                                                                    │ checkpoints
                                                                                    ▼
-            評估：forehand_success 指標（Isaac）  ·  export_onnx --robot unitree_g1
+            評估：evaluate_forehand.py，按落點算社團成功率（Isaac）  ·  export_onnx --robot unitree_g1
                                                                                    ▼
-                          MuJoCo sim-to-sim（mujoco_eval_onnx.py --robot unitree_g1）
+          MuJoCo sim-to-sim 打真的球（mujoco_eval_onnx.py：題庫餵球、對打節奏、社團規則計分）
                                                                                    ▼
                        實機：G1 runner + 動作捕捉 + 規劃器  [尚未建置；C++ runner 只支援 A3]
 ```
@@ -187,7 +213,8 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 cd G1-PingPong
 python3 -m venv .venv && .venv/bin/pip install -r a3_deploy/a3_deploy_example/reference/requirements.txt torch pytest imageio imageio-ffmpeg
 .venv/bin/python -m pytest -q unitree/tests hope_training/whole_body_tracking/tests/test_forehand_success.py \
-  hope_training/whole_body_tracking/tests/test_make_g1_forehand_bank.py hope_training/whole_body_tracking/tests/test_gmr_video_clip_to_g1.py
+  hope_training/whole_body_tracking/tests/test_make_g1_forehand_bank.py hope_training/whole_body_tracking/tests/test_gmr_video_clip_to_g1.py \
+  hope_training/whole_body_tracking/tests/test_mujoco_forehand_bank.py
 
 # 看餵球的畫面。macOS 上開 MuJoCo 視窗要用 mjpython；因為這個路徑裡有空格，
 # 要透過 venv 的 python 去執行 mjpython（它的 shebang 遇到空格會壞掉）。
@@ -200,7 +227,9 @@ python3 -m venv .venv && .venv/bin/pip install -r a3_deploy/a3_deploy_example/re
 
 ### 叢集（SDSC Atlantis，`ssh sdsc-scc`）
 
-* 帳號 `tritondroids`，全社團共用 **32 CPU / 96 GB / 8 GPU**。Isaac 需要 RTX 顯卡，所以要用 `--gres=rtx2080ti:1`（節點 `zixian`，11 GB，driver 610.43）。
+* 帳號 `tritondroids`，全社團共用 **32 CPU / 96 GB / 8 GPU**。Isaac 需要 RTX 顯卡，所以要用 `--gres=rtx2080ti:1`（節點 `zixian`，11 GB，driver 610.43）。一個訓練 run 只用一張 GPU。
+* `zixian` 的 8 張 GPU 其他帳號也能用（10-11 有一個 `scc` 的 job 占了 4 張），所以社團配額 8 張不代表有 8 張空著。QOS `normal`（上限 4 小時）的 job 可以搶佔 QOS `long`（訓練用）的 job；被搶佔時 `train.sbatch` 會 requeue，從最新的 checkpoint 接續（最多重跑 100 個 iteration）。
+* 10-11 停機後，GPU `0000:61:00.0` 有一天讀不到，10-12 已經修好。`train.sbatch` 仍保留「CUDA 起不來就改用正常那張」的備援。
 * 檔案位置：`~/hope/{HOPE（本 repo）, isaac-venv, IsaacLab, syslibs, mocap, slurm_logs}`。
 * 所有 job 都要**在 repo 根目錄**送出。
 
@@ -208,8 +237,11 @@ python3 -m venv .venv && .venv/bin/pip install -r a3_deploy/a3_deploy_example/re
 sbatch hope_training/slurm/pip_env/install_isaac.sbatch                    # 只需一次
 bash   hope_training/slurm/video_to_g1/install_mocap.sh                    # 只需一次（另外要放 SMPL/SMPL-X，見它的 README）
 sbatch --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC hope_training/slurm/pip_env/g1_smoke.sbatch
-sbatch --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC,RUN_NAME=g1_fh_xc hope_training/slurm/pip_env/train.sbatch
-squeue -u $USER; tail -f hope-g1-train-<jobid>.out
+sbatch --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC,RUN_NAME=g1_fh_diag hope_training/slurm/pip_env/train.sbatch
+# 從別的 run 的 checkpoint 接續權重、開一個新的 run（TOTAL_ITERS 是總數）：
+sbatch --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC_RALLY,RUN_NAME=g1_fh_rally,TOTAL_ITERS=14600,INIT_CHECKPOINT=<.../model_2600.pt> \
+  hope_training/slurm/pip_env/train.sbatch
+bash hope_training/slurm/pip_env/status.sh            # 所有 run：iteration、主要指標、最新 checkpoint
 # 在筆電上看 TensorBoard：
 ssh -L 6006:localhost:6006 sdsc-scc '~/hope/isaac-venv/bin/tensorboard --port 6006 \
   --logdir ~/hope/HOPE/hope_training/whole_body_tracking/logs/rsl_rl/unitree_g1_hitter_pingpong'
@@ -235,17 +267,22 @@ ssh -L 6006:localhost:6006 sdsc-scc '~/hope/isaac-venv/bin/tensorboard --port 60
 
 ---
 
-## 9. 目前結果（2026-10-10）
+## 9. 目前結果（2026-10-12）
+
+完整的表格、訓練曲線和狀態紀錄在 [`TRAINING_STATUS_G1_FOREHAND.zh-TW.md`](TRAINING_STATUS_G1_FOREHAND.zh-TW.md)。摘要：
 
 * 環境：Isaac Sim 5.1 + Isaac Lab 0.54.2 可以在 2080 Ti 上啟動和訓練。G1 smoke 測試每一步都通過。Isaac 和 MuJoCo 的物理比對結果跟 `g1-port` 文件寫的一樣（0.023 rad、0.047 m、跌倒時間 1.34 s 對 1.40 s）。
-* 影片流程：用 GVHMR 的範例影片驗證過（估計人身高 1.73 m、球拍最快 10 m/s）；轉換器往返測試誤差 0.012 rad / 1.6 mm。
-* 訓練跑在 `rtx2080ti` 上，4096 個環境，兩個訓練共用一個節點時每個 iteration 約 8 秒：
+* 影片流程：用 GVHMR 的範例影片驗證過（估計人身高 1.73 m、球拍最快 10 m/s）；轉換器往返測試誤差 0.012 rad / 1.6 mm。我們自己的正手影片還沒錄。
+* 訓練（4096 個環境，每個 iteration 約 8 秒）：
 
-  | Job | 任務設定 | 最後一次檢查時的狀態 |
+  | Run | 任務設定 | 最新（10-12 14:00） |
   |---|---|---|
-  | 4354 `g1_fh` | `_FH`（A3 題庫，baseline） | 第 602 個 iteration：擊球位置在 10 cm 以內的比例 7.8%，綜合指標 0，結束的回合有 39% 是跌倒 |
-  | 4367 `g1_fh_xc` | `_FH_XC`（**主要**） | 第 240 個 iteration：還在早期，尚未開始擊球 |
+  | `g1_fh_diag`（**主要**） | `_FH_XC` | 第 3814 / 20,000 個 iteration：球拍 ≤10 cm 89%、接觸 62%、合法回球 39%、跌倒 7.7% |
+  | `g1_fh_rally` | `_FH_XC_RALLY`（D14），從 2600 接續 | 第 4713 / 14,600 個 iteration：球拍 ≤10 cm 92%、接觸 64%、合法回球 39%、跌倒 3.6%、對打節奏佔 26% 的揮拍、時機誤差 21 ms |
+  | `g1_fh`（baseline） | `_FH`（A3 題庫） | 停在 2196 |
 
+* Isaac 社團成功率（`evaluate_forehand.py`，8100 球）：`g1_fh_diag` `model_2300` **11.1%**（`opp_right_mid` 24.5%、`center_line_deep` 6.2%、`opp_right_deep` 11.3%、桌角 2.3%；接觸 92%、過網 91%、合法 79%）。baseline `g1_fh` `model_2100` 只有 4.6%。
+* MuJoCo 用題庫餵真的球：`model_2400` 12 球接觸到 10 球，但比最高點早 15–40 ms 擊球，還沒有球落在目標區。用真實對打節奏（`--rally-pace`）時，接觸率從 88% 掉到 38%，44% 的球會跌倒，這就是開 `g1_fh_rally` 的原因。
 * 過程中發現的 HOPE 上游問題：commit `00e2e96` 讓 `a3_pingpong.xml` 裡的 Gate 3 桌子會跟機器人碰撞，在獨立評估器裡會卡住球拍那隻手；評估器的預設幾何也跟 Gate 3 不一致（離桌邊 0.30 m，Gate 3 是 0.50 m）。`g1-port` 已經把評估器的幾何改成跟訓練一致。
 
 ---
@@ -253,12 +290,10 @@ ssh -L 6006:localhost:6006 sdsc-scc '~/hope/isaac-venv/bin/tensorboard --port 60
 ## 10. 下一步
 
 1. 錄正手影片，用 `video_to_g1` 轉換，檢查預覽影片。
-2. 用真人動作 clip 訓練 `_FH_XC`（設定 `motion_file=...`，並更新 `strike_phase_per_clip`）。
+2. 用真人動作 clip 訓練 `_FH_XC`（設定 `motion_file=...`，並更新 `strike_phase_per_clip`）。擊球前的動作短一點，也能改善預告時間不夠的問題。
 3. 加入精簡版 HITTER 獎勵設定，跟 HOPE 的獎勵設定做 A/B 比較（D12）。
-4. ~~寫 Isaac 評估腳本，用 `forehand_success` 分區統計~~：已完成（2026-10-11），`scripts/evaluate_forehand.py` / `eval_forehand.sh`，結果記在 [`TRAINING_STATUS_G1_FOREHAND.zh-TW.md`](TRAINING_STATUS_G1_FOREHAND.zh-TW.md)。
-5. 落點選擇（D13）：在題庫加上 `target_zone_ids` 篩選，讓訓練、評估、播放都能指定落點，部署時的規劃器也提供同樣的選擇。之後再放寬餵球的範圍。
-6. 縮小 MuJoCo 題庫評估發現的真球落差（[`TRAINING_STATUS_G1_FOREHAND.zh-TW.md`](TRAINING_STATUS_G1_FOREHAND.zh-TW.md) 第 4 節）：
-   策略比最高點早 15–40 ms 擊球；MuJoCo 的球拍碰撞回球比 venue 球拍模型低；揮拍動作需要約 0.83 秒預告，但快的來球只飛 0.5–0.8 秒。
-   可能的做法：訓練時在虛擬擊球加入時機雜訊或延遲、拿 MuJoCo 檢查球拍碰撞模型、讓揮拍晚一點開始（或縮短擊球前的動作）。
+4. ~~寫 Isaac 評估腳本，用 `forehand_success` 分區統計~~：已完成（2026-10-11），`scripts/evaluate_forehand.py` / `eval_forehand.sh`。
+5. 落點選擇（D13）：在題庫加上 `target_zone_ids` 篩選，讓訓練、評估、播放都能指定落點，部署時的規劃器也提供同樣的選擇。（放寬餵球範圍：已經用快球題庫完成。）
+6. 縮小 MuJoCo 題庫評估發現的真球落差。已完成（D14）：虛擬擊球的時機誤差、對打節奏下晚開始揮拍、更快的來球。還沒做：拿 MuJoCo 檢查球拍碰撞模型（MuJoCo 回球比較低）；等漸進比例加滿（約第 5600 個 iteration）後，用 `eval_rally` / `eval_bank` / Isaac 分區評估比較 `g1_fh_rally` 和 `g1_fh_diag`。
 7. 上實機之前：量測實際的球拍轉接座、在我們自己的桌子上重新擬合球的物理參數、寫 G1 的部署 runner（現有的 C++ runner 只支援 A3）。
-7. 接著處理平衡和步法（站位可以移動），然後是反手，最後是發球計畫。
+8. 接著處理平衡和步法（站位可以移動，比約 4.4 m/s 更慢的球也需要），然後是反手，最後是發球計畫。
