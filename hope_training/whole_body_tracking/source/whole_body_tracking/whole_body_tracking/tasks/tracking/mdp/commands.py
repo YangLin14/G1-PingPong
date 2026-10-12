@@ -355,6 +355,10 @@ class MotionCommand(CommandTerm):
         # clock is frozen at the swing's first frame ("waiting for the ball"). _update_command
         # decrements it. in_hold is exposed for rewards/metrics.
         self.hold_counter = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+        # Rally pace (cfg.rally_pace_prob): per-swing early end of the follow-through. -1 = play the
+        # clip to its end (the default); otherwise the time step at which this swing wraps.
+        self.rally_cut_step = torch.full((self.num_envs,), -1, dtype=torch.long, device=self.device)
+        self._rally_strike_offset: torch.Tensor | None = None
         # True only while _resample_command is being invoked from an intra-episode clip WRAP
         # (as opposed to a true episode reset) — wraps skip the RSI teleport (cfg.wrap_teleport).
         self._resampling_from_wrap = False
@@ -550,6 +554,8 @@ class MotionCommand(CommandTerm):
         )
         self.metrics["motion_phase"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["in_hold"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["rally_pace_swing"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["rally_pace_prob"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["error_anchor_rot_deg"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["error_joint_pos_mean_abs"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["error_joint_pos_max_abs"] = torch.zeros(self.num_envs, device=self.device)
@@ -2401,7 +2407,9 @@ class MotionCommand(CommandTerm):
         if self._multiseg:
             # Wrap at the END of the env's current clip/segment, not the global concatenated end.
             seg_end = self.motion.seg_start[self.clip_id] + self.motion.seg_len[self.clip_id]
-            wrap_ids = torch.where(self.time_steps >= seg_end)[0]
+            # Rally pace: a swing may end early, after a short follow-through (see _apply_rally_pace).
+            cut = (self.rally_cut_step >= 0) & (self.time_steps >= self.rally_cut_step)
+            wrap_ids = torch.where((self.time_steps >= seg_end) | cut)[0]
             # DEPLOY-PARITY CLIP SWITCH (venue falls 2026-07-04): the runner's reference clock flips
             # clip_id whenever the planner re-sides the target — at an ARBITRARY mid-swing moment —
             # and the reference jumps to the new clip's first frame (pp_reference_clock.hpp clamps
@@ -2445,6 +2453,8 @@ class MotionCommand(CommandTerm):
             self._resample_command(env_ids)
         finally:
             self._resampling_from_wrap = False
+        if len(env_ids) > 0:
+            self._apply_rally_pace(env_ids)
 
         anchor_pos_w_repeat = self.anchor_pos_w[:, None, :].repeat(1, len(self.cfg.body_names), 1)
         anchor_quat_w_repeat = self.anchor_quat_w[:, None, :].repeat(1, len(self.cfg.body_names), 1)
@@ -2463,6 +2473,57 @@ class MotionCommand(CommandTerm):
         )
         self._current_bin_failed.zero_()
         self._update_v17_failure_sampling()
+
+    def rally_pace_probability(self) -> float:
+        """Current share of swings played at rally pace: ramps 0 -> rally_pace_prob over
+        rally_pace_ramp_steps env steps (env.common_step_counter)."""
+        p = float(self.cfg.rally_pace_prob)
+        ramp = int(self.cfg.rally_pace_ramp_steps)
+        if p <= 0.0 or ramp <= 0:
+            return max(p, 0.0)
+        return p * min(1.0, float(getattr(self._env, "common_step_counter", 0)) / float(ramp))
+
+    def _apply_rally_pace(self, env_ids: torch.Tensor) -> None:
+        """Rally cadence for swings that start at an intra-episode wrap (Triton forehand rally).
+
+        In a real rally the next ball is known only when the opponent hits it, ~0.5-0.8 s before our
+        strike, and it comes ~1.3-1.8 s after our previous strike; the clip alone gives 0.83 s of
+        lead plus a 1.33 s follow-through and a hold. With probability rally_pace_probability() a
+        swing that starts at a wrap (a) skips the hold and enters the clip LATE, at
+        time-to-strike ~ U(rally_pace_start_tts_range) -- the deploy reference clock does the same
+        when the planner's time-to-strike is shorter than the clip's -- and (b) ends EARLY,
+        U(rally_pace_post_strike_range) seconds after its strike, so the next swing starts while the
+        robot is still recovering. Other swings keep the full clip (rally_cut_step = -1).
+        True episode resets are untouched (stand / replay entries keep their holds).
+        """
+        self.rally_cut_step[env_ids] = -1
+        p = self.rally_pace_probability()
+        self.metrics["rally_pace_swing"][env_ids] = 0.0
+        self.metrics["rally_pace_prob"][:] = p
+        if p <= 0.0:
+            return
+        if not self._multiseg:
+            raise RuntimeError("rally_pace_prob needs the multi-clip motion (forehand + backhand)")
+        if self._rally_strike_offset is None:
+            # Strike frame per clip, from the racket-target command's strike phase (same rounding).
+            phases = tuple(self._env.command_manager.get_term("racket_target").cfg.strike_phase_per_clip)
+            phase = torch.tensor([float(x) for x in phases], device=self.device)
+            self._rally_strike_offset = (phase * (self.motion.seg_len - 1).float()).round().long()
+        ids = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
+        ids = ids[torch.rand(len(ids), device=self.device) < p]
+        if len(ids) == 0:
+            return
+        dt = float(self._env.step_dt)
+        clip = self.clip_id[ids]
+        seg_start = self.motion.seg_start[clip]
+        seg_end = seg_start + self.motion.seg_len[clip]
+        strike = seg_start + self._rally_strike_offset[clip]
+        lead = sample_uniform(*self.cfg.rally_pace_start_tts_range, (len(ids),), self.device)
+        post = sample_uniform(*self.cfg.rally_pace_post_strike_range, (len(ids),), self.device)
+        self.time_steps[ids] = torch.maximum(strike - (lead / dt).round().long(), seg_start)
+        self.hold_counter[ids] = 0
+        self.rally_cut_step[ids] = torch.minimum(strike + (post / dt).round().long(), seg_end)
+        self.metrics["rally_pace_swing"][ids] = 1.0
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         if debug_vis:
@@ -2646,6 +2707,14 @@ class MotionCommandCfg(CommandTermCfg):
     # Deterministic evaluator only: cycle each env through a frozen external serve-side sequence.
     # Empty keeps all train/play behavior byte-identical. Training YAMLs must never set this field.
     eval_clip_sequence: tuple[int, ...] = ()
+    # RALLY PACE (Triton forehand rally; see MotionCommand._apply_rally_pace). Share of swings that
+    # start at a wrap played at real rally cadence: late entry at time-to-strike ~
+    # U(start_tts_range) with no hold, and an early wrap U(post_strike_range) s after the strike.
+    # Ramped 0 -> rally_pace_prob over rally_pace_ramp_steps env steps. 0 = off (every task unchanged).
+    rally_pace_prob: float = 0.0
+    rally_pace_ramp_steps: int = 0
+    rally_pace_start_tts_range: tuple[float, float] = (0.5, 0.83)
+    rally_pace_post_strike_range: tuple[float, float] = (0.7, 1.0)
 
     adaptive_kernel_size: int = 1
     adaptive_lambda: float = 0.8

@@ -2270,7 +2270,7 @@ class RacketTargetCommand(CommandTerm):
             for _vk in (
                 "virtual_hit_rate", "virtual_net_clear_rate", "virtual_land_valid_rate",
                 "virtual_land_inbounds_rate", "virtual_land_err_m", "virtual_topspin_revs",
-                "virtual_approach_speed",
+                "virtual_approach_speed", "virtual_timing_jitter_s",
             ):
                 self.metrics[_vk] = torch.zeros(self.num_envs, device=self.device)
             for _side in self._clip_names.values():
@@ -7336,6 +7336,23 @@ class RacketTargetCommand(CommandTerm):
 
         v_in, w_in = self.vb_vel_in_w, self.vb_spin_in_w
         v_r, n_face = self.racket_lin_vel_w, self.racket_normal_w
+        # TIMING JITTER (Triton forehand rally): the real ball reaches the contact point dt earlier or
+        # later than the strike clock says (planner time-to-strike error), dt ~ U(-s, s) per strike,
+        # s ramped 0 -> vb_timing_jitter_s. At the strike frame the ball is therefore tau = -dt along
+        # its own path (ballistic over a few tens of ms): position target + v_in tau + g tau^2 / 2,
+        # velocity v_in + g tau. The capture gate and the contact model see that ball; the shaped
+        # racket-tracking rewards keep the nominal target, so only the outcome teaches robustness.
+        jitter = float(self.cfg.vb_timing_jitter_s)
+        ramp = int(self.cfg.vb_timing_jitter_ramp_steps)
+        if jitter > 0.0 and ramp > 0:
+            jitter *= min(1.0, float(getattr(self._env, "common_step_counter", 0)) / float(ramp))
+        if jitter > 0.0:
+            tau = sample_uniform(-jitter, jitter, (self.num_envs,), self.device)
+            g = torch.tensor([0.0, 0.0, -9.81], device=self.device)
+            ball_now = self.racket_target_pos_w + v_in * tau.unsqueeze(-1) + 0.5 * g * (tau * tau).unsqueeze(-1)
+            v_in = v_in + g * tau.unsqueeze(-1)
+            pos_err = torch.norm(self.racket_pos_w - ball_now, dim=-1)
+            self.metrics["virtual_timing_jitter_s"][:] = jitter
         # CAPTURE GATE: close enough at the strike frame AND paddle moving INTO the ball along the
         # oriented contact normal (a stationary/retreating wall-block scores nothing — verify (c)3).
         n_or = _vb.orient_normal(n_face, v_in, v_r)
@@ -11154,6 +11171,10 @@ class RacketTargetCommandCfg(CommandTermCfg):
     # Coarse rollout resolution (verify_tier1 (b): h=10 ms, 1.0 s horizon covers 1-7 m/s shots).
     vb_rollout_h: float = 0.01
     vb_rollout_steps: int = 100
+    # Strike timing jitter (s): the virtual ball arrives U(-s, s) off the strike clock (see
+    # _vb_evaluate); ramped 0 -> s over vb_timing_jitter_ramp_steps env steps. 0 = exact timing.
+    vb_timing_jitter_s: float = 0.0
+    vb_timing_jitter_ramp_steps: int = 0
 
     # --- reachable racket-target workspace (offsets from the env origin, world frame, meters) ---
     # Used only by target_mode="uniform". PLACEHOLDER ranges (not the reference strike point).

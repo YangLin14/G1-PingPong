@@ -93,14 +93,16 @@ def _uniform(g: torch.Generator, n: int, lo: float, hi: float) -> torch.Tensor:
 
 def feed_origin(bounce, v_pre, w_pre, prm, scfg, h: float, steps: int):
     """Integrate the pre-bounce flight BACKWARD from the bounce. Returns (y, z) where it crosses the far
-    end line, the height where it crosses the net plane, and whether both crossings happened."""
+    end line, the height where it crosses the net plane, whether both crossings happened, and the
+    flight time from the end line to the bounce."""
     n = bounce.shape[0]
     p, v = bounce.clone(), v_pre.clone()
     end_yz = torch.zeros(n, 2, dtype=p.dtype)
+    end_t = torch.zeros(n, dtype=p.dtype)
     net_z = torch.zeros(n, dtype=p.dtype)
     at_end = torch.zeros(n, dtype=torch.bool)
     at_net = torch.zeros(n, dtype=torch.bool)
-    for _ in range(steps):
+    for k in range(steps):
         p1, v1 = vb.rk4_step(p, v, w_pre, -h, prm)
         for plane, hit, store in ((scfg.net_x, at_net, "net"), (scfg.far_x, at_end, "end")):
             cross = (~hit) & (p[:, 0] < plane) & (p1[:, 0] >= plane)
@@ -110,9 +112,10 @@ def feed_origin(bounce, v_pre, w_pre, prm, scfg, h: float, steps: int):
                 net_z = torch.where(cross, q[:, 2], net_z)
             else:
                 end_yz = torch.where(cross.unsqueeze(-1), q[:, 1:], end_yz)
+                end_t = torch.where(cross, (k + f.squeeze(-1)) * h, end_t)
             hit |= cross
         p, v = p1, v1
-    return end_yz, net_z, at_end & at_net
+    return end_yz, net_z, at_end & at_net, end_t
 
 
 def table_params(prm, venue_yaml: str):
@@ -126,19 +129,22 @@ def table_params(prm, venue_yaml: str):
 
 
 def fly_to_apex(p, v, w, prm, h: float, steps: int):
-    """Integrate until vz crosses 0 going down; linear interpolation of the crossing."""
+    """Integrate until vz crosses 0 going down; linear interpolation of the crossing. Also returns the
+    time to the apex."""
     found = torch.zeros(p.shape[0], dtype=torch.bool)
     p_apex, v_apex = p.clone(), v.clone()
-    for _ in range(steps):
+    t_apex = torch.zeros(p.shape[0], dtype=p.dtype)
+    for k in range(steps):
         p1, v1 = vb.rk4_step(p, v, w, h, prm)
         cross = (~found) & (v[:, 2] > 0) & (v1[:, 2] <= 0)
         f = (v[:, 2] / (v[:, 2] - v1[:, 2]).clamp(min=1e-12)).unsqueeze(-1)
         p_apex = torch.where(cross.unsqueeze(-1), p + f * (p1 - p), p_apex)
         v_apex = torch.where(cross.unsqueeze(-1), v + f * (v1 - v), v_apex)
+        t_apex = torch.where(cross, (k + f.squeeze(-1)) * h, t_apex)
         found |= cross
         p, v = p1, v1
     v_apex[:, 2] = 0.0
-    return p_apex, v_apex, found
+    return p_apex, v_apex, found, t_apex
 
 
 def landing(ball, v_in, w_in, v_r, prm, scfg):
@@ -216,7 +222,7 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
         up = torch.tensor([0.0, 0.0, 1.0]).expand(n, 3)
         v_post, w_post = vb.predict_paddle_contact(v_pre, torch.zeros(n, 3), up, w_pre, tprm)
 
-        p_apex, v_apex, found = fly_to_apex(bounce, v_post, w_post, prm, cfg.flight_h, cfg.flight_steps)
+        p_apex, v_apex, found, t_apex = fly_to_apex(bounce, v_post, w_post, prm, cfg.flight_h, cfg.flight_steps)
         rejects["no_apex"] += int((~found).sum())
         in_box = found & (p_apex[:, 0] >= cfg.apex_x[0]) & (p_apex[:, 0] <= cfg.apex_x[1]) \
             & (p_apex[:, 2] >= cfg.apex_z[0]) & (p_apex[:, 2] <= cfg.apex_z[1])
@@ -229,13 +235,13 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
         if not bool(keep.any()):
             continue
         idx = torch.where(keep)[0]
-        end_yz, feed_net_z, crossed = feed_origin(bounce[idx], v_pre[idx], w_pre[idx], prm, scfg,
-                                                  cfg.flight_h, cfg.flight_steps)
+        end_yz, feed_net_z, crossed, end_t = feed_origin(bounce[idx], v_pre[idx], w_pre[idx], prm, scfg,
+                                                         cfg.flight_h, cfg.flight_steps)
         from_opp_right = crossed & (end_yz[:, 0] >= oy[0]) & (end_yz[:, 0] <= oy[1]) \
             & (end_yz[:, 1] >= oz[0]) & (end_yz[:, 1] <= oz[1]) \
             & (feed_net_z > scfg.table_surface_z + fs.NET_HEIGHT + fs.BALL_RADIUS + cfg.net_margin)
         rejects["feed_not_from_opp_right"] += int((~from_opp_right).sum())
-        idx, end_yz = idx[from_opp_right], end_yz[from_opp_right]
+        idx, end_yz, end_t = idx[from_opp_right], end_yz[from_opp_right], end_t[from_opp_right]
         if len(idx) == 0:
             continue
         ball, vin, win = p_apex[idx], v_apex[idx], w_post[idx]
@@ -286,6 +292,8 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
             "feed_velocity_pre": v_pre[k],
             "feed_spin_pre": w_pre[k],
             "feed_origin_yz": end_yz[sel],
+            # end line -> feed bounce -> apex: the time the robot has once the opponent's shot is seen
+            "feed_flight_s": end_t[sel] + t_apex[k],
             "target_zone_id": zone_id[sel],
         }
         for name, value in rows.items():
@@ -331,6 +339,8 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
             "racket_speed_mps": stats(np.linalg.norm(arrays["target_velocity"], axis=-1)),
             "apex_height_above_table_m": stats(arrays["target_position_offset"][:, 2] - scfg.table_surface_z),
             "incoming_speed_mps": stats(np.linalg.norm(arrays["incoming_velocity"], axis=-1)),
+            "feed_speed_pre_bounce_mps": stats(np.linalg.norm(arrays["feed_velocity_pre"], axis=-1)),
+            "feed_flight_s": stats(arrays["feed_flight_s"]),
             "net_clearance_m": stats(arrays["net_clearance_m"]),
             "landing_residual_m": stats(arrays["planner_residual_m"]),
             "station_y_m": stats(arrays["station_xy"][:, 1]),
@@ -345,9 +355,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--rows", type=int, default=BankCfg.rows)
     p.add_argument("--targets", nargs="+", default=list(BankCfg.targets), choices=sorted(fs.TARGET_ZONES))
     p.add_argument("--seed", type=int, default=BankCfg.seed)
+    p.add_argument("--vin-x", nargs=2, type=float, default=BankCfg.vin_x, metavar=("LO", "HI"),
+                   help="pre-bounce feed velocity x at the feed bounce (m/s, negative = toward the robot)")
+    p.add_argument("--vin-y", nargs=2, type=float, default=BankCfg.vin_y, metavar=("LO", "HI"))
+    p.add_argument("--vin-z", nargs=2, type=float, default=BankCfg.vin_z, metavar=("LO", "HI"))
+    p.add_argument("--spin-rev-s", type=float, default=BankCfg.spin_in_rev_s, help="max feed spin (rev/s)")
     p.add_argument("--out", default=str(DEFAULT_OUT), help="output path without extension")
     args = p.parse_args(argv)
-    arrays, receipt = generate(BankCfg(rows=args.rows, targets=tuple(args.targets), seed=args.seed))
+    arrays, receipt = generate(BankCfg(
+        rows=args.rows, targets=tuple(args.targets), seed=args.seed, vin_x=tuple(args.vin_x),
+        vin_y=tuple(args.vin_y), vin_z=tuple(args.vin_z), spin_in_rev_s=args.spin_rev_s,
+    ))
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     np.savez(out.with_suffix(".npz"), **arrays)
