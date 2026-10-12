@@ -7,11 +7,11 @@ This file is the running record of our training runs: what we measure, how we me
 status check so far. Add a new entry to section 5 each time you check a run (newest at the top), and
 a new row to section 4 whenever you run the per-zone evaluation. All times are Pacific (cluster time).
 
-**Latest (2026-10-11 21:10):** two runs. `g1_fh_diag` (job 4382, main) at ~2600 / 20 000. New `g1_fh_rally`
-(job 5560) trains the same task at real rally timing, warm-started at 2600, ~26 h for 12 000 iterations.
-Club success of `model_2300` in Isaac: **11.1 %** (24.5 % middle zone, 2.3 % corner). At real rally pace in
-MuJoCo the current policy meets only 38 % of balls and falls on 44 % (section 5), which is what `g1_fh_rally`
-is for.
+**Latest (2026-10-12 12:40):** the cluster went down again at 02:29 (all GPU nodes "not responding"); nothing is
+training. `g1_fh_diag` stopped at 3774 (checkpoint `model_3700`), `g1_fh_rally` at 4677 (`model_4600`, rally
+pace already at 42 %). Both are queued and resume automatically when the nodes return (4382 and 5584).
+Before the outage 4382 was preempted every ~31 min by another club job (section 5). Club success of
+`model_2300` in Isaac: **11.1 %**; at real rally pace in MuJoCo the policy meets only 38 % of balls.
 
 ---
 
@@ -77,8 +77,9 @@ timing needs a real simulated ball (MuJoCo) or the real robot; that is a later s
 
 | Job | Run name | Task (questions) | Started | State | Last iteration | Note |
 |---|---|---|---|---|---|---|
-| 5560 | `g1_fh_rally` | `HOPEPingPongUnitreeG1_FH_XC_RALLY` (faster-feed bank + rally pace + timing jitter, D14) | 10-11 21:04 | **running** | 2604 → 14 600 | warm start from `g1_fh_diag` `model_2600`; 2 GPUs requested because of a broken GPU (section 5) |
-| 4382 | `g1_fh_diag` | `HOPEPingPongUnitreeG1_FH_XC` (our bank: diagonal feed, apex, 4 zones) | 10-10 20:12 | **running** | ~2600 | **main run**; requeued once (section 5) |
+| 5584 | `g1_fh_rally` | as 5560 | 10-12 12:39 | **queued** (nodes down) | resumes at 4600 → 14 600 | continues 5560; restores the step counter, so the ramps carry on |
+| 5560 | `g1_fh_rally` | `HOPEPingPongUnitreeG1_FH_XC_RALLY` (faster-feed bank + rally pace + timing jitter, D14) | 10-11 21:04 | killed by the 10-12 02:29 outage (not requeued) | 4677 | warm start from `g1_fh_diag` `model_2600`; 2 GPUs requested because of a broken GPU (section 5) |
+| 4382 | `g1_fh_diag` | `HOPEPingPongUnitreeG1_FH_XC` (our bank: diagonal feed, apex, 4 zones) | 10-10 20:12 | **queued** (nodes down) | 3774 | **main run**; requeued 13 times (outages, preemption; section 5) |
 | 5554 | `g1_fh_rally` | as 5560 | 10-11 21:02 | failed at start | – | assigned the broken GPU |
 | 4354 | `g1_fh` | `HOPEPingPongUnitreeG1_FH` (inherited A3-geometry questions) | 10-10 18:07 | failed (node crash), not resumed | 2196 | baseline; kept at `model_2100` |
 | 4381 | `g1_fh_diag` | earlier bank version | 10-10 20:03 | cancelled after 3 min | – | superseded by the zone fix |
@@ -185,6 +186,21 @@ touch the ball; use `eval_bank` for the forehand.
 ---
 
 ## 5. Status log (newest first)
+
+### 2026-10-12 12:40 — second outage; 4382 was being preempted every 31 min
+* All GPU nodes went "not responding" at 02:29 (munge errors again, like 10-10). 5560 was cancelled
+  rather than requeued; resubmitted as **5584**, which resumes from its own `model_4600`. 4382 is queued.
+* `g1_fh_rally` before the outage (iteration 4677, rally pace 42 %, jitter 21 ms): racket ≤10 cm 93 %,
+  all OK 29 %, contact 66 %, legal return 43 %, falls 3.3 %. It recovered from the warm-start dip
+  (contact 23 %, falls 57 % at 2609) while the rally pace ramped up, and is now level with `g1_fh_diag`.
+* `g1_fh_diag` (iteration 3774): racket ≤10 cm 89 %, all OK 24 %, contact 63 %, legal 40 %, falls 6.8 %.
+* From 21:18 to 02:25, 4382 was requeued every ~31 min: a 2-GPU job from another club member
+  (`hope-g1-sidecar`, QOS `normal`) preempts our `long`-QOS jobs, fails after 45 s, and is resubmitted.
+  4382 lost about half its throughput (≈100 iterations per cycle instead of ≈230). Worth a word with them.
+* Found while checking: a resume reset `env.common_step_counter` to 0, so step-keyed ramps (rally pace,
+  timing jitter) would restart after every requeue. `train.sbatch` now restores it on a same-run resume
+  (`restore_step_counter=true`; not for `INIT_CHECKPOINT`). The all-zero rows in 4382's `progress.sh`
+  table (2700–3600) are the first iterations after each requeue, not a collapse.
 
 ### 2026-10-11 21:10 — rally pace measured; new run `g1_fh_rally` started
 * MuJoCo `--rally-pace` (next feed hit 0.7–1.0 s after our contact, known only at launch), `model_2400`,
