@@ -254,7 +254,10 @@ ssh -L 6006:localhost:6006 sdsc-scc '~/hope/isaac-venv/bin/tensorboard --port 60
 1. 錄正手影片，用 `video_to_g1` 轉換，檢查預覽影片。
 2. 用真人動作 clip 訓練 `_FH_XC`（設定 `motion_file=...`，並更新 `strike_phase_per_clip`）。
 3. 加入精簡版 HITTER 獎勵設定，跟 HOPE 的獎勵設定做 A/B 比較（D12）。
-4. 寫 Isaac 評估腳本：用固定的題庫題目跑 `forehand_success`，回報成功率、最高點、擊中、過網、落點的比例和落點誤差。
-5. 落點選擇（D13）：在題庫加上 `target_zone_ids` 篩選，讓訓練、評估、播放都能指定落點，部署時的規劃器也提供同樣的選擇；評估時按落點分別統計成功率。之後再放寬餵球的範圍。
-6. 上實機之前：量測實際的球拍轉接座、在我們自己的桌子上重新擬合球的物理參數、寫 G1 的部署 runner（現有的 C++ runner 只支援 A3）。
+4. ~~寫 Isaac 評估腳本，用 `forehand_success` 分區統計~~：已完成（2026-10-11），`scripts/evaluate_forehand.py` / `eval_forehand.sh`，結果記在 [`TRAINING_STATUS_G1_FOREHAND.zh-TW.md`](TRAINING_STATUS_G1_FOREHAND.zh-TW.md)。
+5. 落點選擇（D13）：在題庫加上 `target_zone_ids` 篩選，讓訓練、評估、播放都能指定落點，部署時的規劃器也提供同樣的選擇。之後再放寬餵球的範圍。
+6. 縮小 MuJoCo 題庫評估發現的真球落差（[`TRAINING_STATUS_G1_FOREHAND.zh-TW.md`](TRAINING_STATUS_G1_FOREHAND.zh-TW.md) 第 4 節）：
+   策略比最高點早 15–40 ms 擊球；MuJoCo 的球拍碰撞回球比 venue 球拍模型低；揮拍動作需要約 0.83 秒預告，但快的來球只飛 0.5–0.8 秒。
+   可能的做法：訓練時在虛擬擊球加入時機雜訊或延遲、拿 MuJoCo 檢查球拍碰撞模型、讓揮拍晚一點開始（或縮短擊球前的動作）。
+7. 上實機之前：量測實際的球拍轉接座、在我們自己的桌子上重新擬合球的物理參數、寫 G1 的部署 runner（現有的 C++ runner 只支援 A3）。
 7. 接著處理平衡和步法（站位可以移動），然後是反手，最後是發球計畫。

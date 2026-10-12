@@ -23,9 +23,12 @@ sbatch hope_training/slurm/pip_env/run.sbatch scripts/evaluate.py --task HOPE-Hi
 | `train.sbatch` | requeue-safe training with resume and a fixed iteration total |
 | `g1_smoke.sbatch` | G1 pre-flight: asset, joint order, plant replay, 2-iteration train, export, MuJoCo eval |
 | `status.sh` | one-screen status: jobs, club quota, iteration and key metrics per run |
-| `eval_checkpoint.sh` | newest (or given) checkpoint -> ONNX -> MuJoCo stats + MP4; `--in-job <id>` runs inside a running job, or `sbatch` it |
+| `progress.sh` | one job's training metrics every N iterations as a markdown table |
+| `eval_forehand.sh` | per-zone success rate under the club definition (Isaac, `scripts/evaluate_forehand.py`); `--in-job <id\|auto>` or `sbatch` |
+| `eval_checkpoint.sh` | newest (or given) checkpoint -> ONNX -> MuJoCo stats + MP4, example serves and our bank (`eval_bank.*`); `--in-job <id>` runs inside a running job, or `sbatch` it |
 
-Day-to-day commands: [`docs/RUNBOOK_G1_FOREHAND.md`](../../../docs/RUNBOOK_G1_FOREHAND.md).
+Day-to-day commands: [`docs/RUNBOOK_G1_FOREHAND.md`](../../../docs/RUNBOOK_G1_FOREHAND.md). Status log and results:
+[`docs/TRAINING_STATUS_G1_FOREHAND.md`](../../../docs/TRAINING_STATUS_G1_FOREHAND.md).
 
 Node workarounds (all applied by `install_isaac.sbatch`; each was a real failure):
 

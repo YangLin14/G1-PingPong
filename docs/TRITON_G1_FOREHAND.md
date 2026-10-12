@@ -313,11 +313,18 @@ licensed per person and must never be committed (they are in `.git/info/exclude`
 1. Record the forehand video, convert it with `video_to_g1`, and inspect the preview.
 2. Train `_FH_XC` with the human clip (`motion_file=...`; update `strike_phase_per_clip`).
 3. Add the lean HITTER reward recipe and A/B it against the HOPE recipe (D12).
-4. Add an Isaac evaluation script that runs fixed bank questions through `forehand_success` and
-   reports success / apex / contact / net / zone rates and the landing error.
+4. ~~Isaac evaluation with `forehand_success`, per zone~~: done (2026-10-11),
+   `scripts/evaluate_forehand.py` / `eval_forehand.sh`; results in
+   [`TRAINING_STATUS_G1_FOREHAND.md`](TRAINING_STATUS_G1_FOREHAND.md).
 5. Zone selection (D13): a `target_zone_ids` filter on the bank for training/eval/play, and the
-   same choice exposed in the deploy planner; per-zone success rates in the evaluation. Then widen
+   same choice exposed in the deploy planner. Then widen
    the feed distribution.
-6. Before hardware: measure the real racket adapter, refit ball physics on our table, and write a
+6. Close the real-ball gap found by the MuJoCo bank evaluation
+   ([`TRAINING_STATUS_G1_FOREHAND.md`](TRAINING_STATUS_G1_FOREHAND.md) section 4): the policy strikes
+   15–40 ms before the apex, MuJoCo's racket contact returns the ball lower than the venue paddle
+   model, and the swing clip needs ~0.83 s of lead while a fast feed flies 0.5–0.8 s. Candidates:
+   timing noise/delay on the virtual strike in training, a racket-contact model check against MuJoCo,
+   a later swing start (or a shorter pre-strike clip).
+7. Before hardware: measure the real racket adapter, refit ball physics on our table, and write a
    G1 deploy runner (the C++ runner is A3-only).
 7. Then balance and footwork (free station), then backhand, then the serve plan.

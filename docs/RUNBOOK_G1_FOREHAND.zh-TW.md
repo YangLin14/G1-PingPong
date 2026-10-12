@@ -27,6 +27,7 @@ ssh sdsc-scc
 cd ~/hope/HOPE && bash hope_training/slurm/pip_env/status.sh          # 正在跑的 job
 bash hope_training/slurm/pip_env/status.sh --all                       # 加上最近 3 天內結束的
 bash hope_training/slurm/pip_env/status.sh 4382                        # 只看某一個 job
+bash hope_training/slurm/pip_env/progress.sh 4382                      # 每 500 個 iteration 的指標（markdown 表格）
 ```
 
 會列出你的 job、社團配額的使用量，以及每個訓練目前的 iteration、主要指標和最新的 checkpoint。指標的意思：
@@ -67,15 +68,36 @@ bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job 4382 g1_fh_diag
 sbatch hope_training/slurm/pip_env/eval_checkpoint.sh g1_fh_diag
 ```
 
-它會把這個 run 最新的 `model_*.pt` 匯出成 ONNX（也可以在第二個參數指定某個 checkpoint），確認 ONNX 跟 PyTorch 模型的輸出一致，在 MuJoCo 跑 6 球，結果存在 `~/hope/evals/<run>/<model_N>/{policy.onnx, eval.json, eval.mp4}`。MuJoCo 用的是評估器自己的範例來球，不是我們的題庫，所以只能看「在另一個模擬器裡站不站得穩、能不能追上目標、會不會揮拍」，不能當成對打成功率。
+它會把這個 run 最新的 `model_*.pt` 匯出成 ONNX（也可以在第二個參數指定某個 checkpoint），確認 ONNX 跟 PyTorch 模型的輸出一致，然後在 MuJoCo 跑兩組，結果都存在 `~/hope/evals/<run>/<model_N>/`：
+
+* **`eval_bank.mp4` / `eval_bank.json`（看這個）**：12 球都來自**我們的題庫**，用一顆真的球：斜對角發球、帶旋轉、在最高點擊球。
+  4 個目標區畫在對面台上，這一球的目標區會亮起來。json 裡有每一球的接觸、時機（接觸時的 vz）、落點，以及分區成功率；
+* `eval.mp4` / `eval.json`：評估器原本的範例來球（正反手、固定落點），不是我們的任務，只用來對照。
+
+可調整的參數：`BANK_SERVES=24`（球數）、`ZONES="opp_right_mid opp_right_corner"`（只打某幾區）、
+`FEED_LEAD_S=0`（只有在球發出時才告訴策略，也就是真機部署時的情況；預設是 0.9 秒，和訓練一樣），例如：
+`BANK_SERVES=24 ZONES=opp_right_corner bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job auto g1_fh_diag`
 
 複製到筆電上觀看：
 
 ```bash
 mkdir -p artifacts/evals
 scp -r sdsc-scc:hope/evals/g1_fh_diag/model_2000 artifacts/evals/g1_fh_diag_model_2000
-open artifacts/evals/g1_fh_diag_model_2000/eval.mp4
+open artifacts/evals/g1_fh_diag_model_2000/eval_bank.mp4
 ```
+
+### 2b. 各目標區的社團成功率（Isaac）
+
+```bash
+cd ~/hope/HOPE
+bash hope_training/slurm/pip_env/eval_forehand.sh --in-job auto g1_fh_diag       # 最新 checkpoint，約 20 分鐘
+bash hope_training/slurm/pip_env/eval_forehand.sh --in-job 4382 g1_fh            # 評估別的 run，借用 4382 的 GPU
+sbatch hope_training/slurm/pip_env/eval_forehand.sh g1_fh_diag                   # 自己開一個 job
+```
+
+用我們的成功定義（最高點擊球、接觸、過網、落在對方半場、落在該題的目標區）幫題庫的每一題打分數，
+每個目標區印一列，再加一列總計。輸出在 `~/hope/evals/<run>/<model_N>/forehand_zones.{json,txt}`。
+結果請記到 [`TRAINING_STATUS_G1_FOREHAND.zh-TW.md`](TRAINING_STATUS_G1_FOREHAND.zh-TW.md) 第 4 節。
 
 ---
 

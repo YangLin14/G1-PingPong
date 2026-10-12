@@ -29,6 +29,7 @@ ssh sdsc-scc
 cd ~/hope/HOPE && bash hope_training/slurm/pip_env/status.sh          # running jobs
 bash hope_training/slurm/pip_env/status.sh --all                       # + jobs ended in the last 3 days
 bash hope_training/slurm/pip_env/status.sh 4382                        # one job
+bash hope_training/slurm/pip_env/progress.sh 4382                      # metrics every 500 iterations (markdown table)
 ```
 
 It prints your jobs, the club's quota use, and for each run its iteration, key metrics and newest
@@ -72,18 +73,41 @@ sbatch hope_training/slurm/pip_env/eval_checkpoint.sh g1_fh_diag
 ```
 
 This exports the newest `model_*.pt` of the run (or pass a checkpoint path as the 2nd argument), checks
-that the ONNX matches the torch actor, runs 6 MuJoCo serves and writes
-`~/hope/evals/<run>/<model_N>/{policy.onnx, eval.json, eval.mp4}`. The MuJoCo serves are the
-evaluator's own examples, not our bank, so treat it as "does it stand, track and swing in another
-simulator", not as the rally success rate.
+that the ONNX matches the torch actor, and runs two MuJoCo sessions into `~/hope/evals/<run>/<model_N>/`:
+
+* **`eval_bank.mp4` / `eval_bank.json` (watch this one)**: 12 questions from **our bank** with a real
+  ball: diagonal feed with spin, apex strike. The four target zones are drawn on the far side, the
+  current one bright. The JSON has contact, timing (vz at contact), landing point per serve and the
+  club success per zone;
+* `eval.mp4` / `eval.json`: the evaluator's own example serves (FH/BH, fixed landing). Not our task;
+  kept for reference.
+
+Knobs: `BANK_SERVES=24`, `ZONES="opp_right_mid opp_right_corner"` (only those zones),
+`FEED_LEAD_S=0` (the question is only known once the ball is launched, as on the robot; default 0.9 s
+like training). Example:
+`BANK_SERVES=24 ZONES=opp_right_corner bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job auto g1_fh_diag`
 
 Copy it to the laptop and watch:
 
 ```bash
 mkdir -p artifacts/evals
 scp -r sdsc-scc:hope/evals/g1_fh_diag/model_2000 artifacts/evals/g1_fh_diag_model_2000
-open artifacts/evals/g1_fh_diag_model_2000/eval.mp4
+open artifacts/evals/g1_fh_diag_model_2000/eval_bank.mp4
 ```
+
+### 2b. Club success rate per target zone (Isaac)
+
+```bash
+cd ~/hope/HOPE
+bash hope_training/slurm/pip_env/eval_forehand.sh --in-job auto g1_fh_diag       # newest checkpoint, ~20 min
+bash hope_training/slurm/pip_env/eval_forehand.sh --in-job 4382 g1_fh            # another run's checkpoint, on 4382's GPU
+sbatch hope_training/slurm/pip_env/eval_forehand.sh g1_fh_diag                   # as its own job
+```
+
+Scores every bank question with our success definition (apex timing, contact, over the net, on the
+opponent half, inside the question's zone) and prints one row per zone plus the total. Output:
+`~/hope/evals/<run>/<model_N>/forehand_zones.{json,txt}`. Record the result in
+[`TRAINING_STATUS_G1_FOREHAND.md`](TRAINING_STATUS_G1_FOREHAND.md) section 4.
 
 ---
 

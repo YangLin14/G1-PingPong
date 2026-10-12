@@ -2,7 +2,7 @@
 # Per-zone success rate of a G1 forehand checkpoint under the club's success definition, in Isaac
 # (scripts/evaluate_forehand.py). Run from the repository root, in one of two ways:
 #   bash  hope_training/slurm/pip_env/eval_forehand.sh --in-job auto g1_fh_diag   # inside the run's job
-#         (or --in-job 4382); no extra quota, shares the training GPU (~3 GB at 512 envs)
+#         (or --in-job 4382); no extra quota, shares the training GPU (~3 GB, ~20 min at 512 envs)
 #   sbatch hope_training/slurm/pip_env/eval_forehand.sh g1_fh_diag                 # as its own small job
 # Optional 2nd argument: a checkpoint path (default: the newest model_*.pt of the run).
 # Knobs: TASK (default HOPEPingPongUnitreeG1_FH_XC), NUM_ENVS (512), NUM_STEPS (3000 = 60 s per env).
@@ -41,6 +41,6 @@ echo "[eval-fh] $ckpt (task $TASK) -> $out"
 set +u; source setup_train_env.sh >/dev/null; set -u
 hope_isaac_py scripts/evaluate_forehand.py task="$TASK" checkpoint="$ckpt" \
   num_envs="${NUM_ENVS:-512}" num_steps="${NUM_STEPS:-3000}" json_out="$out/forehand_zones.json" 2>&1 \
-  | grep -E "^\[evaluate_forehand\]|^zone |^(opp_|center_|OVERALL)|Error|Traceback" | tee "$out/forehand_zones.txt"
+  | grep --line-buffered -E "^\[evaluate_forehand\]|^zone |^(opp_|center_|OVERALL)|Error|Traceback" | tee "$out/forehand_zones.txt"
 [ -f "$out/forehand_zones.json" ] || { echo "[eval-fh] failed (see the output above)" >&2; exit 1; }
 echo "[eval-fh] done: $out/forehand_zones.json"
