@@ -98,6 +98,9 @@ class RobotObsState:
 class PingPongRealPhysicsScene:
     """Robot + table + net + floor + dynamic ball, stepped with real MuJoCo physics."""
 
+    ZONE_RGBA = [0.1, 0.9, 0.2, 0.18]
+    ZONE_ACTIVE_RGBA = [0.1, 1.0, 0.2, 0.7]
+
     def __init__(
         self,
         robot_xml_path: str,
@@ -111,6 +114,9 @@ class PingPongRealPhysicsScene:
         racket_site: str = "right_racket",
         racket_collision_geom: str = "right_racket_collision",
         floor_geom: str = "floor",
+        magnus_k: float = 0.0,
+        zone_rects=(),
+        table_bounce_fn=None,
     ) -> None:
         import mujoco  # lazy import so the module imports without MuJoCo present
 
@@ -144,6 +150,15 @@ class PingPongRealPhysicsScene:
         self.drag_k = float(drag.get("k", 0.1261))
         self.velocity_clip = float(drag.get("velocity_clip", 50.0))
         self.gravity = g
+        # Optional Magnus lift k_m (omega x v), the venue spin model's flight term; 0 = the no-spin model.
+        self.magnus_k = float(magnus_k)
+        # Optional visual-only target rectangles on the table top, world (x_lo, x_hi, y_lo, y_hi).
+        self.zone_rects = [tuple(float(v) for v in r) for r in zone_rects]
+        # Optional analytic table bounce (v_in, w_in) -> (v_out, w_out), world frame: replaces MuJoCo's
+        # soft ball-table contact (whose tangential response does not match a measured table) with a
+        # fitted model. The ball-table contact pair is then left out and the bounce applied on the
+        # surface-plane crossing inside the table outline.
+        self.table_bounce_fn = table_bounce_fn
 
         self.near_edge_x = float(near_edge_x)
         # mujoco_world -> table_frame is a pure translation by this offset.
@@ -166,6 +181,7 @@ class PingPongRealPhysicsScene:
         self._ball_gid = self._geom_id("ball_geom")
         self._racket_gid = self._geom_id(self.racket_collision_geom)
         self._gyro_adr = self._sensor_adr(self.gyro_sensor)
+        self._zone_gids = [self._geom_id(f"target_zone_{k}") for k in range(len(self.zone_rects))]
 
         # Controlled-joint qpos/qvel addresses + driving actuator indices.
         self._q_adr = np.zeros(self.num_joints, dtype=int)
@@ -233,6 +249,15 @@ class PingPongRealPhysicsScene:
             contype=BALL_CT, conaffinity=BALL_CA, rgba=[1.0, 0.55, 0.0, 1.0],
         )
 
+        # Visual-only target zones, a hair above the table top (no collision with anything).
+        for k, (zx0, zx1, zy0, zy1) in enumerate(self.zone_rects):
+            wb.add_geom(
+                name=f"target_zone_{k}", type=mujoco.mjtGeom.mjGEOM_BOX,
+                pos=[(zx0 + zx1) / 2.0, (zy0 + zy1) / 2.0, h + 0.001],
+                size=[(zx1 - zx0) / 2.0, (zy1 - zy0) / 2.0, 0.0005],
+                contype=0, conaffinity=0, rgba=self.ZONE_RGBA,
+            )
+
         # Contact pairs: restitution + friction from the config (see module docstring).
         contact = ball_cfg.get("contact", {})
 
@@ -249,7 +274,8 @@ class PingPongRealPhysicsScene:
             pair.friction = [fr, fr, 0.005, 1e-4, 1e-4]
             pair.condim = 3
 
-        _add_pair("ball_geom", "table_geom", _restitution("table", 0.9215), _friction("table", 0.40))
+        if self.table_bounce_fn is None:
+            _add_pair("ball_geom", "table_geom", _restitution("table", 0.9215), _friction("table", 0.40))
         _add_pair("ball_geom", "net_geom", _restitution("net", 0.10), _friction("net", 0.50))
         _add_pair("ball_geom", self.racket_collision_geom, _restitution("paddle", 0.654), _friction("paddle", 0.60))
         _add_pair("ball_geom", self.floor_geom, _restitution("floor", 0.40), _friction("floor", 0.80))
@@ -314,14 +340,20 @@ class PingPongRealPhysicsScene:
         d.qvel[self._ball_vadr:self._ball_vadr + 6] = 0.0
         self._mj.mj_forward(m, d)
 
-    def set_ball(self, pos_w, vel_w) -> None:
-        """Place the ball at ``pos_w`` (MuJoCo world) with world linear velocity ``vel_w``."""
+    def set_ball(self, pos_w, vel_w, spin_w=None) -> None:
+        """Place the ball at ``pos_w`` (MuJoCo world) with world linear velocity ``vel_w`` and optional
+        world angular velocity ``spin_w`` (rad/s; the orientation is reset, so body = world axes)."""
         d = self.data
         d.qpos[self._ball_qadr:self._ball_qadr + 3] = np.asarray(pos_w, dtype=np.float64)
         d.qpos[self._ball_qadr + 3:self._ball_qadr + 7] = [1.0, 0.0, 0.0, 0.0]
         d.qvel[self._ball_vadr:self._ball_vadr + 3] = np.asarray(vel_w, dtype=np.float64)
-        d.qvel[self._ball_vadr + 3:self._ball_vadr + 6] = 0.0
+        d.qvel[self._ball_vadr + 3:self._ball_vadr + 6] = 0.0 if spin_w is None else np.asarray(spin_w, dtype=np.float64)
         self._mj.mj_forward(self.model, self.data)
+
+    def highlight_zone(self, index: int | None) -> None:
+        """Brighten target zone ``index`` (None: all faint)."""
+        for k, gid in enumerate(self._zone_gids):
+            self.model.geom_rgba[gid] = self.ZONE_ACTIVE_RGBA if k == index else self.ZONE_RGBA
 
     # -- state readout ----------------------------------------------------------
     def read_robot_state(self) -> RobotObsState:
@@ -346,6 +378,13 @@ class PingPongRealPhysicsScene:
         pos = d.qpos[self._ball_qadr:self._ball_qadr + 3].copy()
         vel = d.qvel[self._ball_vadr:self._ball_vadr + 3].copy()
         return pos, vel
+
+    def ball_spin_w(self) -> np.ndarray:
+        """Ball angular velocity in the world frame (a free joint stores it in the body frame)."""
+        d = self.data
+        rot = np.zeros(9)
+        self._mj.mju_quat2Mat(rot, d.qpos[self._ball_qadr + 3:self._ball_qadr + 7])
+        return rot.reshape(3, 3) @ d.qvel[self._ball_vadr + 3:self._ball_vadr + 6]
 
     def racket_site_state(self):
         """Return (pos_w, vel_w) of the racket site in the MuJoCo world frame."""
@@ -377,12 +416,15 @@ class PingPongRealPhysicsScene:
         d.ctrl[self._act_idx] = tau
 
     def _apply_ball_drag(self) -> None:
-        """No-spin aerodynamic drag as a Cartesian force F = -m*k*|v|*v (world frame)."""
+        """Aerodynamic drag F = -m*k*|v|*v (world frame), plus Magnus m*k_m*(omega x v) when enabled."""
         d = self.data
         v = d.qvel[self._ball_vadr:self._ball_vadr + 3]
         speed = float(np.linalg.norm(v))
         speed = min(speed, self.velocity_clip)
-        d.xfrc_applied[self._ball_bid, :3] = -self.ball_mass * self.drag_k * speed * v
+        force = -self.ball_mass * self.drag_k * speed * v
+        if self.magnus_k:
+            force = force + self.ball_mass * self.magnus_k * np.cross(self.ball_spin_w(), v)
+        d.xfrc_applied[self._ball_bid, :3] = force
 
     def step(self) -> StepResult:
         """Advance one 50 Hz control tick; report physical ball events sub-step wise."""
@@ -397,6 +439,8 @@ class PingPongRealPhysicsScene:
             p_before = d.qpos[self._ball_qadr:self._ball_qadr + 3].copy()
             mj.mj_step(m, d)
             p_after = d.qpos[self._ball_qadr:self._ball_qadr + 3].copy()
+            if self.table_bounce_fn is not None:
+                self._analytic_table_bounce(p_before, p_after)
 
             # real ball<->racket contact this sub-step
             if not result.ball_racket_contact:
@@ -431,6 +475,22 @@ class PingPongRealPhysicsScene:
         if self._viewer is not None:
             self._viewer.sync()
         return result
+
+    def _analytic_table_bounce(self, p_before, p_after) -> None:
+        """Bounce the ball off the table top with ``table_bounce_fn`` when it crosses the surface downward."""
+        d = self.data
+        surface = self.table_height + self.ball_radius
+        x_t, y_t = p_after[0] - self.offset[0], p_after[1]
+        on_table = 0.0 <= x_t <= self.length and abs(y_t) <= self.width / 2.0
+        v = d.qvel[self._ball_vadr:self._ball_vadr + 3].copy()
+        if not (on_table and p_before[2] >= surface > p_after[2] and v[2] < 0.0):
+            return
+        v_out, w_out = self.table_bounce_fn(v, self.ball_spin_w())
+        rot = np.zeros(9)
+        self._mj.mju_quat2Mat(rot, d.qpos[self._ball_qadr + 3:self._ball_qadr + 7])
+        d.qpos[self._ball_qadr + 2] = surface + (surface - p_after[2])  # mirror the overshoot
+        d.qvel[self._ball_vadr:self._ball_vadr + 3] = v_out
+        d.qvel[self._ball_vadr + 3:self._ball_vadr + 6] = rot.reshape(3, 3).T @ np.asarray(w_out, dtype=np.float64)
 
     def close(self) -> None:
         if self._viewer is not None:

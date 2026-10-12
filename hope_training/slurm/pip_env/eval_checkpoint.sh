@@ -6,9 +6,12 @@
 #         allocation (srun --overlap): no extra quota, starts immediately; uses a few GB of its GPU
 #   sbatch hope_training/slurm/pip_env/eval_checkpoint.sh g1_fh_diag                 # as its own small job
 # Optional 2nd argument: a checkpoint path (default: the newest model_*.pt of the run).
-# Output: $HOPE_ROOT/evals/<run>/<model_N>/{policy.onnx, eval.json, eval.mp4}
-# Note: MuJoCo uses mujoco_eval_onnx.py's own example serves, not the training bank: read it as
-# "does the policy stand, track and swing in an independent simulator", not as the rally success rate.
+# Output: $HOPE_ROOT/evals/<run>/<model_N>/
+#   eval.{json,mp4}        MuJoCo with mujoco_eval_onnx.py's own example serves (FH/BH, fixed landing)
+#   eval_bank.{json,mp4}   MuJoCo with OUR bank: diagonal feed with spin, apex strike, the row's target
+#                          zone (drawn on the table, the active one bright), club success per zone
+# Knobs: SERVES (6, example serves), BANK_SERVES (12), ZONES (e.g. "opp_right_mid opp_right_corner"),
+#        FEED_LEAD_S (0.9; 0 = the question is only known once the ball is launched).
 #SBATCH --job-name=hope-eval
 #SBATCH --account=tritondroids
 #SBATCH --partition=normal
@@ -50,4 +53,8 @@ egl=$(MUJOCO_GL=egl "$ISAAC_PYTHON" hope_training/slurm/pick_egl_device.py)
 MUJOCO_GL=egl MUJOCO_EGL_DEVICE_ID="$egl" "$ISAAC_PYTHON" hope_training/whole_body_tracking/scripts/mujoco_eval_onnx.py \
   --robot unitree_g1 --onnx "$out/policy.onnx" --num-serves "$SERVES" --seed 0 \
   --video-out "$out/eval.mp4" --json-out "$out/eval.json" 2>&1 | grep -E "mujoco_eval\]" | tail -3
+MUJOCO_GL=egl MUJOCO_EGL_DEVICE_ID="$egl" "$ISAAC_PYTHON" hope_training/whole_body_tracking/scripts/mujoco_eval_onnx.py \
+  --robot unitree_g1 --onnx "$out/policy.onnx" --serve-bank default ${ZONES:+--zones $ZONES} \
+  --feed-lead-s "${FEED_LEAD_S:-0.9}" --num-serves "${BANK_SERVES:-12}" --seed 0 \
+  --video-out "$out/eval_bank.mp4" --json-out "$out/eval_bank.json" 2>&1 | grep -E "mujoco_eval\]" | tail -3
 echo "[eval] done: $out (copy to the laptop: scp -r sdsc-scc:${out#"$HOME"/} .)"

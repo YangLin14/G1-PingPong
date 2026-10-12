@@ -49,6 +49,16 @@ Two evaluation modes (``--eval-mode``):
     its stand with a fresh lifecycle/last_action/station. This measures isolated
     swings only; it does NOT validate between-swing transitions.
 
+Club forehand mode (``--serve-bank``, Triton Droids): every serve is a question from the G1 forehand
+bank (``assets/venue_tuple/g1_fh_crosscourt_apex_bank.npz``): the real feed (diagonal from the
+opponent's right, with spin and Magnus lift) is launched from the far end line, a deploy-style planner
+(``mujoco_forehand_bank.ApexPlanner``) predicts the real ball's post-bounce apex every tick and
+re-solves the racket velocity for the row's target zone once the ball has bounced, and each serve is
+also scored with the club definition (``forehand_success``): apex timing read off the REAL ball at
+contact, contact, net, opponent half, inside the row's zone. ``--zones`` restricts the questions to
+some zones; ``--feed-lead-s`` announces the question that long before the apex (training condition;
+0 = only once the ball is launched, the deploy condition). The target zones are drawn on the table.
+
 Requires ``mujoco``, ``onnxruntime``, ``pyyaml`` and ``numpy`` plus the shipped
 reference deploy package (``a3_deploy/a3_deploy_example``) and the
 ``a3_pingpong`` MJCF. Runs OUTSIDE Isaac.
@@ -275,6 +285,24 @@ def run_eval(args) -> dict:
     accumulator = SuccessRate()
 
     policy = OnnxPolicy(onnx_path, profile=profile)
+    club = None
+    if getattr(args, "serve_bank", None):
+        import mujoco_forehand_bank as mfb
+
+        bank_path = mfb.default_bank_path() if args.serve_bank == "default" else pathlib.Path(args.serve_bank)
+        venue_prm = mfb.vb.load_venue_params()
+        club_cfg = mfb.fs.ForehandSuccessCfg(table_near_x=args.near_edge_x)
+        club = {
+            "mfb": mfb,
+            "bank": mfb.ForehandBank(str(bank_path), zones=args.zones),
+            "prm": venue_prm,
+            "cfg": club_cfg,
+            "planner": mfb.ApexPlanner(venue_prm, club_cfg),
+        }
+        club["zone_names"] = club["bank"].zone_names
+        club["zone_bounds"] = [club_cfg.with_target(z).zone_bounds() for z in club["zone_names"]]
+        print(f"[mujoco_eval] club forehand bank: {bank_path} ({len(club['bank'].index)} rows"
+              f"{', zones ' + ','.join(args.zones) if args.zones else ''})", file=sys.stderr)
     scene = PingPongRealPhysicsScene(
         robot_xml,
         ball_cfg,
@@ -287,6 +315,9 @@ def run_eval(args) -> dict:
         racket_site=profile.racket_site,
         racket_collision_geom=profile.racket_collision_geom,
         floor_geom=profile.floor_geom,
+        magnus_k=club["prm"].k_m if club else 0.0,
+        zone_rects=[(*bx, *by) for bx, by in club["zone_bounds"]] if club else (),
+        table_bounce_fn=club["planner"].table_bounce if club else None,
     )
 
     # Optional offscreen mp4 of the session (every --video-every-th tick; needs MUJOCO_GL=egl/osmesa).
@@ -364,6 +395,9 @@ def run_eval(args) -> dict:
     source = QueueRacketCommandSource()
     last_action = np.zeros(num_joints, dtype=np.float64)
     base_target_xy = scene.base_pos_w()[:2].copy()
+    spawn_xy = base_target_xy.copy()
+    if club is not None and np.linalg.norm(spawn_xy) > 0.05:
+        raise RuntimeError(f"--serve-bank assumes the robot spawns at the env origin; stand keyframe base xy = {spawn_xy}")
     max_rest_ticks = max(1, int(round(args.max_rest_seconds / dt)))
     transitions_seen: set = set()
     prev_side = None
@@ -373,11 +407,20 @@ def run_eval(args) -> dict:
     for trial in range(args.num_serves):
         # Side pattern FH, FH, BH, BH, ... exercises all four adjacent side
         # transitions (FH->FH, FH->BH, BH->BH, BH->FH) across the session.
-        side = FOREHAND if (trial % 4) < 2 else BACKHAND
+        side = FOREHAND if club is not None or (trial % 4) < 2 else BACKHAND
         if prev_side is not None:
             transitions_seen.add((prev_side, side))
         prev_side = side
-        _strike_pt, serve_pos, serve_vel = _sample_serve(rng, side, scene, physics, args)
+        serve_spin = None
+        if club is not None:
+            row = club["bank"].sample(rng)
+            serve_pos, serve_vel, serve_spin = club["mfb"].feed_start(row, club["prm"], club["cfg"])
+            _strike_pt = row["target_position_offset"] + np.array([*row["station_xy"], 0.0])
+            zone_idx = int(row["target_zone_id"])
+            row_v_r = np.asarray(row["target_velocity"], dtype=np.float64)
+            scene.highlight_zone(zone_idx)
+        else:
+            _strike_pt, serve_pos, serve_vel = _sample_serve(rng, side, scene, physics, args)
 
         if not continuous:
             # Independent-strike evaluation: fresh robot + policy state per serve.
@@ -386,7 +429,11 @@ def run_eval(args) -> dict:
             source = QueueRacketCommandSource()
             last_action = np.zeros(num_joints, dtype=np.float64)
             base_target_xy = scene.base_pos_w()[:2].copy()
+            if club is not None:
+                base_target_xy = spawn_xy + np.asarray(row["station_xy"], dtype=np.float64)
         elif trial > 0:
+            if club is not None:  # the question's station: the robot steps there during recovery
+                base_target_xy = spawn_xy + np.asarray(row["station_xy"], dtype=np.float64)
             # Continuous rally: keep the policy running (no reset, no teleport)
             # through follow-through/recovery until it is ready for the next ball.
             _park_ball()
@@ -399,10 +446,30 @@ def run_eval(args) -> dict:
 
         if capture is not None and trial > 0:
             capture.mark()
-        scene.set_ball(serve_pos, serve_vel)
         task_counter += 1
         task_id = task_counter
         revision = 0
+        if club is not None:
+            if trial == 0:
+                base_target_xy = spawn_xy + np.asarray(row["station_xy"], dtype=np.float64)
+            # Announce the question --feed-lead-s before the apex (the training condition: the swing
+            # clip needs ~0.83 s); the ball is launched from the far end line when its own flight time
+            # is left. 0 = announce only at launch (the deploy condition).
+            pred0 = club["planner"].predict(serve_pos, serve_vel, serve_spin, after_bounce=False)
+            if pred0 is None:
+                raise RuntimeError(f"bank row {row['row']}: planner found no apex for the feed")
+            wait_ticks = max(0, int(round((float(args.feed_lead_s) - pred0[3]) / dt)))
+            _park_ball()
+            for k in range(wait_ticks):
+                source.submit(RacketCommand(
+                    task_id=task_id, task_revision=revision, swing_sign=side, position=pred0[0],
+                    velocity=row_v_r, time_to_strike=float(pred0[3] + (wait_ticks - k) * dt),
+                ))
+                revision += 1
+                _events, last_action = _policy_tick(lifecycle, source, last_action, base_target_xy)
+            club_state = {"bounced": False, "resolved": False, "v_r": row_v_r, "apex_vz": None,
+                          "pre_contact_vel": None, "lead_s": wait_ticks * dt + pred0[3]}
+        scene.set_ball(serve_pos, serve_vel, serve_spin)
         contacted = False
         net_clear = False
         first_bounce = None
@@ -416,13 +483,35 @@ def run_eval(args) -> dict:
         for _tick in range(max_ticks):
             ticks_run = _tick + 1
             ball_pos, ball_vel = scene.ball_state()
-            cmd = _predict_command(
-                ball_pos, ball_vel, side, scene, physics, args, task_id, revision, RacketCommand
-            )
-            revision += 1
-            source.submit(cmd)
+            if club is not None:
+                cmd = None
+                if not contacted:
+                    club_state["pre_contact_vel"] = ball_vel.copy()
+                    spin_now = scene.ball_spin_w()
+                    pred = club["planner"].predict(ball_pos, ball_vel, spin_now, after_bounce=club_state["bounced"])
+                    if pred is not None:
+                        if club_state["bounced"] and not club_state["resolved"]:
+                            # re-solve the racket velocity on the real ball's apex state, once
+                            club_state["v_r"] = club["planner"].solve_racket(
+                                pred[0], pred[1], pred[2], row["intended_landing_xy"])
+                            club_state["resolved"] = True
+                        cmd = RacketCommand(
+                            task_id=task_id, task_revision=revision, swing_sign=side, position=pred[0],
+                            velocity=club_state["v_r"], time_to_strike=float(pred[3]),
+                        )
+            else:
+                cmd = _predict_command(
+                    ball_pos, ball_vel, side, scene, physics, args, task_id, revision, RacketCommand
+                )
+            if cmd is not None:
+                revision += 1
+                source.submit(cmd)
 
             events, last_action = _policy_tick(lifecycle, source, last_action, base_target_xy)
+            if club is not None and not club_state["bounced"] and not contacted:
+                club_state["bounced"] = any(
+                    z_sign < 0.0 and x_t < scene.net_x_table for x_t, _y, z_sign in events.surface_crossings
+                )
 
             # --- contact: real MuJoCo ball<->racket contact, or the allowed proximity
             #     fallback (ball within contact_radius of the racket site with the
@@ -440,6 +529,8 @@ def run_eval(args) -> dict:
                     contacted = True
                 if contacted:
                     contact_tick = _tick
+                    if club is not None and club_state["pre_contact_vel"] is not None:
+                        club_state["apex_vz"] = float(club_state["pre_contact_vel"][2])
 
             # --- after contact, watch the REAL outgoing ball for net clearance and its
             #     first bounce (both read off the simulated trajectory). ---
@@ -465,6 +556,26 @@ def run_eval(args) -> dict:
         on_opponent = bool(first_bounce is not None and table.on_opponent_half(first_bounce[0], first_bounce[1]))
         success = bool(contacted and net_clear and on_opponent)
         accumulator.add_bool(success)
+        club_record = {}
+        if club is not None:
+            apex_ok = club_state["apex_vz"] is not None and abs(club_state["apex_vz"]) <= club["cfg"].apex_vz_tol
+            in_zone = False
+            land_w = None
+            if first_bounce is not None:
+                land_w = [float(first_bounce[0] + scene.offset[0]), float(first_bounce[1] + scene.offset[1])]
+                (zx0, zx1), (zy0, zy1) = club["zone_bounds"][zone_idx]
+                in_zone = zx0 <= land_w[0] <= zx1 and zy0 <= land_w[1] <= zy1
+            club_record = {
+                "bank_row": int(row["row"]),
+                "zone": row["zone"],
+                "apex_vz_at_contact": None if club_state["apex_vz"] is None else round(club_state["apex_vz"], 3),
+                "apex_ok": bool(apex_ok),
+                "landing_xy": None if land_w is None else [round(v, 3) for v in land_w],
+                "intended_landing_xy": [round(float(v), 3) for v in row["intended_landing_xy"]],
+                "in_zone": bool(on_opponent and in_zone),
+                "club_success": bool(success and apex_ok and in_zone),
+                "announced_s_before_apex": round(club_state["lead_s"], 3),
+            }
         serve_records.append(
             {
                 "serve": trial,
@@ -479,6 +590,7 @@ def run_eval(args) -> dict:
                 "fell": bool(fell),
                 "ticks": ticks_run,
                 "strike_point_w": [round(float(v), 3) for v in _strike_pt],
+                **club_record,
             }
         )
 
@@ -518,8 +630,41 @@ def run_eval(args) -> dict:
     )
     out = accumulator.as_dict()
     out.update(diagnostics)
+    if club is not None:
+        out["club"] = _club_summary(serve_records, club["zone_names"])
+        o = out["club"]["overall"]
+        print(
+            f"[mujoco_eval] club forehand: success={o['success_rate']:.3f} contact={o['contact_rate']:.2f} "
+            f"apex={o['apex_rate']:.2f} net={o['net_clear_rate']:.2f} legal={o['on_opponent_rate']:.2f} "
+            f"in_zone={o['in_zone_rate']:.2f} (n={o['attempts']})",
+            file=sys.stderr,
+        )
     out["serves"] = serve_records
     return out
+
+
+def _club_summary(records: list[dict], zone_names) -> dict:
+    """Per-zone funnel under the club definition: contact -> + net -> + opponent half -> + zone."""
+
+    def summarize(rs):
+        n = max(1, len(rs))
+        contact = [r for r in rs if r["contacted"]]
+        net = [r for r in contact if r["net_clear"]]
+        legal = [r for r in net if r["on_opponent_half"]]
+        zone = [r for r in legal if r["in_zone"]]
+        return {
+            "attempts": len(rs),
+            "success_rate": sum(r["club_success"] for r in rs) / n,
+            "contact_rate": len(contact) / n,
+            "apex_rate": sum(r["apex_ok"] for r in rs) / n,
+            "net_clear_rate": len(net) / n,
+            "on_opponent_rate": len(legal) / n,
+            "in_zone_rate": len(zone) / n,
+            "fall_rate": sum(r["fell"] for r in rs) / n,
+        }
+
+    return {"overall": summarize(records),
+            "per_zone": {z: summarize([r for r in records if r["zone"] == z]) for z in zone_names}}
 
 
 def _resolve_serve_ranges(args, robot: str) -> dict:
@@ -578,6 +723,14 @@ def parse_args() -> argparse.Namespace:
         help="Strike plane, table-frame x (0 = the near table edge); the fixed intercept plane. Default: the "
              "robot's training strike plane (TABLE_GEOMETRY: +0.08 A3, -0.04 G1).",
     )
+    parser.add_argument("--serve-bank", default=None, metavar="NPZ",
+                        help="Club forehand mode: serve questions from this G1 forehand bank ('default' = "
+                             "assets/venue_tuple/g1_fh_crosscourt_apex_bank.npz) instead of the example serves.")
+    parser.add_argument("--zones", nargs="+", default=None, metavar="ZONE",
+                        help="With --serve-bank: only questions for these target zones (default: all).")
+    parser.add_argument("--feed-lead-s", type=float, default=0.9,
+                        help="With --serve-bank: announce the question this many seconds before the apex "
+                             "(the swing clip needs ~0.83 s; the feed itself flies 0.5-0.8 s). 0 = at launch.")
     parser.add_argument("--seed", type=int, default=0, help="RNG seed for the example serve distribution.")
     parser.add_argument("--view", action="store_true", help="Launch the MuJoCo passive viewer (debug only).")
     parser.add_argument("--json-out", default=None, help="Also write {'success_rate': ...} to this file.")
