@@ -10,6 +10,8 @@
 #   eval.{json,mp4}        MuJoCo with mujoco_eval_onnx.py's own example serves (FH/BH, fixed landing)
 #   eval_bank.{json,mp4}   MuJoCo with OUR bank: diagonal feed with spin, apex strike, the row's target
 #                          zone (drawn on the table, the active one bright), club success per zone
+#   eval_rally.{json,mp4}  the same bank at real rally cadence: the next ball is hit 0.7-1.0 s after our
+#                          contact and only known at launch (strike-to-strike ~1.5 s)
 # Knobs: SERVES (6, example serves), BANK_SERVES (12), ZONES (e.g. "opp_right_mid opp_right_corner"),
 #        FEED_LEAD_S (0.9; 0 = the question is only known once the ball is launched).
 #SBATCH --job-name=hope-eval
@@ -57,4 +59,8 @@ MUJOCO_GL=egl MUJOCO_EGL_DEVICE_ID="$egl" "$ISAAC_PYTHON" hope_training/whole_bo
   --robot unitree_g1 --onnx "$out/policy.onnx" --serve-bank default ${ZONES:+--zones $ZONES} \
   --feed-lead-s "${FEED_LEAD_S:-0.9}" --num-serves "${BANK_SERVES:-12}" --seed 0 \
   --video-out "$out/eval_bank.mp4" --json-out "$out/eval_bank.json" 2>&1 | grep -E "mujoco_eval\]" | tail -3
+MUJOCO_GL=egl MUJOCO_EGL_DEVICE_ID="$egl" "$ISAAC_PYTHON" hope_training/whole_body_tracking/scripts/mujoco_eval_onnx.py \
+  --robot unitree_g1 --onnx "$out/policy.onnx" --serve-bank default ${ZONES:+--zones $ZONES} \
+  --rally-pace --num-serves "${BANK_SERVES:-12}" --seed 0 \
+  --video-out "$out/eval_rally.mp4" --json-out "$out/eval_rally.json" 2>&1 | grep -E "mujoco_eval\] club" | tail -1
 echo "[eval] done: $out (copy to the laptop: scp -r sdsc-scc:${out#"$HOME"/} .)"

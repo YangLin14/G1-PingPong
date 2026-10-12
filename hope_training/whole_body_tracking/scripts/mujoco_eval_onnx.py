@@ -58,6 +58,9 @@ also scored with the club definition (``forehand_success``): apex timing read of
 contact, contact, net, opponent half, inside the row's zone. ``--zones`` restricts the questions to
 some zones; ``--feed-lead-s`` announces the question that long before the apex (training condition;
 0 = only once the ball is launched, the deploy condition). The target zones are drawn on the table.
+``--rally-pace`` plays the bank at real rally cadence: the opponent hits the next feed
+``--rally-gap-s`` after our contact (our ball's flight to them), the question is only known at that
+moment (lead 0 unless ``--feed-lead-s`` is given), and the strike-to-strike interval is reported.
 
 Requires ``mujoco``, ``onnxruntime``, ``pyyaml`` and ``numpy`` plus the shipped
 reference deploy package (``a3_deploy/a3_deploy_example``) and the
@@ -350,6 +353,8 @@ def run_eval(args) -> dict:
     rng = np.random.default_rng(args.seed)
     continuous = args.eval_mode == "continuous"
 
+    clock = [0]  # control ticks since the session started (rally cadence bookkeeping)
+
     def _policy_tick(lifecycle, source, last_action, base_target_xy):
         """One 50 Hz policy step (identical to the deploy runner's tick).
 
@@ -375,6 +380,7 @@ def run_eval(args) -> dict:
             q_des[head_idx] = default_q[head_idx]
         scene.write_targets(q_des, kp, kd)
         result = scene.step()
+        clock[0] += 1
         if capture is not None:
             capture.tick()
         return result, applied_action
@@ -399,6 +405,13 @@ def run_eval(args) -> dict:
     if club is not None and np.linalg.norm(spawn_xy) > 0.05:
         raise RuntimeError(f"--serve-bank assumes the robot spawns at the env origin; stand keyframe base xy = {spawn_xy}")
     max_rest_ticks = max(1, int(round(args.max_rest_seconds / dt)))
+    rally = bool(getattr(args, "rally_pace", False))
+    if rally and (club is None or not continuous):
+        raise ValueError("--rally-pace needs --serve-bank and --eval-mode continuous")
+    if getattr(args, "feed_lead_s", None) is None:
+        args.feed_lead_s = 0.0 if rally else 0.9
+    rally_ref_tick = 0
+    last_contact_clock = None
     transitions_seen: set = set()
     prev_side = None
     task_counter = 0
@@ -437,12 +450,19 @@ def run_eval(args) -> dict:
             # Continuous rally: keep the policy running (no reset, no teleport)
             # through follow-through/recovery until it is ready for the next ball.
             _park_ball()
-            for _ in range(max_rest_ticks):
-                _events, last_action = _policy_tick(
-                    lifecycle, source, last_action, base_target_xy
-                )
-                if lifecycle.phase.value == "ready":
-                    break
+            if rally:
+                # Real cadence: the opponent hits the next ball rally_gap after our contact (or after
+                # the missed ball went past), whether or not the robot is ready.
+                gap_ticks = int(round(rng.uniform(*args.rally_gap_s) / dt))
+                for _ in range(max(0, gap_ticks - (clock[0] - rally_ref_tick))):
+                    _events, last_action = _policy_tick(lifecycle, source, last_action, base_target_xy)
+            else:
+                for _ in range(max_rest_ticks):
+                    _events, last_action = _policy_tick(
+                        lifecycle, source, last_action, base_target_xy
+                    )
+                    if lifecycle.phase.value == "ready":
+                        break
 
         if capture is not None and trial > 0:
             capture.mark()
@@ -468,7 +488,8 @@ def run_eval(args) -> dict:
                 revision += 1
                 _events, last_action = _policy_tick(lifecycle, source, last_action, base_target_xy)
             club_state = {"bounced": False, "resolved": False, "v_r": row_v_r, "apex_vz": None,
-                          "pre_contact_vel": None, "lead_s": wait_ticks * dt + pred0[3]}
+                          "pre_contact_vel": None, "lead_s": wait_ticks * dt + pred0[3],
+                          "launch_tick": clock[0], "contact_clock": None}
         scene.set_ball(serve_pos, serve_vel, serve_spin)
         contacted = False
         net_clear = False
@@ -531,6 +552,8 @@ def run_eval(args) -> dict:
                     contact_tick = _tick
                     if club is not None and club_state["pre_contact_vel"] is not None:
                         club_state["apex_vz"] = float(club_state["pre_contact_vel"][2])
+                    if club is not None:
+                        club_state["contact_clock"] = clock[0]
 
             # --- after contact, watch the REAL outgoing ball for net clearance and its
             #     first bounce (both read off the simulated trajectory). ---
@@ -575,7 +598,12 @@ def run_eval(args) -> dict:
                 "in_zone": bool(on_opponent and in_zone),
                 "club_success": bool(success and apex_ok and in_zone),
                 "announced_s_before_apex": round(club_state["lead_s"], 3),
+                "strike_interval_s": None if club_state["contact_clock"] is None or last_contact_clock is None
+                else round((club_state["contact_clock"] - last_contact_clock) * dt, 3),
             }
+            if club_state["contact_clock"] is not None:
+                last_contact_clock = club_state["contact_clock"]
+            rally_ref_tick = club_state["contact_clock"] if club_state["contact_clock"] is not None else clock[0]
         serve_records.append(
             {
                 "serve": trial,
@@ -632,6 +660,12 @@ def run_eval(args) -> dict:
     out.update(diagnostics)
     if club is not None:
         out["club"] = _club_summary(serve_records, club["zone_names"])
+        intervals = [r["strike_interval_s"] for r in serve_records if r.get("strike_interval_s") is not None]
+        out["club"]["rally_pace"] = rally
+        out["club"]["feed_lead_s"] = float(args.feed_lead_s)
+        out["club"]["announced_s_before_apex_median"] = float(np.median(
+            [r["announced_s_before_apex"] for r in serve_records]))
+        out["club"]["strike_interval_s_median"] = float(np.median(intervals)) if intervals else None
         o = out["club"]["overall"]
         print(
             f"[mujoco_eval] club forehand: success={o['success_rate']:.3f} contact={o['contact_rate']:.2f} "
@@ -728,9 +762,15 @@ def parse_args() -> argparse.Namespace:
                              "assets/venue_tuple/g1_fh_crosscourt_apex_bank.npz) instead of the example serves.")
     parser.add_argument("--zones", nargs="+", default=None, metavar="ZONE",
                         help="With --serve-bank: only questions for these target zones (default: all).")
-    parser.add_argument("--feed-lead-s", type=float, default=0.9,
+    parser.add_argument("--feed-lead-s", type=float, default=None,
                         help="With --serve-bank: announce the question this many seconds before the apex "
-                             "(the swing clip needs ~0.83 s; the feed itself flies 0.5-0.8 s). 0 = at launch.")
+                             "(the swing clip needs ~0.83 s; the feed itself flies 0.5-0.8 s). 0 = at launch. "
+                             "Default 0.9, or 0 with --rally-pace.")
+    parser.add_argument("--rally-pace", action="store_true",
+                        help="With --serve-bank (continuous): real rally cadence, the next feed is hit "
+                             "--rally-gap-s after our contact and announced at launch.")
+    parser.add_argument("--rally-gap-s", nargs=2, type=float, default=(0.7, 1.0), metavar=("LO", "HI"),
+                        help="--rally-pace: seconds from our contact to the opponent's contact (default 0.7 1.0).")
     parser.add_argument("--seed", type=int, default=0, help="RNG seed for the example serve distribution.")
     parser.add_argument("--view", action="store_true", help="Launch the MuJoCo passive viewer (debug only).")
     parser.add_argument("--json-out", default=None, help="Also write {'success_rate': ...} to this file.")
