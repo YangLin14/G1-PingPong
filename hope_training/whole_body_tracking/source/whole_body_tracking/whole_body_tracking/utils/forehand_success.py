@@ -187,7 +187,14 @@ def classify_strikes(
 
 class ForehandSuccessTally:
     """Unconditional counts: every incoming ball is an attempt, including balls that reset or
-    fell before the strike (``add_missed``), so misses can never leave the denominator."""
+    fell before the strike (``add_missed``), so misses can never leave the denominator.
+
+    The outcome counts form a funnel in the order of the success definition: ``contact`` counts
+    contacts, ``net_clear`` contacts that clear the net, ``on_opponent`` those that also land on the
+    opponent half (a legal return), ``in_zone`` those that also land in the zone; ``apex`` is the
+    timing check alone and ``success`` needs everything."""
+
+    FUNNEL = ("contact", "net_clear", "on_opponent", "in_zone")
 
     KEYS = ("apex", "contact", "net_clear", "on_opponent", "in_zone", "success")
 
@@ -198,8 +205,12 @@ class ForehandSuccessTally:
 
     def add_strikes(self, flags: dict[str, torch.Tensor], cfg: ForehandSuccessCfg = ForehandSuccessCfg()) -> None:
         self.attempts += int(flags["success"].numel())
-        for k in self.KEYS:
-            self.counts[k] += int(flags[k].sum())
+        self.counts["apex"] += int(flags["apex"].sum())
+        self.counts["success"] += int(flags["success"].sum())
+        passed = torch.ones_like(flags["success"])
+        for k in self.FUNNEL:
+            passed = passed & flags[k]
+            self.counts[k] += int(passed.sum())
         (x_lo, x_hi), (y_lo, y_hi) = cfg.zone_bounds()
         centre = torch.tensor([(x_lo + x_hi) / 2.0, (y_lo + y_hi) / 2.0], device=flags["landing_xy"].device)
         landed = flags["contact"] & flags["on_opponent"]

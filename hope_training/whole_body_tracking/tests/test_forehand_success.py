@@ -158,3 +158,12 @@ def test_zone_report_counts_misses_and_scores_against_own_zone():
     assert out["unassigned"] == 1
     # identical strikes, different zones: at most one of them can land in its own zone
     assert sum(out["per_zone"][z]["success_rate"] > 0 for z in fs.TARGET_ZONES) <= 1
+
+
+def test_tally_outcomes_form_a_funnel(zone_hit):
+    t = fs.ForehandSuccessTally()
+    v_r = torch.cat([zone_hit, _rows(1, [0.2, 0.0, 0.1]), _rows(1, [2.5, 0.6, 1.2])])
+    t.add_strikes(_classify(V_APEX, v_r, racket_offset=(0.0, 0.0, 0.0)), CFG)
+    d = t.as_dict()
+    rates = [d[f"{k}_rate"] for k in ("contact", "net_clear", "on_opponent", "in_zone")] + [d["success_rate"]]
+    assert rates == sorted(rates, reverse=True)
