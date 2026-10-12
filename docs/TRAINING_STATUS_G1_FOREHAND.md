@@ -132,7 +132,19 @@ success also requires the apex timing, which the bank guarantees in Isaac (secti
 | `opp_right_corner` | 2009 | 93.7 % | 92.3 % | 78.1 % | **2.3 %** |
 | **all** | 8101 | 92.3 % | 90.6 % | 79.4 % | **11.1 %** |
 
-TODO_BASELINE_TABLE
+**Baseline `g1_fh` `model_2100`** on the same questions (it was trained on the inherited A3-geometry
+questions, never on this bank; 8117 attempts, 75 falls)
+
+| zone | attempts | contact | + over net | + opponent half | + in zone = **success** |
+|---|---:|---:|---:|---:|---:|
+| `opp_right_mid` | 2030 | 85.3 % | 84.8 % | 79.0 % | **11.9 %** |
+| `center_line_deep` | 2078 | 83.0 % | 77.8 % | 76.0 % | **2.4 %** |
+| `opp_right_deep` | 2009 | 80.9 % | 72.2 % | 69.3 % | **3.5 %** |
+| `opp_right_corner` | 2000 | 75.6 % | 66.1 % | 61.4 % | **0.7 %** |
+| **all** | 8117 | 81.2 % | 75.3 % | 71.5 % | **4.6 %** |
+
+Training on our bank pays off: at about the same age (2300 vs 2100 iterations) the main run is
+2.4× better overall and 3× better in the corner, with fewer falls (22 vs 75).
 
 Reading: in Isaac the policy already reaches and meets almost every ball and returns ~80 % legally;
 what it cannot do yet is place the ball. The open middle zone is easiest; the three end-line zones,
@@ -175,7 +187,7 @@ touch the ball; use `eval_bank` for the forehand.
 * New tools: `eval_forehand.sh` (Isaac, club success per zone), `progress.sh`, and `--serve-bank` in
   the MuJoCo evaluator (`eval_checkpoint.sh` now also writes `eval_bank.{json,mp4}`).
 * `g1_fh_diag model_2300`, Isaac: 11.1 % overall; contact 92 %, legal return 79 %.
-* Baseline `g1_fh model_2100` on the same questions: TODO_BASELINE.
+* Baseline `g1_fh model_2100` on the same questions: 4.6 % (main run 2.4× better at the same age).
 * MuJoCo real ball: `model_2400` contact 10/12, over the net 3/12, 0 falls; strikes early.
 * Sim2real items found: the 0.83 s swing lead vs 0.5–0.8 s feed flight; MuJoCo's table contact
   needed the fitted bounce.
