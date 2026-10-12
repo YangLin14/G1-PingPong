@@ -20,6 +20,18 @@ set -uo pipefail
 source "$SLURM_SUBMIT_DIR/hope_training/slurm/pip_env/env.sh" 2>/dev/null || source "$HOME/hope/HOPE/hope_training/slurm/pip_env/env.sh"
 TASK="${TASK:-HOPEPingPongUnitreeG1_FH_XC}"; RUN_NAME="${RUN_NAME:-g1_fh_xc}"
 TOTAL_ITERS="${TOTAL_ITERS:-20000}"; NUM_ENVS="${NUM_ENVS:-4096}"; EXPERIMENT="${EXPERIMENT:-unitree_g1_hitter_pingpong}"
+# A GPU the driver cannot read (zixian 0000:61:00.0 after the 2026-10-11 outage) makes CUDA fail for
+# the whole job. If CUDA does not come up, try each visible device alone; submit with
+# --gres=rtx2080ti:2 to get a healthy one next to a broken one.
+cuda_ok() { "$ISAAC_VENV/bin/python" -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null; }
+if ! cuda_ok; then
+  for d in 0 1 2 3; do
+    if CUDA_VISIBLE_DEVICES=$d cuda_ok; then
+      export CUDA_VISIBLE_DEVICES=$d; echo "[train] CUDA only works with CUDA_VISIBLE_DEVICES=$d (broken GPU in the allocation)"; break
+    fi
+  done
+  [ -n "${CUDA_VISIBLE_DEVICES:-}" ] || { echo "[train] no usable GPU in this allocation" >&2; exit 1; }
+fi
 cd "$WBT"
 set +u; source setup_train_env.sh; set -u
 echo "[train] job=$SLURM_JOB_ID restart=${SLURM_RESTART_COUNT:-0} host=$(hostname) $(date) task=$TASK run=$RUN_NAME total=$TOTAL_ITERS envs=$NUM_ENVS"
