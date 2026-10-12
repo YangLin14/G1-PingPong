@@ -38,7 +38,7 @@ echo "[train] job=$SLURM_JOB_ID restart=${SLURM_RESTART_COUNT:-0} host=$(hostnam
 latest=$(ls -1 logs/rsl_rl/"$EXPERIMENT"/*_"$RUN_NAME"/model_*.pt 2>/dev/null \
   | awk -F"model_" '{split($2,a,"."); print a[1]" "$0}' | sort -n | tail -1)
 start=0; resume=""
-if [ -n "$latest" ]; then start=${latest%% *}; resume="checkpoint_path=${latest#* }"; echo "[train] resuming from ${latest#* }"
+if [ -n "$latest" ]; then start=${latest%% *}; resume="checkpoint_path=${latest#* } restore_step_counter=true"; echo "[train] resuming from ${latest#* }"
 elif [ -n "${INIT_CHECKPOINT:-}" ]; then
   [ -f "$INIT_CHECKPOINT" ] || { echo "[train] INIT_CHECKPOINT not found: $INIT_CHECKPOINT" >&2; exit 1; }
   init=$(readlink -f "$INIT_CHECKPOINT"); start=$(basename "$init" .pt); start=${start#model_}

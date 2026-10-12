@@ -330,6 +330,15 @@ def _run(cfg):
             raise FileNotFoundError(f"[train.py] checkpoint_path does not exist: {ckpt}")
         runner.load(ckpt)
         print(f"[train.py] resumed from checkpoint: {ckpt}", flush=True)
+        if bool(getattr(cfg, "restore_step_counter", False)):
+            saved = torch.load(ckpt, map_location="cpu", weights_only=False)
+            buffers = (saved.get("hope_exact_resume_state") or {}).get("environment_resume_state", {})
+            counter = (buffers or {}).get("env_buffers", {}).get("common_step_counter")
+            if counter is not None:
+                env.unwrapped.common_step_counter = int(counter)
+                print(f"[train.py] restored common_step_counter={int(counter)}", flush=True)
+            else:
+                print("[train.py] WARNING: checkpoint has no common_step_counter; ramps restart at 0", flush=True)
 
     # 7) dump the resolved configuration + train.
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)

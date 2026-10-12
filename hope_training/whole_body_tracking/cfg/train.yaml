@@ -37,6 +37,10 @@ run_name: null
 # counter continues from the checkpoint). null -> fresh initialization. Example:
 #   checkpoint_path=logs/rsl_rl/hope_pingpong/<run>/model_<iter>.pt
 checkpoint_path: null
+# Also restore env.common_step_counter from the checkpoint, so step-keyed ramps (rally pace, timing
+# jitter, ...) continue instead of restarting. Set for a requeue of the same run; leave false for a
+# warm start from another run (its ramps should start at 0).
+restore_step_counter: false
 
 # Logging backend: "tensorboard" (local only, default) or "wandb" (local tensorboard + mirror to W&B).
 # W&B auth comes from ~/.netrc or WANDB_API_KEY; the optional WANDB_USERNAME env var picks the entity.
