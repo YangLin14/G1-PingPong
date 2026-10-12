@@ -217,3 +217,66 @@ class ForehandSuccessTally:
             errs = torch.tensor(self.zone_errors)
             out["landing_err_to_zone_centre_m_median"] = float(errs.median())
         return out
+
+
+def zone_index(
+    landing_xy: torch.Tensor,
+    cfg: ForehandSuccessCfg = ForehandSuccessCfg(),
+    names: tuple[str, ...] = tuple(TARGET_ZONES),
+    tol: float = 1.0e-4,
+) -> torch.Tensor:
+    """Index into ``names`` of the target zone containing each ``(N, 2)`` env-frame point, -1 if none.
+
+    Recovers a bank question's target zone from its ``intended_landing_xy`` (the bank draws that point
+    uniformly inside the row's zone, and the zones do not overlap)."""
+    out = torch.full((landing_xy.shape[0],), -1, dtype=torch.long, device=landing_xy.device)
+    for i, name in enumerate(names):
+        (x_lo, x_hi), (y_lo, y_hi) = cfg.with_target(name).zone_bounds()
+        x, y = landing_xy[:, 0], landing_xy[:, 1]
+        inside = (x >= x_lo - tol) & (x <= x_hi + tol) & (y >= y_lo - tol) & (y <= y_hi + tol)
+        out = torch.where(inside & (out < 0), torch.full_like(out, i), out)
+    return out
+
+
+class ZoneSuccessReport:
+    """One :class:`ForehandSuccessTally` per target zone plus the total over all zones.
+
+    Each question is scored against ITS OWN zone; balls that never reached the strike (reset, fall)
+    are counted as failed attempts of their zone via :meth:`add_missed`."""
+
+    def __init__(self, cfg: ForehandSuccessCfg = ForehandSuccessCfg(), names: tuple[str, ...] = tuple(TARGET_ZONES)):
+        self.cfg = cfg
+        self.names = names
+        self.zone_cfgs = {n: cfg.with_target(n) for n in names}
+        self.tallies = {n: ForehandSuccessTally() for n in names}
+        self.unassigned = 0  # strikes/misses whose question matched no zone (should stay 0)
+
+    def add_strikes(self, zone_ids: torch.Tensor, prm=None, **state: torch.Tensor) -> None:
+        """``state``: the ``classify_strikes`` inputs (ball_pos, ball_vel_in, ball_spin_in, racket_pos,
+        racket_vel, racket_normal), each ``(N, 3)``; ``zone_ids`` ``(N,)`` from :func:`zone_index`."""
+        self.unassigned += int((zone_ids < 0).sum())
+        for i, name in enumerate(self.names):
+            sel = zone_ids == i
+            if not bool(sel.any()):
+                continue
+            zcfg = self.zone_cfgs[name]
+            flags = classify_strikes(**{k: v[sel] for k, v in state.items()}, cfg=zcfg, prm=prm)
+            self.tallies[name].add_strikes(flags, zcfg)
+
+    def add_missed(self, zone_ids: torch.Tensor) -> None:
+        self.unassigned += int((zone_ids < 0).sum())
+        for i, name in enumerate(self.names):
+            self.tallies[name].add_missed(int((zone_ids == i).sum()))
+
+    def as_dict(self) -> dict:
+        total = ForehandSuccessTally()
+        for t in self.tallies.values():
+            total.attempts += t.attempts
+            for k in t.KEYS:
+                total.counts[k] += t.counts[k]
+            total.zone_errors += t.zone_errors
+        return {
+            "overall": total.as_dict(),
+            "per_zone": {n: t.as_dict() for n, t in self.tallies.items()},
+            "unassigned": self.unassigned,
+        }

@@ -129,3 +129,32 @@ def test_tally_counts_misses_in_denominator(zone_hit):
     t.add_missed(3)
     d = t.as_dict()
     assert d["attempts"] == 4 and d["success_rate"] == pytest.approx(0.25)
+
+
+def test_zone_index_recovers_each_zone_centre():
+    names = tuple(fs.TARGET_ZONES)
+    centres = []
+    for name in names:
+        (x0, x1), (y0, y1) = CFG.with_target(name).zone_bounds()
+        centres.append([(x0 + x1) / 2, (y0 + y1) / 2])
+    pts = torch.tensor(centres + [[0.0, 0.0], [CFG.far_x - 0.01, -0.5]])
+    assert fs.zone_index(pts, CFG).tolist() == list(range(len(names))) + [-1, -1]
+
+
+def test_zone_report_counts_misses_and_scores_against_own_zone():
+    report = fs.ZoneSuccessReport(CFG)
+    n = 3
+    v_r = _rows(n, [2.5, 0.6, 1.2])
+    ball = _rows(n, BALL)
+    report.add_strikes(
+        torch.tensor([0, 1, 2]), PRM, ball_pos=ball, ball_vel_in=_rows(n, V_APEX), ball_spin_in=torch.zeros(n, 3),
+        racket_pos=ball, racket_vel=v_r, racket_normal=v_r / torch.linalg.norm(v_r, dim=-1, keepdim=True),
+    )
+    report.add_missed(torch.tensor([0, 0, 3, -1]))
+    out = report.as_dict()
+    assert out["per_zone"]["opp_right_mid"]["attempts"] == 3
+    assert out["per_zone"]["opp_right_corner"]["attempts"] == 1
+    assert out["overall"]["attempts"] == 6
+    assert out["unassigned"] == 1
+    # identical strikes, different zones: at most one of them can land in its own zone
+    assert sum(out["per_zone"][z]["success_rate"] > 0 for z in fs.TARGET_ZONES) <= 1

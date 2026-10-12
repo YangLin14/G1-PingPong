@@ -1,0 +1,35 @@
+# =============================================================================
+# Hydra config for scripts/evaluate_forehand.py: per-zone success rate of a G1 forehand checkpoint
+# under the club's success definition (utils/forehand_success.py).
+#
+# Usage:
+#   hope_isaac_py scripts/evaluate_forehand.py checkpoint=logs/rsl_rl/unitree_g1_hitter_pingpong/<run>/model_<i>.pt
+#
+# The task must draw every question from a forehand bank that records the target zone in
+# intended_landing_xy (the default task, HOPEPingPongUnitreeG1_FH_XC, does).
+# =============================================================================
+
+defaults:
+  - task: HOPEPingPongUnitreeG1_FH_XC
+  - algo: ppo
+  - _self_
+
+headless: true
+device: cuda:0
+seed: 1
+
+checkpoint: ???        # model_*.pt to evaluate
+num_envs: 512
+num_steps: 3000        # scored policy steps (50 Hz -> 60 s of play per env)
+warmup_steps: 150      # steps before scoring starts; only questions issued after warm-up count
+json_out: null         # also write the result JSON here
+
+# Reference motion clips (null -> the task's clips).
+motion_file: null
+motion_file_2: null
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
