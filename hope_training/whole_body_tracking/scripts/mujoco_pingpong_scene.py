@@ -159,6 +159,9 @@ class PingPongRealPhysicsScene:
         # fitted model. The ball-table contact pair is then left out and the bounce applied on the
         # surface-plane crossing inside the table outline.
         self.table_bounce_fn = table_bounce_fn
+        # Opt-in: (sim time, ball position) after every physics sub-step, for a camera model to sample
+        # (see ball_perception.py). None = not recorded.
+        self.ball_track: list | None = None
 
         self.near_edge_x = float(near_edge_x)
         # mujoco_world -> table_frame is a pure translation by this offset.
@@ -441,6 +444,8 @@ class PingPongRealPhysicsScene:
             p_after = d.qpos[self._ball_qadr:self._ball_qadr + 3].copy()
             if self.table_bounce_fn is not None:
                 self._analytic_table_bounce(p_before, p_after)
+            if self.ball_track is not None:
+                self.ball_track.append((float(d.time), d.qpos[self._ball_qadr:self._ball_qadr + 3].copy()))
 
             # real ball<->racket contact this sub-step
             if not result.ball_racket_contact:

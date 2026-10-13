@@ -323,6 +323,17 @@ def run_eval(args) -> dict:
         table_bounce_fn=club["planner"].table_bounce if club else None,
     )
 
+    cam = tracker = None
+    if getattr(args, "perception", None):
+        if club is None:
+            raise ValueError("--perception needs --serve-bank")
+        from ball_perception import BallTracker, camera_from_spec
+
+        cam = camera_from_spec(args.perception)
+        tracker = BallTracker(cam, np.random.default_rng(args.seed + 7919), club["planner"].surface, club_cfg.net_x)
+        scene.ball_track = []
+        print(f"[mujoco_eval] perception: {cam}", file=sys.stderr)
+
     # Optional offscreen mp4 of the session (every --video-every-th tick; needs MUJOCO_GL=egl/osmesa).
     capture = None
     if getattr(args, "video_out", None):
@@ -445,6 +456,13 @@ def run_eval(args) -> dict:
             if club is not None:
                 base_target_xy = spawn_xy + np.asarray(row["station_xy"], dtype=np.float64)
         elif trial > 0:
+            if getattr(args, "reset_after_fall", False) and (serve_records[-1]["fell"] or scene.base_fallen()):
+                # a person stands the robot back up; otherwise one fall decides every later ball
+                scene.reset_stand()
+                lifecycle = SwingLifecycle(runtime_cfg.lifecycle)
+                source = QueueRacketCommandSource()
+                last_action = np.zeros(num_joints, dtype=np.float64)
+                rally_ref_tick = clock[0]
             if club is not None:  # the question's station: the robot steps there during recovery
                 base_target_xy = spawn_xy + np.asarray(row["station_xy"], dtype=np.float64)
             # Continuous rally: keep the policy running (no reset, no teleport)
@@ -489,8 +507,12 @@ def run_eval(args) -> dict:
                 _events, last_action = _policy_tick(lifecycle, source, last_action, base_target_xy)
             club_state = {"bounced": False, "resolved": False, "v_r": row_v_r, "apex_vz": None,
                           "pre_contact_vel": None, "lead_s": wait_ticks * dt + pred0[3],
-                          "launch_tick": clock[0], "contact_clock": None}
+                          "launch_tick": clock[0], "contact_clock": None,
+                          "first_cmd_tts": None, "apex_err_m": None, "tts_err_s": None}
         scene.set_ball(serve_pos, serve_vel, serve_spin)
+        if tracker is not None:
+            scene.ball_track.clear()
+            tracker.reset(float(scene.data.time))
         contacted = False
         net_clear = False
         first_bounce = None
@@ -509,9 +531,14 @@ def run_eval(args) -> dict:
                 if not contacted:
                     club_state["pre_contact_vel"] = ball_vel.copy()
                     spin_now = scene.ball_spin_w()
-                    pred = club["planner"].predict(ball_pos, ball_vel, spin_now, after_bounce=club_state["bounced"])
+                    if tracker is None:
+                        pred = club["planner"].predict(ball_pos, ball_vel, spin_now, after_bounce=club_state["bounced"])
+                        seen_bounce = club_state["bounced"]
+                    else:
+                        pred, seen_bounce = _perceived_apex(
+                            tracker, cam, scene, club["planner"], ball_pos, ball_vel, spin_now, club_state)
                     if pred is not None:
-                        if club_state["bounced"] and not club_state["resolved"]:
+                        if seen_bounce and not club_state["resolved"]:
                             # re-solve the racket velocity on the real ball's apex state, once
                             club_state["v_r"] = club["planner"].solve_racket(
                                 pred[0], pred[1], pred[2], row["intended_landing_xy"])
@@ -520,6 +547,8 @@ def run_eval(args) -> dict:
                             task_id=task_id, task_revision=revision, swing_sign=side, position=pred[0],
                             velocity=club_state["v_r"], time_to_strike=float(pred[3]),
                         )
+                        if club_state["first_cmd_tts"] is None:
+                            club_state["first_cmd_tts"] = float(pred[3])
             else:
                 cmd = _predict_command(
                     ball_pos, ball_vel, side, scene, physics, args, task_id, revision, RacketCommand
@@ -598,6 +627,10 @@ def run_eval(args) -> dict:
                 "in_zone": bool(on_opponent and in_zone),
                 "club_success": bool(success and apex_ok and in_zone),
                 "announced_s_before_apex": round(club_state["lead_s"], 3),
+                "first_command_time_to_strike_s": None if club_state["first_cmd_tts"] is None
+                else round(club_state["first_cmd_tts"], 3),
+                "perceived_apex_err_m": None if club_state["apex_err_m"] is None else round(club_state["apex_err_m"], 4),
+                "perceived_time_err_s": None if club_state["tts_err_s"] is None else round(club_state["tts_err_s"], 4),
                 "strike_interval_s": None if club_state["contact_clock"] is None or last_contact_clock is None
                 else round((club_state["contact_clock"] - last_contact_clock) * dt, 3),
             }
@@ -666,6 +699,17 @@ def run_eval(args) -> dict:
         out["club"]["announced_s_before_apex_median"] = float(np.median(
             [r["announced_s_before_apex"] for r in serve_records]))
         out["club"]["strike_interval_s_median"] = float(np.median(intervals)) if intervals else None
+        if cam is not None:
+            def _med(key):
+                vals = [abs(r[key]) for r in serve_records if r.get(key) is not None]
+                return float(np.median(vals)) if vals else None
+            out["club"]["perception"] = {
+                **{k: getattr(cam, k) for k in ("name", "rate_hz", "latency_s", "noise_m", "dropout", "window_s",
+                                                "spin", "spin_rel_err", "spin_ang_err_deg")},
+                "first_command_time_to_strike_s_median": _med("first_command_time_to_strike_s"),
+                "apex_err_m_median": _med("perceived_apex_err_m"),
+                "time_err_s_median": _med("perceived_time_err_s"),
+            }
         o = out["club"]["overall"]
         print(
             f"[mujoco_eval] club forehand: success={o['success_rate']:.3f} contact={o['contact_rate']:.2f} "
@@ -675,6 +719,35 @@ def run_eval(args) -> dict:
         )
     out["serves"] = serve_records
     return out
+
+
+def _perceived_apex(tracker, cam, scene, planner, ball_pos, ball_vel, spin_now, club_state):
+    """Planner prediction from what the tracking system reports instead of the true ball.
+
+    Returns (prediction with time-to-strike counted from NOW, bounce seen by the tracker). Also records
+    the error of the commanded apex against the planner run on the true state (after the true bounce),
+    so the last value before contact is what the policy was finally told."""
+    t_now = float(scene.data.time)
+    tracker.ingest(scene.ball_track)
+    scene.ball_track.clear()
+    if cam.oracle:
+        p_e, v_e, seen, age = ball_pos, ball_vel, club_state["bounced"], 0.0
+    else:
+        est = tracker.estimate(t_now)
+        if est is None:
+            return None, False
+        p_e, v_e, seen, age = est.pos, est.vel, est.bounced, t_now - est.t
+    w_e = tracker.spin_estimate(spin_now)
+    pred = planner.predict(p_e, v_e, w_e, after_bounce=seen)
+    if pred is None or pred[3] - age <= 0.0:
+        return None, seen
+    pred = (pred[0], pred[1], pred[2], pred[3] - age)
+    if club_state["bounced"]:
+        truth = planner.predict(ball_pos, ball_vel, spin_now, after_bounce=True)
+        if truth is not None:
+            club_state["apex_err_m"] = float(np.linalg.norm(pred[0] - truth[0]))
+            club_state["tts_err_s"] = float(pred[3] - truth[3])
+    return pred, seen
 
 
 def _club_summary(records: list[dict], zone_names) -> dict:
@@ -771,6 +844,12 @@ def parse_args() -> argparse.Namespace:
                              "--rally-gap-s after our contact and announced at launch.")
     parser.add_argument("--rally-gap-s", nargs=2, type=float, default=(0.7, 1.0), metavar=("LO", "HI"),
                         help="--rally-pace: seconds from our contact to the opponent's contact (default 0.7 1.0).")
+    parser.add_argument("--perception", default=None, metavar="PRESET[:k=v,...]",
+                        help="With --serve-bank: the planner sees the ball through a camera model (ball_perception.py "
+                             "PRESETS: oracle, oracle_nospin, mocap_360, mocap_240, stereo_125, iphone_240, iphone_120, "
+                             "iphone_60, webcam_30; overrides e.g. mocap_360:latency_s=0.05). Default: true state.")
+    parser.add_argument("--reset-after-fall", action="store_true",
+                        help="Continuous mode: stand the robot back up before the next ball if it fell.")
     parser.add_argument("--seed", type=int, default=0, help="RNG seed for the example serve distribution.")
     parser.add_argument("--view", action="store_true", help="Launch the MuJoCo passive viewer (debug only).")
     parser.add_argument("--json-out", default=None, help="Also write {'success_rate': ...} to this file.")

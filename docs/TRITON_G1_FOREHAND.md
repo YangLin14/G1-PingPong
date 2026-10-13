@@ -4,7 +4,8 @@
 
 This document records what the Triton Droids team built on top of HOPE and the club's G1 port,
 why each decision was made, how the whole system works end to end, and how to run every piece.
-Run-by-run numbers and status checks live in [`TRAINING_STATUS_G1_FOREHAND.md`](TRAINING_STATUS_G1_FOREHAND.md).
+Run-by-run numbers and status checks live in [`TRAINING_STATUS_G1_FOREHAND.md`](TRAINING_STATUS_G1_FOREHAND.md);
+sensing hardware and the perception experiment in [`PERCEPTION_G1_FOREHAND.md`](PERCEPTION_G1_FOREHAND.md).
 Status as of **2026-10-12**: simulation only (the G1 has not arrived); everything is designed so the
 sim-to-real path stays open.
 
@@ -49,6 +50,7 @@ rallies up to 106 shots), using references made by filming a human, lifting the 
 | D13 | **One policy for all landing zones; the zone is chosen by the planner.** Positions are selectable modes (one or several) at run time, not separate policies. | The policy tracks a racket target; the planner/bank turns the chosen landing point into that racket velocity. One policy shares the body skill across zones, costs a quarter of the GPU time, and switches zones between shots without changing controllers. Per-zone evaluation (`target_zone_id`) shows whether a zone needs more weight or fine-tuning. |
 | D14 | **Train at real rally timing, in a separate run (`g1_fh_rally`, task `HOPEPingPongUnitreeG1_FH_XC_RALLY`), warm-started from `g1_fh_diag`.** Up to 60 % of follow-up swings enter the clip late (time-to-strike 0.4–0.83 s, no hold) and the previous follow-through ends 0.7–1.0 s after its strike; the virtual ball arrives ±30 ms off the clock; feeds are faster (4.4–8.5 m/s before the bounce, was 4.4–6.6). All ramped in over 3000 iterations. | MuJoCo at real cadence (`--rally-pace`) dropped contact from 88 % to 38 % with falls on 44 % of balls: training gave 0.83 s of lead and ~3 s between strikes, a rally gives 0.4–0.8 s and ~1.5 s. Late entry is what the deploy reference clock does when the planner's time-to-strike is short, so no clip time-warp is needed. Slower feeds are impossible with the middle-third bounce and a fixed strike plane (the apex would be in front of the robot); they need forward footwork. The main run keeps going untouched as the comparison. |
 | D15 | **A requeued run continues its step-keyed ramps; a warm start from another run restarts them.** `train.sbatch` passes `restore_step_counter=true` only when it resumes the run's own newest checkpoint. | Cluster outages and preemption requeue jobs. `runner.load` restores weights and optimizer but left `env.common_step_counter` at 0, so the rally-pace and timing-jitter ramps started over after every requeue. The counter is already saved in the checkpoint's exact-resume state. |
+| D16 | **Treat the ball's spin as a required input, and do not buy cameras yet.** Plan a spin estimate from the opponent's racket at contact plus the ball's curved flight. | In simulation, perfect tracking without spin drops legal returns from 61 % to 10 %; with spin known, mocap and iPhone-level tracking score 56 % and 54 %, and a rough estimate (±50 %, ±40°) still gives 48–49 %. Camera quality matters far less than spin for our planner. Details: [`PERCEPTION_G1_FOREHAND.md`](PERCEPTION_G1_FOREHAND.md). |
 
 ---
 
@@ -157,6 +159,7 @@ the ball to it, and the policy tracks that velocity.
 | `mujoco_eval_onnx.py` (extended) | `--serve-bank` (real ball fed from our bank), `--zones`, `--feed-lead-s`, `--rally-pace` / `--rally-gap-s` (next feed 0.7–1.0 s after our contact, announced only at launch); club scoring per ball and per zone. Default mode unchanged. |
 | `mujoco_pingpong_scene.py` (extended) | Opt-in Magnus force, target-zone drawing, ball spin, and the venue table-bounce model (MuJoCo's own bounce put the apex 20–40 cm too deep). |
 | `check_rally_pace.py` | Isaac check of the rally-pace clock and timing jitter (swing entry time, strike-to-strike interval, falls). |
+| `ball_perception.py`, `perception_sweep.py` | Camera model for `mujoco_eval_onnx.py --perception` (rate, latency, noise, dropout, HITTER-style fit, spin unknown / known / read with error) and the sweep over camera systems. `--reset-after-fall` stands the robot up between balls. |
 | `view_feed_bank.py` | MuJoCo visualizer of the bank: diagonal feed from the opponent's right → bounce → apex → return, with the feed origin, all zones (current target highlighted) and racket target; interactive or MP4, `--camera behind|top`. |
 | `gvhmr_to_g1_headless.py` | GMR's GVHMR → G1 retarget without its viewer (cluster nodes have no display). |
 | `gmr_video_clip_to_g1.py` | GMR output → HOPE G1 clip: trim, 30 → 50 Hz, heading/xy normalization, joint reorder + limit clamp, loop-closure blend, MuJoCo FK of the 14 tracked bodies, strike frame (peak racket speed or manual), optional MP4 preview. |
@@ -173,6 +176,7 @@ the ball to it, and the policy tracks that velocity.
 | `tests/test_make_g1_forehand_bank.py` | 4 tests: loader schema; feed/apex/strike-box/speed constraints; the feed comes diagonally from the opponent's right; equal rows per zone and **every row is a success into its own zone**. |
 | `tests/test_gmr_video_clip_to_g1.py` | 3 tests: round trip of a published G1 clip through a fake GMR file (joints < 0.03 rad, bodies < 1 cm, strike frame ±1), sidecar schema, loop blend. |
 | `tests/test_mujoco_forehand_bank.py` | 3 tests: the MuJoCo-side flight and planner reproduce the bank's apex and racket velocity. |
+| `tests/test_ball_perception.py` | 4 tests: noise-free fit and latency, bounce segmentation, presets, per-ball spin-reading error. |
 | `docs/plans/SERVE_SIDE_BACKSPIN_PLAN.md` | The shelved serve plan (D4). |
 
 ---
@@ -370,7 +374,10 @@ Full tables, curves and the status log are in
    the virtual strike, a late swing start at rally pace, faster feeds. Still open: check MuJoCo's racket
    contact against the venue paddle model (MuJoCo returns the ball lower), then compare `g1_fh_rally`
    with `g1_fh_diag` on `eval_rally` / `eval_bank` / Isaac zones once the ramps are full (~iteration 5600).
-7. Before hardware: measure the real racket adapter, refit ball physics on our table, and write a
+7. Spin estimation (D16): opponent-racket reading + Magnus fit of the flight; train with spin errors.
+   Hardware target from the perception study: ≥120 Hz, ≤15–30 ms, ≤5 mm, synced views of the table
+   and the opponent's racket.
+8. Before hardware: measure the real racket adapter, refit ball physics on our table, and write a
    G1 deploy runner (the C++ runner is A3-only).
-8. Then balance and footwork (free station; also needed for feeds slower than ~4.4 m/s), then
+9. Then balance and footwork (free station; also needed for feeds slower than ~4.4 m/s), then
    backhand, then the serve plan.

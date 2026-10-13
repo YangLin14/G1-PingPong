@@ -2,7 +2,7 @@
 
 [English](TRITON_G1_FOREHAND.md) · 日常操作指令：[RUNBOOK_G1_FOREHAND.zh-TW.md](RUNBOOK_G1_FOREHAND.zh-TW.md)
 
-這份文件記錄 Triton Droids 在 HOPE 和社團 G1 移植版上做了哪些事：每個決定的理由、整套系統從頭到尾怎麼運作，以及每個部分怎麼執行。每個 run 的數字和每次的狀態檢查記錄在 [`TRAINING_STATUS_G1_FOREHAND.zh-TW.md`](TRAINING_STATUS_G1_FOREHAND.zh-TW.md)。
+這份文件記錄 Triton Droids 在 HOPE 和社團 G1 移植版上做了哪些事：每個決定的理由、整套系統從頭到尾怎麼運作，以及每個部分怎麼執行。每個 run 的數字和每次的狀態檢查記錄在 [`TRAINING_STATUS_G1_FOREHAND.zh-TW.md`](TRAINING_STATUS_G1_FOREHAND.zh-TW.md)；感知硬體和感知實驗在 [`PERCEPTION_G1_FOREHAND.zh-TW.md`](PERCEPTION_G1_FOREHAND.zh-TW.md)。
 狀態為 **2026-10-12**：G1 實機還沒到，目前只在模擬中進行，但所有設計都保留了之後上實機（sim-to-real）的路徑。
 
 ---
@@ -41,6 +41,7 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 | D13 | **四個落點共用同一個策略，由規劃器決定打哪一個。** 落點是執行時可以切換的模式（可以選一個或多個），不是分開訓練的策略。 | 策略只負責追蹤球拍目標；規劃器（題庫）會把選定的落點換算成對應的球拍速度。共用一個策略可以讓不同落點共享身體技能，GPU 時間只要四分之一，而且換落點時不用切換控制器、動作不會突然改變。評估時可以按落點分別統計（`target_zone_id`），看哪個落點需要多練或微調。 |
 | D14 | **用真實對打的時間節奏訓練，開一個獨立的 run（`g1_fh_rally`，task `HOPEPingPongUnitreeG1_FH_XC_RALLY`），從 `g1_fh_diag` 接續權重。** 最多 60% 的後續揮拍會晚開始（距離擊球 0.4–0.83 秒、沒有等待），前一拍的收拍在擊球後 0.7–1.0 秒就結束；虛擬球到達時間有 ±30 ms 誤差；來球更快（反彈前 4.4–8.5 m/s，原本 4.4–6.6）。三項都在 3000 個 iteration 內逐步加入。 | MuJoCo 真實對打節奏（`--rally-pace`）下，接觸率從 88% 掉到 38%，44% 的球會跌倒：訓練時有 0.83 秒預告、兩拍之間約 3 秒，真實對打只有 0.4–0.8 秒和約 1.5 秒。「晚開始」正是部署時規劃器給的時間比較短時，參考時鐘會做的事，所以不需要把動作做時間壓縮。在彈跳點固定於中間三分之一、擊球平面固定的情況下，較慢的來球物理上做不到（最高點會在機器人前面），需要往前移動的步伐才行。主要 run 繼續跑不動，作為對照。 |
 | D15 | **同一個 run 被 requeue 後，依步數漸進的設定會接著走；從別的 run 接續權重時則從頭開始。** `train.sbatch` 只有在接續這個 run 自己最新的 checkpoint 時才會加上 `restore_step_counter=true`。 | 叢集停機和被搶佔都會讓 job requeue。`runner.load` 會還原權重和 optimizer，但 `env.common_step_counter` 會停在 0，所以對打節奏和時機誤差的漸進比例每次 requeue 都從頭開始。這個計數器本來就存在 checkpoint 的 exact-resume 狀態裡。 |
+| D16 | **把球的旋轉當成必要的輸入，現在先不買攝影機。** 規劃用「對手擊球時的球拍」加上「球的彎曲軌跡」來估計旋轉。 | 模擬中，追蹤完美但不知道旋轉時，合法回球從 61% 掉到 10%；知道旋轉時，mocap 和 iPhone 等級分別是 56% 和 54%；粗略估計（±50%、±40°）仍有 48–49%。對我們的規劃器來說，攝影機好壞遠不如旋轉重要。細節見 [`PERCEPTION_G1_FOREHAND.zh-TW.md`](PERCEPTION_G1_FOREHAND.zh-TW.md)。 |
 
 ---
 
@@ -125,6 +126,7 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 | `mujoco_eval_onnx.py`（擴充） | `--serve-bank`（用我們的題庫餵真的球）、`--zones`、`--feed-lead-s`、`--rally-pace` / `--rally-gap-s`（我們擊球後 0.7–1.0 秒對手就回下一球，球發出時才知道打哪裡）；每一球、每個落點都用社團規則計分。預設模式不變。 |
 | `mujoco_pingpong_scene.py`（擴充） | 可選的 Magnus 力、畫出目標區、球的旋轉，以及 venue 的桌面反彈模型（MuJoCo 自己的反彈會讓最高點深 20–40 cm）。 |
 | `check_rally_pace.py` | 在 Isaac 檢查對打節奏的時鐘和時機誤差（揮拍開始時間、兩拍間隔、跌倒）。 |
+| `ball_perception.py`、`perception_sweep.py` | `mujoco_eval_onnx.py --perception` 的攝影機模型（幀率、延遲、雜訊、漏幀、HITTER 式擬合、旋轉不知道／知道／有誤差的估計），以及跑遍各種攝影機系統的掃描腳本。`--reset-after-fall` 會在兩球之間把機器人扶起來。 |
 | `view_feed_bank.py` | 在 MuJoCo 裡播放題庫的每一題：從對手右邊斜對角餵球 → 反彈 → 最高點 → 回球，同時畫出餵球起點、所有區域（目前的目標會亮起來）和球拍目標；可以開互動視窗或輸出 MP4，鏡頭可選 `--camera behind|top`。 |
 | `gvhmr_to_g1_headless.py` | GMR 的「GVHMR → G1」轉換，但不開視窗（叢集節點沒有螢幕）。 |
 | `gmr_video_clip_to_g1.py` | 把 GMR 的輸出轉成 HOPE 的 G1 clip：裁切、30 → 50 Hz、對齊朝向和位置、重排關節順序並限制在關節範圍內、把結尾混接回開頭讓 clip 可以循環、用 MuJoCo 算出 14 個身體部位的姿態、標記擊球幀（自動取球拍速度最快的一幀，或手動指定），可選擇輸出 MP4 預覽。 |
@@ -141,6 +143,7 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 | `tests/test_make_g1_forehand_bank.py` | 4 個測試：符合載入器的格式；符合餵球區／最高點／擊球範圍／球拍速度的限制；餵球確實從對手右邊斜對角過來；每個落點題數相同，而且**每一題用它自己的落點檢查都是成功**。 |
 | `tests/test_gmr_video_clip_to_g1.py` | 3 個測試：把現有的 G1 clip 偽裝成 GMR 輸出再轉回來（關節誤差 < 0.03 rad、身體位置誤差 < 1 cm、擊球幀誤差 ±1），sidecar 格式正確，結尾混接正確。 |
 | `tests/test_mujoco_forehand_bank.py` | 3 個測試：MuJoCo 端的飛行模型和規劃器算出來的最高點、球拍速度跟題庫一致。 |
+| `tests/test_ball_perception.py` | 4 個測試：無雜訊的擬合和延遲、反彈切段、preset、每顆球固定的旋轉估計誤差。 |
 | `docs/plans/SERVE_SIDE_BACKSPIN_PLAN.md` | 暫緩的發球計畫（D4）。 |
 
 ---
@@ -295,5 +298,6 @@ ssh -L 6006:localhost:6006 sdsc-scc '~/hope/isaac-venv/bin/tensorboard --port 60
 4. ~~寫 Isaac 評估腳本，用 `forehand_success` 分區統計~~：已完成（2026-10-11），`scripts/evaluate_forehand.py` / `eval_forehand.sh`。
 5. 落點選擇（D13）：在題庫加上 `target_zone_ids` 篩選，讓訓練、評估、播放都能指定落點，部署時的規劃器也提供同樣的選擇。（放寬餵球範圍：已經用快球題庫完成。）
 6. 縮小 MuJoCo 題庫評估發現的真球落差。已完成（D14）：虛擬擊球的時機誤差、對打節奏下晚開始揮拍、更快的來球。還沒做：拿 MuJoCo 檢查球拍碰撞模型（MuJoCo 回球比較低）；等漸進比例加滿（約第 5600 個 iteration）後，用 `eval_rally` / `eval_bank` / Isaac 分區評估比較 `g1_fh_rally` 和 `g1_fh_diag`。
-7. 上實機之前：量測實際的球拍轉接座、在我們自己的桌子上重新擬合球的物理參數、寫 G1 的部署 runner（現有的 C++ runner 只支援 A3）。
-8. 接著處理平衡和步法（站位可以移動，比約 4.4 m/s 更慢的球也需要），然後是反手，最後是發球計畫。
+7. 旋轉估計（D16）：從對手球拍判斷，加上飛行軌跡的 Magnus 擬合；訓練時加入旋轉誤差。感知實驗得出的硬體目標：≥120 Hz、≤15–30 ms、≤5 mm，多個同步視角涵蓋球桌和對手球拍。
+8. 上實機之前：量測實際的球拍轉接座、在我們自己的桌子上重新擬合球的物理參數、寫 G1 的部署 runner（現有的 C++ runner 只支援 A3）。
+9. 接著處理平衡和步法（站位可以移動，比約 4.4 m/s 更慢的球也需要），然後是反手，最後是發球計畫。

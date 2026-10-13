@@ -187,6 +187,14 @@ touch the ball; use `eval_bank` for the forehand.
 
 ## 5. Status log (newest first)
 
+### 2026-10-13 evening — perception study: spin matters more than the camera
+* Added a camera model to the MuJoCo evaluator and ran 25 conditions × 120 balls with `model_5900`
+  at rally pace. Without spin, legal returns drop from 61 % to 10 % even with perfect tracking; with
+  spin known, mocap 56 % and iPhone-level 54 %; a rough spin estimate (±50 %, ±40°) 48–49 %.
+  Full table and caveats: [`PERCEPTION_G1_FOREHAND.md`](PERCEPTION_G1_FOREHAND.md) (decision D16).
+* Side finding: in continuous MuJoCo sessions a fallen robot never got up, so one fall decided every
+  later ball. Sweeps now use `--reset-after-fall`.
+
 ### 2026-10-13 15:15 — `g1_fh_rally` stopped by a failed GPU; new CUDA jobs cannot start on zixian
 * `g1_fh_diag` (4382) iteration 13 704: racket ≤10 cm 99.8 %, all OK 65 %, contact 75 %, legal 55 %,
   landing error 0.32 m, falls 0.35 %.

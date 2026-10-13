@@ -177,6 +177,12 @@ bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job auto g1_fh_diag
 
 ## 5. 狀態紀錄（最新的在最上面）
 
+### 2026-10-13 晚上：感知實驗——旋轉比攝影機重要
+* 在 MuJoCo 評估加入攝影機模型，用 `model_5900`、真實對打節奏跑了 25 個條件，每個 120 球。
+  不知道旋轉時，就算追蹤完美，合法回球也從 61% 掉到 10%；知道旋轉時，mocap 56%、iPhone 等級 54%；
+  粗略的旋轉估計（±50%、±40°）有 48–49%。完整表格和限制見 [`PERCEPTION_G1_FOREHAND.zh-TW.md`](PERCEPTION_G1_FOREHAND.zh-TW.md)（決策 D16）。
+* 附帶發現：MuJoCo 連續對打時，機器人跌倒後就不會再站起來，一次跌倒就決定了之後每一球的結果。掃描現在都加上 `--reset-after-fall`。
+
 ### 2026-10-13 15:15：`g1_fh_rally` 因為 GPU 故障停下；zixian 上新的 CUDA job 都起不來
 * `g1_fh_diag`（4382）第 13,704 個 iteration：球拍 ≤10 cm 99.8%、全部達標 65%、接觸 75%、合法回球 55%、
   落點誤差 0.32 m、跌倒 0.35%。
