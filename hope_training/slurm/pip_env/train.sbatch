@@ -6,7 +6,8 @@
 #        EXPERIMENT (rsl_rl log dir, default unitree_g1_hitter_pingpong),
 #        INIT_CHECKPOINT (warm start a NEW run from another run's model_N.pt; weights, optimizer and
 #        iteration counter carry over, so TOTAL_ITERS stays absolute; ignored once RUN_NAME has its own
-#        checkpoints, e.g. after a requeue).
+#        checkpoints, e.g. after a requeue),
+#        AVOID_GPU_IDX (Slurm GPU indices never to run on, comma-separated; default 5; empty = none).
 #SBATCH --job-name=hope-g1-train
 #SBATCH --account=tritondroids
 #SBATCH --partition=long
@@ -20,18 +21,20 @@ set -uo pipefail
 source "$SLURM_SUBMIT_DIR/hope_training/slurm/pip_env/env.sh" 2>/dev/null || source "$HOME/hope/HOPE/hope_training/slurm/pip_env/env.sh"
 TASK="${TASK:-HOPEPingPongUnitreeG1_FH_XC}"; RUN_NAME="${RUN_NAME:-g1_fh_xc}"
 TOTAL_ITERS="${TOTAL_ITERS:-20000}"; NUM_ENVS="${NUM_ENVS:-4096}"; EXPERIMENT="${EXPERIMENT:-unitree_g1_hitter_pingpong}"
-# A GPU the driver cannot read (zixian 0000:61:00.0 after the 2026-10-11 outage) makes CUDA fail for
-# the whole job. If CUDA does not come up, try each visible device alone; submit with
-# --gres=rtx2080ti:2 to get a healthy one next to a broken one.
-cuda_ok() { "$ISAAC_VENV/bin/python" -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null; }
-if ! cuda_ok; then
-  for d in 0 1 2 3; do
-    if CUDA_VISIBLE_DEVICES=$d cuda_ok; then
-      export CUDA_VISIBLE_DEVICES=$d; echo "[train] CUDA only works with CUDA_VISIBLE_DEVICES=$d (broken GPU in the allocation)"; break
-    fi
+# Never run on a known-broken GPU. AVOID_GPU_IDX lists Slurm GPU indices on zixian (default 5 =
+# 0000:B2:00.0, which fell off the bus on 2026-10-12 and crashed a run). The check reads only
+# the job's GPU indices from Slurm (this cluster sets neither SLURM_JOB_GPUS nor CUDA_VISIBLE_DEVICES)
+# and never touches the device. If Slurm hands out a listed GPU, the job stops before Isaac starts;
+# resubmit (Slurm gives the lowest free index) and consider reporting the GPU to SDSC.
+AVOID_GPU_IDX="${AVOID_GPU_IDX-5}"
+job_gpus=$(scontrol show job -d "$SLURM_JOB_ID" | grep -oE 'IDX:[0-9,-]+' | head -1 | cut -d: -f2)
+job_gpus=$(for r in ${job_gpus//,/ }; do seq "${r%-*}" "${r#*-}"; done)
+echo "[train] GPU index(es): ${job_gpus//$'\n'/ }"
+for g in $job_gpus; do
+  for bad in ${AVOID_GPU_IDX//,/ }; do
+    [ "$g" = "$bad" ] && { echo "[train] allocated GPU index $g is in AVOID_GPU_IDX=$AVOID_GPU_IDX; not starting" >&2; exit 1; }
   done
-  [ -n "${CUDA_VISIBLE_DEVICES:-}" ] || { echo "[train] no usable GPU in this allocation" >&2; exit 1; }
-fi
+done
 cd "$WBT"
 set +u; source setup_train_env.sh; set -u
 echo "[train] job=$SLURM_JOB_ID restart=${SLURM_RESTART_COUNT:-0} host=$(hostname) $(date) task=$TASK run=$RUN_NAME total=$TOTAL_ITERS envs=$NUM_ENVS"
