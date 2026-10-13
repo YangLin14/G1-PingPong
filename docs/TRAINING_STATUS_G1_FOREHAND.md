@@ -187,6 +187,21 @@ touch the ball; use `eval_bank` for the forehand.
 
 ## 5. Status log (newest first)
 
+### 2026-10-12 17:30 — both runs healthy; MuJoCo at rally pace no longer falls
+* `g1_fh_diag` iteration 5099: racket ≤10 cm 98 %, all OK 46 %, contact 73 %, legal 49 %, falls 1.9 %.
+* `g1_fh_rally` iteration 5979 (rally pace 42 % of swings, jitter at the full 30 ms): racket ≤10 cm 95 %,
+  all OK 30 %, contact 60 %, legal 37 %, falls 2.1 %. The ramps finish around iteration 5600–5900.
+* MuJoCo, 12 bank balls each (`eval_checkpoint.sh`; videos in `~/hope/evals/<run>/<model>/`):
+
+  | checkpoint | mode | contact | apex OK | over net | legal | in zone | falls | strike-to-strike |
+  |---|---|---:|---:|---:|---:|---:|---:|---:|
+  | `g1_fh_diag` `model_5000` | bank (0.9 s notice) | 75 % | 8 % | 58 % | 33 % | 8 % | 0 % | 2.3 s |
+  | `g1_fh_diag` `model_5000` | rally pace | 83 % | 17 % | 33 % | 33 % | 8 % | 0 % | 1.6 s |
+  | `g1_fh_rally` `model_5900` | bank (0.9 s notice) | 83 % | 0 % | 75 % | 50 % | 0 % | 0 % | 2.3 s |
+  | `g1_fh_rally` `model_5900` | rally pace | **92 %** | 0 % | **83 %** | **75 %** | 8 % | 0 % | 1.5 s |
+* Falls at rally pace are gone for both (44 % with `model_2400`). The remaining problem is timing: both
+  strike while the ball is still rising (median vz +0.36 to +0.44 m/s, about 40 ms before the apex).
+
 ### 2026-10-12 12:40 — second outage; 4382 was being preempted every 31 min
 * All GPU nodes went "not responding" at 02:29 (munge errors again, like 10-10). 5560 was cancelled
   rather than requeued; resubmitted as **5584**, which resumes from its own `model_4600`. 4382 is queued.
