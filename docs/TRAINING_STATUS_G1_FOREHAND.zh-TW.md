@@ -177,6 +177,18 @@ bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job auto g1_fh_diag
 
 ## 5. 狀態紀錄（最新的在最上面）
 
+### 2026-10-13 15:15：`g1_fh_rally` 因為 GPU 故障停下；zixian 上新的 CUDA job 都起不來
+* `g1_fh_diag`（4382）第 13,704 個 iteration：球拍 ≤10 cm 99.8%、全部達標 65%、接觸 75%、合法回球 55%、
+  落點誤差 0.32 m、跌倒 0.35%。
+* `g1_fh_rally`（5584）在 10-12 17:22、第 5985 個 iteration 當掉（`CUDA error: unspecified launch failure`、
+  Vulkan `ERROR_DEVICE_LOST`），之後卡住 22 小時沒有結束。它閒置的第二張 GPU，也就是 Slurm 編號 5 = `0000:B2:00.0`，
+  已經從匯流排上掉了（`nvidia-smi`：「Unable to determine the device handle … Unknown Error」）。
+  當掉時 `eval_checkpoint.sh` 正在這個 job 裡算圖，很可能就是用那張閒置的卡。
+* 從那之後，zixian 上新的 CUDA 程式連正常的卡都起不來（編號 0 / `3D:00.0`：`CUDA unknown error`，但 `nvidia-smi` 看得到這張卡）。
+  已經在跑的 job（4382、Oren 的 4218）不受影響。重新送出的 5640（1 張 GPU，編號 0）就是因為這樣一開始就失敗。
+  需要 SDSC 重置 GPU 或重開機器；之後 `g1_fh_rally` 會從 `model_5900` 接續。
+* `train.sbatch` 現在不會在 Slurm 編號 5 的 GPU 上啟動（`AVOID_GPU_IDX`），檢查時也不會碰到那張卡。
+
 ### 2026-10-12 17:30：兩個 run 都正常；MuJoCo 對打節奏下不再跌倒
 * `g1_fh_diag` 第 5099 個 iteration：球拍 ≤10 cm 98%、全部達標 46%、接觸 73%、合法回球 49%、跌倒 1.9%。
 * `g1_fh_rally` 第 5979 個 iteration（對打節奏佔 42% 的揮拍，時機誤差已到 30 ms）：球拍 ≤10 cm 95%、
