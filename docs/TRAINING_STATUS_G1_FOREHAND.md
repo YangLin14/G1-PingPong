@@ -7,11 +7,10 @@ This file is the running record of our training runs: what we measure, how we me
 status check so far. Add a new entry to section 5 each time you check a run (newest at the top), and
 a new row to section 4 whenever you run the per-zone evaluation. All times are Pacific (cluster time).
 
-**Latest (2026-10-12 12:40):** the cluster went down again at 02:29 (all GPU nodes "not responding"); nothing is
-training. `g1_fh_diag` stopped at 3774 (checkpoint `model_3700`), `g1_fh_rally` at 4677 (`model_4600`, rally
-pace already at 42 %). Both are queued and resume automatically when the nodes return (4382 and 5584).
-Before the outage 4382 was preempted every ~31 min by another club job (section 5). Club success of
-`model_2300` in Isaac: **11.1 %**; at real rally pace in MuJoCo the policy meets only 38 % of balls.
+**Latest (2026-10-14):** zixian is down since 10-13 20:15, so nothing trains (`g1_fh_diag` at 15 756 /
+20 000, `g1_fh_rally` at 5900). In MuJoCo with the new deploy clock + 40 ms calibration (D17), the main
+run's `model_15700` meets every ball at the apex (97 %) and returns 82 % legally, but lands 30–60 cm
+short, so only 6.7 % hit the zone (all in the middle zone). Aim is the next problem (section 4).
 
 ---
 
@@ -167,6 +166,10 @@ tick, and the racket–ball contact is MuJoCo's. Timing is measured on the real 
 |---|---:|---:|---:|---:|---:|---:|---:|
 | `model_2300` | 6/12 | 1/12 | 3/12 | 3/12 | 1/12 | 0/12 | 3/12 |
 | `model_2400` | 10/12 | 5/12 | 3/12 | 2/12 | 0/12 | 0/12 | 0/12 |
+| `model_15700` (10-14) | 12/12 | 0/12 | 11/12 | 8/12 | 0/12 | 0/12 | 0/12 |
+| `model_15700`, strike_time clock + 40 ms (10-14) | 12/12 | 12/12 | 11/12 | 10/12 | 0/12 | 0/12 | 0/12 |
+| `g1_fh_rally` `model_5900` (10-14) | 10/12 | 0/12 | 9/12 | 6/12 | 0/12 | 0/12 | 0/12 |
+| `g1_fh_rally` `model_5900`, strike_time clock + 40 ms (10-14) | 10/12 | 7/12 | 7/12 | 7/12 | 0/12 | 0/12 | 0/12 |
 
 Reading — the important gap: Isaac says ~90 % of strikes clear the net, MuJoCo says 25 %. Causes
 seen in the per-serve records:
@@ -182,6 +185,55 @@ seen in the per-serve records:
 
 The old example serves (`eval.json`) are not our task: with them `model_2300` and `model_2400` never
 touch the ball; use `eval_bank` for the forehand.
+
+#### Latest, 2026-10-14: per zone, 120 balls (3 seeds × 40, robot stood up after a fall)
+
+The Isaac evaluation could not be rerun (zixian down since 10-13 20:15); these are MuJoCo only. The
+ONNX of `model_15700` was built on the laptop (`onnx_from_checkpoint.py`). Same funnel as the Isaac
+tables; "apex OK" is shown separately and "success" needs apex OK + in zone.
+
+**`g1_fh_diag` `model_15700`, G1 deploy defaults (strike_time clock + 40 ms), 0.9 s notice**
+
+| zone | balls | contact | apex OK | + over net | + opponent half | + in zone | **success** |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `opp_right_mid` | 27 | 100 % | 88.9 % | 70.4 % | 70.4 % | 29.6 % | **29.6 %** |
+| `center_line_deep` | 33 | 100 % | 100 % | 100 % | 100 % | 0 % | **0 %** |
+| `opp_right_deep` | 28 | 100 % | 100 % | 89.3 % | 89.3 % | 0 % | **0 %** |
+| `opp_right_corner` | 32 | 100 % | 96.9 % | 93.8 % | 68.8 % | 0 % | **0 %** |
+| **all** | 120 | 100 % | 96.7 % | 89.2 % | 82.5 % | 6.7 % | **6.7 %** |
+
+**`g1_fh_rally` `model_5900`, deploy defaults, real rally pace**
+
+| zone | balls | contact | apex OK | + over net | + opponent half | + in zone | **success** |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `opp_right_mid` | 26 | 84.6 % | 38.5 % | 34.6 % | 34.6 % | 11.5 % | **3.8 %** |
+| `center_line_deep` | 28 | 82.1 % | 64.3 % | 60.7 % | 60.7 % | 3.6 % | **3.6 %** |
+| `opp_right_deep` | 33 | 90.9 % | 87.9 % | 60.6 % | 60.6 % | 0 % | **0 %** |
+| `opp_right_corner` | 33 | 93.9 % | 90.9 % | 78.8 % | 78.8 % | 0 % | **0 %** |
+| **all** | 120 | 88.3 % | 72.5 % | 60.0 % | 60.0 % | 3.3 % | **1.7 %** |
+
+Totals for the other conditions (same 120 balls):
+
+| checkpoint | condition | contact | apex OK | over net | legal | in zone | success | falls |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| `model_15700` | original clock, no calibration | 99.2 % | 1.7 % | 92.5 % | 60.0 % | 5.8 % | 0 % | 0 % |
+| `model_15700` | deploy defaults, rally pace | 91.7 % | 84.2 % | 80.8 % | 75.0 % | 6.7 % | 5.8 % | 0 % |
+| rally `model_5900` | original clock, no calibration | 93.3 % | 0.8 % | 76.7 % | 61.7 % | 10.0 % | 0 % | 0 % |
+| rally `model_5900` | deploy defaults, 0.9 s notice | 90.8 % | 73.3 % | 60.0 % | 58.3 % | 1.7 % | 1.7 % | 0.8 % |
+
+Reading:
+* **Timing is fixed** by the clock + calibration (apex OK 2 % → 97 % for the main run), and the main
+  run now reaches every ball and returns 82 % legally.
+* **Aim is the new bottleneck, and it is systematic:** in every zone the ball lands **30–60 cm short**
+  of the aim point (median; `model_15700`: −30 cm mid, −43 cm centre line, −49 cm deep, −52 cm corner;
+  rally `model_5900`: −38 to −63 cm), with a tight spread (IQR about ±10 cm). Only the middle zone,
+  which is deep enough to catch a short ball, ever scores. Sideways error is small (0–15 cm).
+* Likely cause: MuJoCo's racket bounce (restitution 0.654, rubber-free face) returns the ball slower
+  than the venue paddle model the policy is trained against, so the same swing flies shorter. Which
+  of the two matches the real racket is unknown until we measure it (next steps: real racket model).
+* At rally pace the main run (`model_15700`) now does better than the rally run's older checkpoint
+  (75 % vs 60 % legal): the clock fix removed most of the timing problem that rally training was
+  compensating for. The rally run has trained 3300 iterations; the main run 15 700.
 
 ---
 
