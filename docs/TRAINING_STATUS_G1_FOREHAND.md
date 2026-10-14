@@ -187,6 +187,10 @@ touch the ball; use `eval_bank` for the forehand.
 
 ## 5. Status log (newest first)
 
+### 2026-10-14 13:10 — zixian still down (17 h)
+* zixian has been "not responding" since 10-13 20:15. Nothing of ours is training: 4382 waits at
+  15 756 / 20 000 (`model_15700`), `g1_fh_rally` at `model_5900`. Oren's 4218 is also waiting.
+
 ### 2026-10-14 — +40 ms timing calibration is a config parameter
 * `lifecycle.tts_offset_s` (runtime YAML, default 0) is added to every command's time left and deadline,
   so the policy is told the strike is that much later; the contact phase moves with it. The G1 YAML sets

@@ -177,6 +177,10 @@ bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job auto g1_fh_diag
 
 ## 5. 狀態紀錄（最新的在最上面）
 
+### 2026-10-14 13:10：zixian 仍然停機（已 17 小時）
+* zixian 從 10-13 20:15 起一直是「not responding」，我們沒有任何訓練在跑：4382 停在 15,756 / 20,000（`model_15700`），
+  `g1_fh_rally` 停在 `model_5900`。Oren 的 4218 也在等。
+
 ### 2026-10-14：+40 ms 的時機校正改成設定檔參數
 * `lifecycle.tts_offset_s`（runtime YAML，預設 0）會加到每個指令的「還剩多久」和絕對擊球時刻上，
   讓策略以為擊球晚這麼多；進入收拍階段的時間也跟著往後移。G1 的 YAML 設成 `tts_offset_s: 0.04`，A3 維持 0。
