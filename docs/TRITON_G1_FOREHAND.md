@@ -51,6 +51,7 @@ rallies up to 106 shots), using references made by filming a human, lifting the 
 | D14 | **Train at real rally timing, in a separate run (`g1_fh_rally`, task `HOPEPingPongUnitreeG1_FH_XC_RALLY`), warm-started from `g1_fh_diag`.** Up to 60 % of follow-up swings enter the clip late (time-to-strike 0.4–0.83 s, no hold) and the previous follow-through ends 0.7–1.0 s after its strike; the virtual ball arrives ±30 ms off the clock; feeds are faster (4.4–8.5 m/s before the bounce, was 4.4–6.6). All ramped in over 3000 iterations. | MuJoCo at real cadence (`--rally-pace`) dropped contact from 88 % to 38 % with falls on 44 % of balls: training gave 0.83 s of lead and ~3 s between strikes, a rally gives 0.4–0.8 s and ~1.5 s. Late entry is what the deploy reference clock does when the planner's time-to-strike is short, so no clip time-warp is needed. Slower feeds are impossible with the middle-third bounce and a fixed strike plane (the apex would be in front of the robot); they need forward footwork. The main run keeps going untouched as the comparison. |
 | D15 | **A requeued run continues its step-keyed ramps; a warm start from another run restarts them.** `train.sbatch` passes `restore_step_counter=true` only when it resumes the run's own newest checkpoint. | Cluster outages and preemption requeue jobs. `runner.load` restores weights and optimizer but left `env.common_step_counter` at 0, so the rally-pace and timing-jitter ramps started over after every requeue. The counter is already saved in the checkpoint's exact-resume state. |
 | D16 | **Treat the ball's spin as a required input, and do not buy cameras yet.** Plan a spin estimate from the opponent's racket at contact plus the ball's curved flight. | In simulation, perfect tracking without spin drops legal returns from 61 % to 10 %; with spin known, mocap and iPhone-level tracking score 56 % and 54 %, and a rough estimate (±50 %, ±40°) still gives 48–49 %. Camera quality matters far less than spin for our planner. Details: [`PERCEPTION_G1_FOREHAND.md`](PERCEPTION_G1_FOREHAND.md). |
+| D17 | **Calibrate the deploy clock: the time-to-strike the policy sees must match training.** In MuJoCo a +60 ms offset is right; on hardware it will be measured again. | The racket reached the strike point 53 ms before its clock said so (20 ms from `lifecycle.py` subtracting a tick before the policy sees it, ~30 ms not yet explained), so every ball was hit ~45 ms before the apex. With +60 ms, apex OK goes 0 → 91 % and legal 57 → 78 % (`model_15400`). Status log 2026-10-14. |
 
 ---
 
@@ -371,7 +372,8 @@ Full tables, curves and the status log are in
    `scripts/evaluate_forehand.py` / `eval_forehand.sh`.
 5. Zone selection (D13): a `target_zone_ids` filter on the bank for training/eval/play, and the
    same choice exposed in the deploy planner. (Wider feeds: done with the faster-feed bank.)
-6. Close the real-ball gap found by the MuJoCo bank evaluation. Done so far (D14): timing jitter on
+6. Close the real-ball gap found by the MuJoCo bank evaluation. **Strike timing: found and fixed in
+   simulation (D17).** Next: the ~30 ms not yet explained (Isaac-vs-MuJoCo replay), and aim (3–10 % in zone). Done so far (D14): timing jitter on
    the virtual strike, a late swing start at rally pace, faster feeds. Still open: check MuJoCo's racket
    contact against the venue paddle model (MuJoCo returns the ball lower), then compare `g1_fh_rally`
    with `g1_fh_diag` on `eval_rally` / `eval_bank` / Isaac zones once the ramps are full (~iteration 5600).

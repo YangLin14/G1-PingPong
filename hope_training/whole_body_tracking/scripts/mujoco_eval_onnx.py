@@ -365,6 +365,8 @@ def run_eval(args) -> dict:
     continuous = args.eval_mode == "continuous"
 
     clock = [0]  # control ticks since the session started (rally cadence bookkeeping)
+    trace = [] if getattr(args, "trace_out", None) else None
+    tts_offset = float(getattr(args, "tts_offset_s", 0.0) or 0.0)
 
     def _policy_tick(lifecycle, source, last_action, base_target_xy):
         """One 50 Hz policy step (identical to the deploy runner's tick).
@@ -501,7 +503,7 @@ def run_eval(args) -> dict:
             for k in range(wait_ticks):
                 source.submit(RacketCommand(
                     task_id=task_id, task_revision=revision, swing_sign=side, position=pred0[0],
-                    velocity=row_v_r, time_to_strike=float(pred0[3] + (wait_ticks - k) * dt),
+                    velocity=row_v_r, time_to_strike=float(pred0[3] + (wait_ticks - k) * dt) + tts_offset,
                 ))
                 revision += 1
                 _events, last_action = _policy_tick(lifecycle, source, last_action, base_target_xy)
@@ -545,7 +547,7 @@ def run_eval(args) -> dict:
                             club_state["resolved"] = True
                         cmd = RacketCommand(
                             task_id=task_id, task_revision=revision, swing_sign=side, position=pred[0],
-                            velocity=club_state["v_r"], time_to_strike=float(pred[3]),
+                            velocity=club_state["v_r"], time_to_strike=float(pred[3]) + tts_offset,
                         )
                         if club_state["first_cmd_tts"] is None:
                             club_state["first_cmd_tts"] = float(pred[3])
@@ -558,6 +560,19 @@ def run_eval(args) -> dict:
                 source.submit(cmd)
 
             events, last_action = _policy_tick(lifecycle, source, last_action, base_target_xy)
+            if trace is not None and club is not None:
+                rp, rv = scene.racket_site_state()
+                bp_, bv_ = scene.ball_state()
+                trace.append({
+                    "serve": trial, "tick": _tick, "t": round(float(scene.data.time), 4),
+                    "cmd_tts": None if cmd is None else round(float(cmd.time_to_strike), 4),
+                    "cmd_pos": None if cmd is None else [round(float(v), 4) for v in cmd.position],
+                    "cmd_vel": None if cmd is None else [round(float(v), 4) for v in cmd.velocity],
+                    "phase": lifecycle.phase.value,
+                    "ball_pos": [round(float(v), 4) for v in bp_], "ball_vel": [round(float(v), 4) for v in bv_],
+                    "racket_pos": [round(float(v), 4) for v in rp], "racket_vel": [round(float(v), 4) for v in rv],
+                    "geom_contact": bool(events.ball_racket_contact), "contacted_before": bool(contacted),
+                })
             if club is not None and not club_state["bounced"] and not contacted:
                 club_state["bounced"] = any(
                     z_sign < 0.0 and x_t < scene.net_x_table for x_t, _y, z_sign in events.surface_crossings
@@ -718,6 +733,8 @@ def run_eval(args) -> dict:
             file=sys.stderr,
         )
     out["serves"] = serve_records
+    if trace is not None:
+        pathlib.Path(args.trace_out).write_text(json.dumps(trace))
     return out
 
 
@@ -848,6 +865,10 @@ def parse_args() -> argparse.Namespace:
                         help="With --serve-bank: the planner sees the ball through a camera model (ball_perception.py "
                              "PRESETS: oracle, oracle_nospin, mocap_360, mocap_240, stereo_125, iphone_240, iphone_120, "
                              "iphone_60, webcam_30; overrides e.g. mocap_360:latency_s=0.05). Default: true state.")
+    parser.add_argument("--tts-offset-s", type=float, default=0.0,
+                        help="With --serve-bank: add this to every commanded time-to-strike (timing calibration test).")
+    parser.add_argument("--trace-out", default=None,
+                        help="With --serve-bank: write a per-tick JSON trace (command, ball, racket, contact).")
     parser.add_argument("--reset-after-fall", action="store_true",
                         help="Continuous mode: stand the robot back up before the next ball if it fell.")
     parser.add_argument("--seed", type=int, default=0, help="RNG seed for the example serve distribution.")

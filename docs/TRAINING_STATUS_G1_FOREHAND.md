@@ -187,6 +187,41 @@ touch the ball; use `eval_bank` for the forehand.
 
 ## 5. Status log (newest first)
 
+### 2026-10-14 00:30 — why the robot strikes early (solved in simulation); third zixian outage
+* **Outage:** zixian went "not responding" again at 20:15 on 10-13 (munge errors, like 10-10 and 10-12).
+  4382 is queued at iteration 15 756 and resumes from `model_15700` when the node is back.
+* **Symptom:** in MuJoCo every checkpoint hits the ball while it is still rising (vz +0.40 to +0.50 m/s,
+  ~45 ms before the apex), so the club's apex rule is almost never met. In Isaac the same policy is on
+  time: at the strike frame its racket is −0.35 cm (x) and −0.6 cm (z) from the target.
+* **Measurement** (`mujoco_eval_onnx.py --trace-out`, per-tick log): the racket centre reaches the target
+  point **53 ms (median, 12 of 13 swings between 47 and 65 ms) before the command clock reaches zero**,
+  and 3–4 cm high. The ball has not arrived yet, so the racket meets it early.
+* **Cause, part 1 (20 ms):** the deploy clock (`a3_deploy_onnx_ref_pingpong/lifecycle.py`) copies the
+  planner's time-to-strike and subtracts one tick (20 ms) in the same update, before the policy sees it.
+  In Isaac the observed time-to-strike describes the state just simulated; here it is 20 ms short, so the
+  policy thinks the strike is sooner and moves early.
+* **Cause, part 2 (~30 ms):** not explained yet. Ruled out: a different racket point (both use 0.21,
+  0.015, 0.01 m from the wrist), action delay in training (`qdes_delay` 0). Likely a sim-to-sim dynamics
+  difference; needs an Isaac-vs-MuJoCo replay of the same swing when the cluster is back.
+* **Fix test** (`--tts-offset-s`: add a constant to every commanded time-to-strike), 80–120 balls per row:
+
+  | policy, mode | offset | apex OK | median vz at contact | legal | in zone | club success |
+  |---|---:|---:|---:|---:|---:|---:|
+  | `g1_fh_diag` `model_15400`, 0.9 s notice | 0 | 0 % | +0.48 | 57 % | 10 % | 0 % |
+  | | +20 ms | 11 % | +0.37 | 61 % | 8 % | |
+  | | +40 ms | 54 % | +0.27 | 69 % | 9 % | |
+  | | +50 ms | 78 % | +0.20 | 72 % | 8 % | |
+  | | **+60 ms** | **91 %** | +0.14 | **78 %** | 9 % | **7.5 %** |
+  | | +80 ms | 100 % | +0.04 | 79 % | 1 % | |
+  | `g1_fh_rally` `model_5900`, rally pace | 0 | 2 % | +0.48 | 61 % | 6 % | 0 % |
+  | | +40 ms | 47 % | +0.28 | 62 % | 3 % | 1 % |
+  | | **+60 ms** | **72 %** | +0.22 | 60 % | 3 % | 2 % |
+  | | +80 ms | 81 % | +0.11 | 36 % | 2 % | 1 % |
+* **Conclusion:** the early strike is a timing offset between training and the deploy pipeline, not a
+  skill the policy lacks. A +60 ms calibration fixes it in MuJoCo. The next bottleneck is **aim**: only
+  3–10 % of balls land in the target zone. The real robot will need its own calibration (motor and
+  sensing latency), measured the same way.
+
 ### 2026-10-13 19:40 — MuJoCo check of `g1_fh_diag` `model_15400`
 * zixian cannot start Isaac for the usual ONNX export, so the ONNX was built on the laptop with
   `scripts/onnx_from_checkpoint.py` (copies the checkpoint's actor weights into an exported graph of the
