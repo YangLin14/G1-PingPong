@@ -177,6 +177,13 @@ bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job auto g1_fh_diag
 
 ## 5. 狀態紀錄（最新的在最上面）
 
+### 2026-10-13 19:20：主要 run 到 15,405；zixian 還是開不了新的 CUDA job
+* `g1_fh_diag`（4382）第 15,405 / 20,000 個 iteration：球拍 ≤10 cm 99.9%、全部達標 64%、接觸 74%、
+  合法回球 50%、落點誤差 0.31 m、跌倒 0.25%。從約 13,700 起就持平（當時全部達標 65%、合法回球 55%）。
+  以每個 iteration 7.9 秒計算，還剩約 10 小時。
+* 在編號 0（`3D:00.0`）的 1-GPU 測試仍然出現 `CUDA unknown error`，所以 `g1_fh_rally` 繼續停在 `model_5900`，
+  要等 SDSC 重置編號 5 的 GPU 或重開 zixian。`matthew` 已經恢復，但它的 MI210/P100 跑不了 Isaac Sim（需要 RTX 顯卡）。
+
 ### 2026-10-13 晚上：感知實驗——旋轉比攝影機重要
 * 在 MuJoCo 評估加入攝影機模型，用 `model_5900`、真實對打節奏跑了 25 個條件，每個 120 球。
   不知道旋轉時，就算追蹤完美，合法回球也從 61% 掉到 10%；知道旋轉時，mocap 56%、iPhone 等級 54%；

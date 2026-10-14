@@ -187,6 +187,14 @@ touch the ball; use `eval_bank` for the forehand.
 
 ## 5. Status log (newest first)
 
+### 2026-10-13 19:20 — main run at 15 405; zixian still cannot start new CUDA jobs
+* `g1_fh_diag` (4382) iteration 15 405 / 20 000: racket ≤10 cm 99.9 %, all OK 64 %, contact 74 %,
+  legal 50 %, landing error 0.31 m, falls 0.25 %. Flat since ~13 700 (all OK 65 %, legal 55 % then).
+  About 10 h left at 7.9 s/iteration.
+* A 1-GPU probe on index 0 (`3D:00.0`) still fails with `CUDA unknown error`, so `g1_fh_rally` stays
+  stopped at `model_5900` until SDSC resets GPU index 5 or reboots zixian. `matthew` is back up, but its
+  MI210/P100 GPUs cannot run Isaac Sim (it needs an RTX card).
+
 ### 2026-10-13 evening — perception study: spin matters more than the camera
 * Added a camera model to the MuJoCo evaluator and ran 25 conditions × 120 balls with `model_5900`
   at rally pace. Without spin, legal returns drop from 61 % to 10 % even with perfect tracking; with
