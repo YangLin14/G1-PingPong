@@ -159,6 +159,7 @@ the ball to it, and the policy tracks that velocity.
 | `mujoco_eval_onnx.py` (extended) | `--serve-bank` (real ball fed from our bank), `--zones`, `--feed-lead-s`, `--rally-pace` / `--rally-gap-s` (next feed 0.7–1.0 s after our contact, announced only at launch); club scoring per ball and per zone. Default mode unchanged. |
 | `mujoco_pingpong_scene.py` (extended) | Opt-in Magnus force, target-zone drawing, ball spin, and the venue table-bounce model (MuJoCo's own bounce put the apex 20–40 cm too deep). |
 | `check_rally_pace.py` | Isaac check of the rally-pace clock and timing jitter (swing entry time, strike-to-strike interval, falls). |
+| `onnx_from_checkpoint.py` | policy.onnx for a checkpoint without Isaac: copies the actor weights into an exported graph of the same task (CPU). Verified identical to a real export. |
 | `ball_perception.py`, `perception_sweep.py` | Camera model for `mujoco_eval_onnx.py --perception` (rate, latency, noise, dropout, HITTER-style fit, spin unknown / known / read with error) and the sweep over camera systems. `--reset-after-fall` stands the robot up between balls. |
 | `view_feed_bank.py` | MuJoCo visualizer of the bank: diagonal feed from the opponent's right → bounce → apex → return, with the feed origin, all zones (current target highlighted) and racket target; interactive or MP4, `--camera behind|top`. |
 | `gvhmr_to_g1_headless.py` | GMR's GVHMR → G1 retarget without its viewer (cluster nodes have no display). |

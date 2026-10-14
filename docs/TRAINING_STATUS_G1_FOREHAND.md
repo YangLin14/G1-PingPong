@@ -187,6 +187,28 @@ touch the ball; use `eval_bank` for the forehand.
 
 ## 5. Status log (newest first)
 
+### 2026-10-13 19:40 — MuJoCo check of `g1_fh_diag` `model_15400`
+* zixian cannot start Isaac for the usual ONNX export, so the ONNX was built on the laptop with
+  `scripts/onnx_from_checkpoint.py` (copies the checkpoint's actor weights into an exported graph of the
+  same task; checked against the real export of `model_5000`: identical outputs).
+* MuJoCo, default bank, robot stood up after a fall, 3 seeds × 40 = 120 balls per row:
+
+  | checkpoint | mode | contact | apex OK | over net | legal | in zone | falls | median vz at contact |
+  |---|---|---:|---:|---:|---:|---:|---:|---:|
+  | `g1_fh_diag` `model_5000` | 0.9 s notice | 78 % | 9 % | 57 % | 38 % | 4 % | 2 % | +0.41 m/s |
+  | `g1_fh_diag` `model_5000` | rally pace | 75 % | 14 % | 52 % | 44 % | 8 % | 1 % | +0.40 m/s |
+  | `g1_fh_diag` `model_15400` | 0.9 s notice | **92 %** | 1 % | **90 %** | 58 % | **12 %** | 3 % | +0.47 m/s |
+  | `g1_fh_diag` `model_15400` | rally pace | 82 % | 9 % | 60 % | 37 % | 4 % | 2 % | +0.44 m/s |
+  | `g1_fh_rally` `model_5900` | 0.9 s notice | 93 % | 1 % | 77 % | **62 %** | 10 % | 0 % | +0.50 m/s |
+  | `g1_fh_rally` `model_5900` | rally pace | 88 % | 2 % | 67 % | **61 %** | 6 % | 0 % | +0.48 m/s |
+* `model_15400` is the best checkpoint so far under its training condition (90 % over the net, 12 % in
+  zone), but at rally pace it drops to 37 % legal. `g1_fh_rally` `model_5900` keeps 61 % at rally pace:
+  the rally training (D14) works.
+* All three still strike the ball while it is rising (vz +0.40 to +0.50 m/s, about 45 ms before the
+  apex), and more training has not changed that, so club success stays ~0. This looks systematic (swing
+  timing in the reference clip, or MuJoCo vs Isaac contact) rather than undertraining. Next to investigate.
+* Videos: `artifacts/evals/g1_fh_diag_model_15400/{eval,eval_bank,eval_rally}.mp4` (12 balls each).
+
 ### 2026-10-13 19:20 — main run at 15 405; zixian still cannot start new CUDA jobs
 * `g1_fh_diag` (4382) iteration 15 405 / 20 000: racket ≤10 cm 99.9 %, all OK 64 %, contact 74 %,
   legal 50 %, landing error 0.31 m, falls 0.25 %. Flat since ~13 700 (all OK 65 %, legal 55 % then).

@@ -126,6 +126,7 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 | `mujoco_eval_onnx.py`（擴充） | `--serve-bank`（用我們的題庫餵真的球）、`--zones`、`--feed-lead-s`、`--rally-pace` / `--rally-gap-s`（我們擊球後 0.7–1.0 秒對手就回下一球，球發出時才知道打哪裡）；每一球、每個落點都用社團規則計分。預設模式不變。 |
 | `mujoco_pingpong_scene.py`（擴充） | 可選的 Magnus 力、畫出目標區、球的旋轉，以及 venue 的桌面反彈模型（MuJoCo 自己的反彈會讓最高點深 20–40 cm）。 |
 | `check_rally_pace.py` | 在 Isaac 檢查對打節奏的時鐘和時機誤差（揮拍開始時間、兩拍間隔、跌倒）。 |
+| `onnx_from_checkpoint.py` | 不用 Isaac 就能產生 checkpoint 的 policy.onnx：在 CPU 上把 actor 權重放進同一個任務已匯出的 ONNX 圖。驗證過跟真正的匯出完全相同。 |
 | `ball_perception.py`、`perception_sweep.py` | `mujoco_eval_onnx.py --perception` 的攝影機模型（幀率、延遲、雜訊、漏幀、HITTER 式擬合、旋轉不知道／知道／有誤差的估計），以及跑遍各種攝影機系統的掃描腳本。`--reset-after-fall` 會在兩球之間把機器人扶起來。 |
 | `view_feed_bank.py` | 在 MuJoCo 裡播放題庫的每一題：從對手右邊斜對角餵球 → 反彈 → 最高點 → 回球，同時畫出餵球起點、所有區域（目前的目標會亮起來）和球拍目標；可以開互動視窗或輸出 MP4，鏡頭可選 `--camera behind|top`。 |
 | `gvhmr_to_g1_headless.py` | GMR 的「GVHMR → G1」轉換，但不開視窗（叢集節點沒有螢幕）。 |
