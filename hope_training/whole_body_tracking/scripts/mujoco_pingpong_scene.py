@@ -117,6 +117,7 @@ class PingPongRealPhysicsScene:
         magnus_k: float = 0.0,
         zone_rects=(),
         table_bounce_fn=None,
+        racket_contact_fn=None,
     ) -> None:
         import mujoco  # lazy import so the module imports without MuJoCo present
 
@@ -159,6 +160,10 @@ class PingPongRealPhysicsScene:
         # fitted model. The ball-table contact pair is then left out and the bounce applied on the
         # surface-plane crossing inside the table outline.
         self.table_bounce_fn = table_bounce_fn
+        # Opt-in analytic racket hit: fn(v_ball, v_contact_point, face_normal, spin) -> (v_out, spin_out),
+        # e.g. the venue-fitted paddle model the policy is trained against. Replaces MuJoCo's soft
+        # ball-racket contact, which has no rubber grip and a ~20 ms contact time constant.
+        self.racket_contact_fn = racket_contact_fn
         # Opt-in: (sim time, ball position) after every physics sub-step, for a camera model to sample
         # (see ball_perception.py). None = not recorded.
         self.ball_track: list | None = None
@@ -280,7 +285,8 @@ class PingPongRealPhysicsScene:
         if self.table_bounce_fn is None:
             _add_pair("ball_geom", "table_geom", _restitution("table", 0.9215), _friction("table", 0.40))
         _add_pair("ball_geom", "net_geom", _restitution("net", 0.10), _friction("net", 0.50))
-        _add_pair("ball_geom", self.racket_collision_geom, _restitution("paddle", 0.654), _friction("paddle", 0.60))
+        if self.racket_contact_fn is None:
+            _add_pair("ball_geom", self.racket_collision_geom, _restitution("paddle", 0.654), _friction("paddle", 0.60))
         _add_pair("ball_geom", self.floor_geom, _restitution("floor", 0.40), _friction("floor", 0.80))
 
         # Extend the model's stand keyframe with a resting ball pose so the combined
@@ -397,6 +403,10 @@ class PingPongRealPhysicsScene:
         self._mj.mj_objectVelocity(self.model, d, self._mj.mjtObj.mjOBJ_SITE, self._racket_sid, res, 0)
         return pos, res[3:6].copy()
 
+    def racket_normal_w(self) -> np.ndarray:
+        """Racket face normal in the world frame: +Y of the racket site frame (the red, forehand face)."""
+        return self.data.site_xmat[self._racket_sid].reshape(3, 3)[:, 1].copy()
+
     def base_pos_w(self) -> np.ndarray:
         return self.data.qpos[self._base_qadr:self._base_qadr + 3].copy()
 
@@ -444,6 +454,8 @@ class PingPongRealPhysicsScene:
             p_after = d.qpos[self._ball_qadr:self._ball_qadr + 3].copy()
             if self.table_bounce_fn is not None:
                 self._analytic_table_bounce(p_before, p_after)
+            if self.racket_contact_fn is not None and self._analytic_racket_hit():
+                result.ball_racket_contact = True
             if self.ball_track is not None:
                 self.ball_track.append((float(d.time), d.qpos[self._ball_qadr:self._ball_qadr + 3].copy()))
 
@@ -480,6 +492,36 @@ class PingPongRealPhysicsScene:
         if self._viewer is not None:
             self._viewer.sync()
         return result
+
+    def _analytic_racket_hit(self) -> bool:
+        """Hit the ball with ``racket_contact_fn`` when it touches the racket blade (a thin disc)."""
+        m, d = self.model, self.data
+        gid = self._racket_gid
+        centre = d.geom_xpos[gid]
+        axis = d.geom_xmat[gid].reshape(3, 3)[:, 2]          # cylinder axis = blade face normal
+        radius, half_len = float(m.geom_size[gid][0]), float(m.geom_size[gid][1])
+        p = d.qpos[self._ball_qadr:self._ball_qadr + 3]
+        rel = p - centre
+        h = float(np.dot(rel, axis))
+        radial = float(np.linalg.norm(rel - h * axis))
+        if abs(h) > half_len + self.ball_radius or radial > radius:
+            return False
+        n = axis if h >= 0.0 else -axis                        # face normal on the ball's side
+        vel6 = np.zeros(6)
+        self._mj.mj_objectVelocity(m, d, self._mj.mjtObj.mjOBJ_GEOM, gid, vel6, 0)
+        point = p - self.ball_radius * n
+        v_point = vel6[3:6] + np.cross(vel6[0:3], point - centre)
+        v_ball = d.qvel[self._ball_vadr:self._ball_vadr + 3].copy()
+        if float(np.dot(v_ball - v_point, n)) >= 0.0:         # already separating
+            return False
+        v_out, w_out = self.racket_contact_fn(v_ball, v_point, n, self.ball_spin_w())
+        rot = np.zeros(9)
+        self._mj.mju_quat2Mat(rot, d.qpos[self._ball_qadr + 3:self._ball_qadr + 7])
+        # keep the ball's in-plane position, move it just outside the face it hit
+        d.qpos[self._ball_qadr:self._ball_qadr + 3] = centre + rel - h * axis + n * (half_len + self.ball_radius + 1e-4)
+        d.qvel[self._ball_vadr:self._ball_vadr + 3] = np.asarray(v_out, dtype=np.float64)
+        d.qvel[self._ball_vadr + 3:self._ball_vadr + 6] = rot.reshape(3, 3).T @ np.asarray(w_out, dtype=np.float64)
+        return True
 
     def _analytic_table_bounce(self, p_before, p_after) -> None:
         """Bounce the ball off the table top with ``table_bounce_fn`` when it crosses the surface downward."""

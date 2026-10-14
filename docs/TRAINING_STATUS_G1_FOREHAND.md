@@ -239,6 +239,50 @@ Reading:
 
 ## 5. Status log (newest first)
 
+### 2026-10-14 — why the returns miss, and aim compensation (in-zone 12 % → 35 %)
+* **Where the misses go** (`model_15700`, deploy defaults, 120 balls): the balls that miss the table go
+  off the **side line** (12 of 120 off the side, 5 into the net/short, 0 past the end line); with the
+  old clock it was 43 of 120 off the side. Balls that land on the table land **short of the aim point**
+  (median −30 to −45 cm), then fly on past the end after the bounce, which in the video looks "long".
+* **Cause, measured at each contact** (`--trace-out`, now also logs racket normal and ball spin). Median
+  landing error vs the aim point when the same contact is pushed through:
+
+  | model of the hit | landing error |
+  |---|---:|
+  | training (venue) paddle model, racket exactly as commanded | +5 cm |
+  | training paddle model, racket as the robot moved it | −13 cm |
+  | MuJoCo's own racket contact (what happened) | −42 cm |
+
+  1. **MuJoCo's racket contact (~30 cm):** same exit speed (6.2 m/s) but much flatter (vz +0.9 vs
+     +2.3 m/s). The training model has rubber grip (the ball is dragged along an upward swing); MuJoCo's
+     soft contact (friction 0.6, ~20 ms time constant) does not. The training model was fitted on real
+     racket hits, so MuJoCo is the less realistic one. New option `--racket-contact venue` replaces it
+     with the training model, applied analytically like the table bounce.
+  2. **The swing (~15 cm):** the racket reaches 94 % of the commanded speed and is tilted upward: velocity
+     error (achieved − commanded) is a repeatable bias of (−0.19, −0.08, +0.18) m/s with a scatter of only
+     (0.09, 0.14, 0.09) m/s.
+* **What did not work:** scaling the racket speed up (moves the median but in-zone stays ~10 % and more
+  balls go out), and correcting the racket command for the bias (linear or bias-only): the policy does
+  not follow commands outside what it was trained on, and results got worse. Removed.
+* **What works: aim compensation.** The planner solves the racket velocity for the target moved by the
+  measured mean miss (`--aim-offset DX DY`). Held-out balls (seeds 3–5, 120 per row):
+
+  | racket contact | notice | aim offset | legal | in zone = success | median miss |
+  |---|---|---|---:|---:|---:|
+  | training paddle model | 0.9 s | none | 83 % | 11.7 % | 38 cm |
+  | training paddle model | 0.9 s | (+0.40, −0.10) m | 89 % | **35.0 %** | 19 cm |
+  | MuJoCo contact | 0.9 s | none | 77 % | 5.0 % | 46 cm |
+  | MuJoCo contact | 0.9 s | (+0.63, −0.06) m | 90 % | **25.8 %** | 25 cm |
+  | training paddle model | rally pace | none | 87 % | 11.7 % | 29 cm |
+  | training paddle model | rally pace | (+0.33, −0.08) m | 78 % | **34.2 %** | 16 cm |
+
+  Per zone (training paddle model, 0.9 s, +0.40/−0.10): middle 55 %, centre line 30 %, deep 44 %,
+  corner 14 %. Video: `artifacts/evals/g1_fh_diag_model_15700/eval_bank_aim.mp4`.
+* **The right offset depends on the racket** (0.40 m with the training model, 0.63 m with MuJoCo's
+  contact), so on the real robot it has to be measured with the real racket, like the timing offset.
+* What remains is scatter (~20 cm median miss), about the size of the end-line zones. Shrinking it needs
+  a more precise swing (training), not more calibration.
+
 ### 2026-10-14 13:10 — zixian still down (17 h)
 * zixian has been "not responding" since 10-13 20:15. Nothing of ours is training: 4382 waits at
   15 756 / 20 000 (`model_15700`), `g1_fh_rally` at `model_5900`. Oren's 4218 is also waiting.

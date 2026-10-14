@@ -124,6 +124,14 @@ class ApexPlanner:
         v_post, w_post = vb.predict_paddle_contact(t(v), t(np.zeros(3)), t([0.0, 0.0, 1.0]), t(w), self.tprm)
         return v_post[0].numpy(), w_post[0].numpy()
 
+    def racket_hit(self, v_ball, v_point, normal, w):
+        """Venue paddle model for the MuJoCo scene: (v_out, spin_out) of a ball hit by the racket face."""
+        import torch
+
+        t = lambda a: torch.as_tensor(np.asarray(a, dtype=np.float64)).unsqueeze(0)  # noqa: E731
+        v_post, w_post = vb.predict_paddle_contact(t(v_ball), t(v_point), t(normal), t(w), self.prm)
+        return v_post[0].numpy(), w_post[0].numpy()
+
     def table_bounce(self, v, w):
         """Venue table bounce for the MuJoCo scene (world frame, NumPy in and out)."""
         return self._bounce(v, w)

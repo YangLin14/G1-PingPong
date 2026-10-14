@@ -325,7 +325,11 @@ def run_eval(args) -> dict:
         magnus_k=club["prm"].k_m if club else 0.0,
         zone_rects=[(*bx, *by) for bx, by in club["zone_bounds"]] if club else (),
         table_bounce_fn=club["planner"].table_bounce if club else None,
+        racket_contact_fn=club["planner"].racket_hit if club and args.racket_contact == "venue" else None,
     )
+
+    # Aim compensation (landing space): solve the racket for the target moved by the measured mean miss.
+    aim_offset = np.asarray(getattr(args, "aim_offset", None) or (0.0, 0.0), dtype=np.float64)
 
     cam = tracker = None
     if getattr(args, "perception", None):
@@ -547,7 +551,8 @@ def run_eval(args) -> dict:
                         if seen_bounce and not club_state["resolved"]:
                             # re-solve the racket velocity on the real ball's apex state, once
                             club_state["v_r"] = club["planner"].solve_racket(
-                                pred[0], pred[1], pred[2], row["intended_landing_xy"])
+                                pred[0], pred[1], pred[2],
+                                np.asarray(row["intended_landing_xy"], dtype=np.float64) + aim_offset)
                             club_state["resolved"] = True
                         cmd = RacketCommand(
                             task_id=task_id, task_revision=revision, swing_sign=side, position=pred[0],
@@ -576,6 +581,8 @@ def run_eval(args) -> dict:
                     "phase": lifecycle.phase.value,
                     "ball_pos": [round(float(v), 4) for v in bp_], "ball_vel": [round(float(v), 4) for v in bv_],
                     "racket_pos": [round(float(v), 4) for v in rp], "racket_vel": [round(float(v), 4) for v in rv],
+                    "racket_normal": [round(float(v), 4) for v in scene.racket_normal_w()],
+                    "ball_spin": [round(float(v), 3) for v in scene.ball_spin_w()],
                     "geom_contact": bool(events.ball_racket_contact), "contacted_before": bool(contacted),
                 })
             if club is not None and not club_state["bounced"] and not contacted:
@@ -870,6 +877,12 @@ def parse_args() -> argparse.Namespace:
                         help="With --serve-bank: the planner sees the ball through a camera model (ball_perception.py "
                              "PRESETS: oracle, oracle_nospin, mocap_360, mocap_240, stereo_125, iphone_240, iphone_120, "
                              "iphone_60, webcam_30; overrides e.g. mocap_360:latency_s=0.05). Default: true state.")
+    parser.add_argument("--aim-offset", nargs=2, type=float, default=None, metavar=("DX", "DY"),
+                        help="With --serve-bank: aim the re-solved racket velocity at target + (DX, DY) m, to "
+                             "cancel a systematic landing miss (e.g. 0.35 -0.08 if balls land 35 cm short, 8 cm wide).")
+    parser.add_argument("--racket-contact", choices=("mujoco", "venue"), default="mujoco",
+                        help="With --serve-bank: MuJoCo's soft racket contact, or the venue-fitted paddle model "
+                             "the policy is trained against (analytic, like the table bounce).")
     parser.add_argument("--clock", choices=("countdown", "strike_time"), default=None,
                         help="Lifecycle reference clock (default: the runtime config's, i.e. countdown).")
     parser.add_argument("--tts-offset-s", type=float, default=None,
