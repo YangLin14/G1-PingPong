@@ -274,6 +274,8 @@ def run_eval(args) -> dict:
     )
     if getattr(args, "clock", None):
         runtime_cfg.lifecycle.clock = args.clock
+    if getattr(args, "tts_offset_s", None) is not None:
+        runtime_cfg.lifecycle.tts_offset_s = float(args.tts_offset_s)
     profile = runtime_cfg.profile  # joint order / dims / passive columns / MJCF names
     onnx_path = args.onnx or str(runtime_cfg.onnx_path)
     robot_xml = args.model_xml or str(runtime_cfg.model_xml_path)
@@ -368,7 +370,6 @@ def run_eval(args) -> dict:
 
     clock = [0]  # control ticks since the session started (rally cadence bookkeeping)
     trace = [] if getattr(args, "trace_out", None) else None
-    tts_offset = float(getattr(args, "tts_offset_s", 0.0) or 0.0)
 
     def _policy_tick(lifecycle, source, last_action, base_target_xy):
         """One 50 Hz policy step (identical to the deploy runner's tick).
@@ -505,8 +506,8 @@ def run_eval(args) -> dict:
             for k in range(wait_ticks):
                 source.submit(RacketCommand(
                     task_id=task_id, task_revision=revision, swing_sign=side, position=pred0[0],
-                    velocity=row_v_r, time_to_strike=float(pred0[3] + (wait_ticks - k) * dt) + tts_offset,
-                    strike_time=float(scene.data.time) + float(pred0[3] + (wait_ticks - k) * dt) + tts_offset,
+                    velocity=row_v_r, time_to_strike=float(pred0[3] + (wait_ticks - k) * dt),
+                    strike_time=float(scene.data.time) + float(pred0[3] + (wait_ticks - k) * dt),
                 ))
                 revision += 1
                 _events, last_action = _policy_tick(lifecycle, source, last_action, base_target_xy)
@@ -550,8 +551,8 @@ def run_eval(args) -> dict:
                             club_state["resolved"] = True
                         cmd = RacketCommand(
                             task_id=task_id, task_revision=revision, swing_sign=side, position=pred[0],
-                            velocity=club_state["v_r"], time_to_strike=float(pred[3]) + tts_offset,
-                            strike_time=float(scene.data.time) + float(pred[3]) + tts_offset,
+                            velocity=club_state["v_r"], time_to_strike=float(pred[3]),
+                            strike_time=float(scene.data.time) + float(pred[3]),
                         )
                         if club_state["first_cmd_tts"] is None:
                             club_state["first_cmd_tts"] = float(pred[3])
@@ -871,8 +872,8 @@ def parse_args() -> argparse.Namespace:
                              "iphone_60, webcam_30; overrides e.g. mocap_360:latency_s=0.05). Default: true state.")
     parser.add_argument("--clock", choices=("countdown", "strike_time"), default=None,
                         help="Lifecycle reference clock (default: the runtime config's, i.e. countdown).")
-    parser.add_argument("--tts-offset-s", type=float, default=0.0,
-                        help="With --serve-bank: add this to every commanded time-to-strike (timing calibration test).")
+    parser.add_argument("--tts-offset-s", type=float, default=None,
+                        help="Override the runtime config's lifecycle.tts_offset_s (timing calibration, s).")
     parser.add_argument("--trace-out", default=None,
                         help="With --serve-bank: write a per-tick JSON trace (command, ball, racket, contact).")
     parser.add_argument("--reset-after-fall", action="store_true",

@@ -105,6 +105,9 @@ lifecycle:
   # above max_message_age_s is stamped on receipt instead. The A3 config keeps countdown.
   clock: strike_time
   max_message_age_s: 0.1
+  # Timing calibration added to every command's time left (D17). +40 ms puts the strike on the
+  # apex in MuJoCo with the strike_time clock (cause still open); re-measure on the real robot.
+  tts_offset_s: 0.04
   # Base-relative ready reach the racket goal holds while idle: the A3 example values
   # (0.40, 0.20, -0.05) scaled by the G1/A3 shoulder-to-blade reach ratio 0.81 (docs/UNITREE_G1.md).
   ready_reach_x: 0.32

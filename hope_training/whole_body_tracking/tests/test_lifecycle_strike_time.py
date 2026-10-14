@@ -87,5 +87,17 @@ def test_g1_runtime_config_uses_strike_time_and_a3_keeps_countdown():
     cfg_dir = os.path.join(_REPO, "a3_deploy", "a3_deploy_example", "config")
     g1 = RuntimeConfig.load(os.path.join(cfg_dir, "hope_pingpong_runtime_unitree_g1.yaml"), profile="unitree_g1")
     assert g1.lifecycle.clock == "strike_time" and g1.lifecycle.max_message_age_s == pytest.approx(0.1)
+    assert g1.lifecycle.tts_offset_s == pytest.approx(0.04)
     a3 = RuntimeConfig.load(os.path.join(cfg_dir, "hope_pingpong_runtime.yaml"))
-    assert a3.lifecycle.clock == "countdown"
+    assert a3.lifecycle.clock == "countdown" and a3.lifecycle.tts_offset_s == 0.0
+
+
+def test_timing_offset_shifts_both_clocks_and_the_contact_phase():
+    life = SwingLifecycle(LifecycleConfig(dt=DT, clock="strike_time", tts_offset_s=0.04))
+    assert life.update(_cmd(0.5, strike_time=100.5), STATE, now=100.0).time_to_strike == pytest.approx(0.54)
+    life.update(None, STATE, now=100.5)
+    assert life.phase == Phase.SWING          # true deadline passed, calibrated one not yet
+    life.update(None, STATE, now=100.54)
+    assert life.phase == Phase.FOLLOW_THROUGH
+    old = SwingLifecycle(LifecycleConfig(dt=DT, tts_offset_s=0.04))
+    assert old.update(_cmd(0.5), STATE).time_to_strike == pytest.approx(0.52)

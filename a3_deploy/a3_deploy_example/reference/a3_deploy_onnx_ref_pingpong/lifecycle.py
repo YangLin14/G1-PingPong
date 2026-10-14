@@ -37,6 +37,11 @@ Two clock modes (``LifecycleConfig.clock``):
     or above ``max_message_age_s``, the planner and runner clocks disagree; the
     deadline is then ignored, the command is stamped on receipt, and
     ``clock_rejections`` counts it.
+
+Timing calibration (``tts_offset_s``): added to every engaged command's time left
+(and deadline), so the policy is told the strike is that much later. It absorbs a
+constant lag between the policy's training simulator and the plant it runs on
+(MuJoCo: +40 ms for the G1 with the strike_time clock); re-measure it on hardware.
 """
 
 from __future__ import annotations
@@ -62,6 +67,7 @@ class LifecycleConfig:
     dt: float = 0.02
     clock: str = "countdown"        # "countdown" (original) | "strike_time" (see module doc)
     max_message_age_s: float = 0.1  # "strike_time": larger (or negative) ages mean unsynced clocks
+    tts_offset_s: float = 0.0       # timing calibration added to every command (see module doc)
     follow_through_s: float = 0.6   # goal held after contact so the swing completes
     recovery_s: float = 0.8         # in-place recentring window before the next ball
     ready_time_to_strike: float = 1.0
@@ -112,9 +118,9 @@ class SwingLifecycle:
         if cmd.strike_time is not None:
             age = float(now) - (float(cmd.strike_time) - float(cmd.time_to_strike))
             if -0.005 <= age <= self.cfg.max_message_age_s:
-                return float(cmd.strike_time)
+                return float(cmd.strike_time) + self.cfg.tts_offset_s
             self.clock_rejections += 1
-        return float(now) + float(cmd.time_to_strike)
+        return float(now) + float(cmd.time_to_strike) + self.cfg.tts_offset_s
 
     def update(self, cmd: RacketCommand | None, state: RobotState, now: float | None = None) -> ObsTarget:
         """Advance one tick. ``now``: the shared wall-clock time of ``state`` (s), used by
@@ -133,7 +139,7 @@ class SwingLifecycle:
                 self.swing_sign = cmd.swing_sign          # locked for this task
                 self._target_pos_w = np.asarray(cmd.position, dtype=np.float64).copy()
                 self._target_vel_w = np.asarray(cmd.velocity, dtype=np.float64).copy()
-                self._tts = float(cmd.time_to_strike)
+                self._tts = float(cmd.time_to_strike) + c.tts_offset_s
                 self._strike_time = self._deadline(cmd, now)
                 self.phase = Phase.SWING
             elif (
@@ -147,7 +153,7 @@ class SwingLifecycle:
                 self._applied_revision = cmd.task_revision
                 self._target_pos_w = np.asarray(cmd.position, dtype=np.float64).copy()
                 self._target_vel_w = np.asarray(cmd.velocity, dtype=np.float64).copy()
-                self._tts = float(cmd.time_to_strike)
+                self._tts = float(cmd.time_to_strike) + c.tts_offset_s
                 self._strike_time = self._deadline(cmd, now)
 
         # 2) Advance the reference clock and step the phase machine.

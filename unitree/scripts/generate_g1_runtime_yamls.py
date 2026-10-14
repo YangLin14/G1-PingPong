@@ -151,6 +151,9 @@ def render_runtime(order: list[str]) -> str:
         "  # above max_message_age_s is stamped on receipt instead. The A3 config keeps countdown.",
         "  clock: strike_time",
         "  max_message_age_s: 0.1",
+        "  # Timing calibration added to every command's time left (D17). +40 ms puts the strike on the",
+        "  # apex in MuJoCo with the strike_time clock (cause still open); re-measure on the real robot.",
+        "  tts_offset_s: 0.04",
     ]
     lines += [
         "  # Base-relative ready reach the racket goal holds while idle: the A3 example values",

@@ -177,6 +177,15 @@ bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job auto g1_fh_diag
 
 ## 5. 狀態紀錄（最新的在最上面）
 
+### 2026-10-14：+40 ms 的時機校正改成設定檔參數
+* `lifecycle.tts_offset_s`（runtime YAML，預設 0）會加到每個指令的「還剩多久」和絕對擊球時刻上，
+  讓策略以為擊球晚這麼多；進入收拍階段的時間也跟著往後移。G1 的 YAML 設成 `tts_offset_s: 0.04`，A3 維持 0。
+  `mujoco_eval_onnx.py --tts-offset-s` 現在是覆寫這個值，而不是另外加到指令上。
+* 用 G1 的預設值（`strike_time` + 40 ms）直接跑 MuJoCo，結果跟之前「strike_time + 40 ms」的測試逐球相同
+  （主要 run `model_15400`：最高點擊球 90%、合法回球 77%、社團成功 10%）。
+* 從現在起，G1 的 MuJoCo 數字都包含這個校正。要重現更早的結果：`--clock countdown --tts-offset-s 0`。
+  這 40 ms 的原因還沒找到；上實機時要重新量。
+
 ### 2026-10-14：G1 預設改用 `strike_time` 時鐘
 * `hope_pingpong_runtime_unitree_g1.yaml`（由 `unitree/scripts/generate_g1_runtime_yamls.py` 產生）設定
   `clock: strike_time`、`max_message_age_s: 0.1`。A3 的設定維持 `countdown`。
