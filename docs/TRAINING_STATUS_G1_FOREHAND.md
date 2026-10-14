@@ -200,6 +200,14 @@ touch the ball; use `eval_bank` for the forehand.
   planner's time-to-strike and subtracts one tick (20 ms) in the same update, before the policy sees it.
   In Isaac the observed time-to-strike describes the state just simulated; here it is 20 ms short, so the
   policy thinks the strike is sooner and moves early.
+  *Why the subtraction exists:* the runner must keep its own countdown between planner messages (the
+  planner may send slower than 50 Hz or drop a packet), so every tick it does `tts -= dt`. The code does
+  "copy the new value, then count down" in the same tick, so a fresh value is aged once before use. The
+  intent is not documented. It is only correct if the message is already one tick old when it arrives
+  (possible on hardware over ROS, never in our MuJoCo loop, where the planner runs in the same tick).
+  The robust fix is to time-stamp commands: the wire format already carries an absolute `strike_time`
+  (currently "informational"), so the runner can compute `tts = strike_time − now` when it builds the
+  observation, whatever the message age.
 * **Cause, part 2 (~30 ms):** not explained yet. Ruled out: a different racket point (both use 0.21,
   0.015, 0.01 m from the wrist), action delay in training (`qdes_delay` 0). Likely a sim-to-sim dynamics
   difference; needs an Isaac-vs-MuJoCo replay of the same swing when the cluster is back.
