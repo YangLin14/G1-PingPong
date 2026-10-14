@@ -145,6 +145,14 @@ def render_runtime(order: list[str]) -> str:
     ]
     lines += [f"  {k}: {_fmt(v)}" for k, v in LIFECYCLE]
     lines += [
+        "  # Reference clock (D17 in docs/TRITON_G1_FOREHAND.md): show the policy strike_time - now from the",
+        "  # planner's absolute deadline instead of counting the copied time_to_strike down one tick early.",
+        "  # Needs planner and runner clocks synced; a command whose implied message age is negative or",
+        "  # above max_message_age_s is stamped on receipt instead. The A3 config keeps countdown.",
+        "  clock: strike_time",
+        "  max_message_age_s: 0.1",
+    ]
+    lines += [
         "  # Base-relative ready reach the racket goal holds while idle: the A3 example values",
         "  # (0.40, 0.20, -0.05) scaled by the G1/A3 shoulder-to-blade reach ratio 0.81 (docs/UNITREE_G1.md).",
         f"  ready_reach_x: {_fmt(READY_REACH[0])}",

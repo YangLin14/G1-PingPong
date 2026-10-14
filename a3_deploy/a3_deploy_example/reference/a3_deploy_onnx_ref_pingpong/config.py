@@ -88,6 +88,7 @@ class RuntimeConfig:
             recovery_s=float(life_doc.get("recovery_s", 0.8)),
             ready_time_to_strike=float(life_doc.get("ready_time_to_strike", 1.0)),
             clock=str(life_doc.get("clock", "countdown")),
+            max_message_age_s=float(life_doc.get("max_message_age_s", 0.1)),
             ready_reach_x=float(life_doc.get("ready_reach_x", 0.40)),
             ready_reach_y=float(life_doc.get("ready_reach_y", 0.20)),
             ready_reach_z=float(life_doc.get("ready_reach_z", -0.05)),

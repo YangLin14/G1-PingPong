@@ -177,6 +177,15 @@ bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job auto g1_fh_diag
 
 ## 5. 狀態紀錄（最新的在最上面）
 
+### 2026-10-14：G1 預設改用 `strike_time` 時鐘
+* `hope_pingpong_runtime_unitree_g1.yaml`（由 `unitree/scripts/generate_g1_runtime_yamls.py` 產生）設定
+  `clock: strike_time`、`max_message_age_s: 0.1`。A3 的設定維持 `countdown`。
+* 時鐘保護：每則指令同時帶有「還剩多久」和絕對擊球時刻，所以部署端可以算出訊息延遲了多久。
+  如果算出來是負的或超過 0.1 秒，代表規劃器和部署端的時鐘沒對好；這時就不用絕對時刻，改用收到的時間蓋時間戳，並記在 `clock_rejections`。
+  這樣時鐘沒對好時，不會悄悄地讓每一拍都偏掉。
+* **比較時要注意：** 這筆紀錄以前的所有 MuJoCo 數字都是用 `countdown` 跑的。現在 G1 的 `eval_checkpoint.sh` 和
+  `mujoco_eval_onnx.py` 預設都是 `strike_time`；要重現舊結果請加 `--clock countdown`（已確認：預設跑出來跟 `--clock strike_time` 逐球相同）。
+
 ### 2026-10-14：在部署參考程式實作 `strike_time` 時鐘
 * `lifecycle.py` 多了第二種時鐘模式 `clock: strike_time`（預設仍是 `countdown`，所以 A3 的行為不變）。
   策略看到的是 `strike_time − 現在時間`，也就是「從剛量到的狀態算起還剩多久」，跟訓練時一樣，不管訊息延遲多久都對。

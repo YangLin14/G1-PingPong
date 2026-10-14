@@ -32,6 +32,11 @@ Two clock modes (``LifecycleConfig.clock``):
     from the state just measured, which is what this gives. A command without
     ``strike_time`` is stamped on receipt (``now + time_to_strike``, no extra tick).
     Needs ``update(..., now=...)``; without ``now`` it falls back to countdown.
+    Clock guard: a command carries both ``time_to_strike`` and ``strike_time``, so
+    ``now - (strike_time - time_to_strike)`` is the message age. If that is negative
+    or above ``max_message_age_s``, the planner and runner clocks disagree; the
+    deadline is then ignored, the command is stamped on receipt, and
+    ``clock_rejections`` counts it.
 """
 
 from __future__ import annotations
@@ -56,6 +61,7 @@ class Phase(Enum):
 class LifecycleConfig:
     dt: float = 0.02
     clock: str = "countdown"        # "countdown" (original) | "strike_time" (see module doc)
+    max_message_age_s: float = 0.1  # "strike_time": larger (or negative) ages mean unsynced clocks
     follow_through_s: float = 0.6   # goal held after contact so the swing completes
     recovery_s: float = 0.8         # in-place recentring window before the next ball
     ready_time_to_strike: float = 1.0
@@ -85,6 +91,7 @@ class SwingLifecycle:
         self._applied_revision: int = -1
         # absolute strike deadline of the active task ("strike_time" clock only)
         self._strike_time: float | None = None
+        self.clock_rejections: int = 0   # commands whose strike_time disagreed with the local clock
 
     # -- helpers ------------------------------------------------------------
     def _ready_target_pos_w(self, state: RobotState) -> np.ndarray:
@@ -103,7 +110,10 @@ class SwingLifecycle:
         if self.cfg.clock != "strike_time" or now is None:
             return None
         if cmd.strike_time is not None:
-            return float(cmd.strike_time)
+            age = float(now) - (float(cmd.strike_time) - float(cmd.time_to_strike))
+            if -0.005 <= age <= self.cfg.max_message_age_s:
+                return float(cmd.strike_time)
+            self.clock_rejections += 1
         return float(now) + float(cmd.time_to_strike)
 
     def update(self, cmd: RacketCommand | None, state: RobotState, now: float | None = None) -> ObsTarget:

@@ -40,9 +40,10 @@ def test_strike_time_clock_reports_time_left_from_now_whatever_the_message_age()
     assert life.update(_cmd(0.5, strike_time=100.5), STATE, now=100.0).time_to_strike == pytest.approx(0.5)
     # next ticks without messages follow the wall clock
     assert life.update(None, STATE, now=100.02).time_to_strike == pytest.approx(0.48)
-    # a revision that arrives 35 ms late still gives the right time left
-    out = life.update(_cmd(0.47, strike_time=100.52, rev=1), STATE, now=100.035)
+    # a revision sent at 100.000 ("0.52 s left") that arrives 35 ms late still gives the right time left
+    out = life.update(_cmd(0.52, strike_time=100.52, rev=1), STATE, now=100.035)
     assert out.time_to_strike == pytest.approx(0.485)
+    assert life.clock_rejections == 0
     # contact at the deadline, then negative through the follow-through
     life.update(None, STATE, now=100.52)
     assert life.phase == Phase.FOLLOW_THROUGH
@@ -66,3 +67,25 @@ def test_ros_parser_reads_strike_time_and_treats_zero_as_missing():
 def test_unknown_clock_is_rejected():
     with pytest.raises(ValueError):
         SwingLifecycle(LifecycleConfig(clock="bogus")).update(None, STATE)
+
+
+def test_clock_guard_rejects_a_deadline_from_an_unsynced_clock():
+    life = SwingLifecycle(LifecycleConfig(dt=DT, clock="strike_time", max_message_age_s=0.1))
+    # planner clock 2 s ahead: implied message age is -2 s -> ignore the deadline, stamp on receipt
+    assert life.update(_cmd(0.5, strike_time=102.5), STATE, now=100.0).time_to_strike == pytest.approx(0.5)
+    assert life.clock_rejections == 1
+    assert life.update(None, STATE, now=100.1).time_to_strike == pytest.approx(0.4)
+    # planner clock 0.3 s behind: implied age 0.3 s > 0.1 s -> also rejected
+    life2 = SwingLifecycle(LifecycleConfig(dt=DT, clock="strike_time", max_message_age_s=0.1))
+    assert life2.update(_cmd(0.5, strike_time=100.2), STATE, now=100.0).time_to_strike == pytest.approx(0.5)
+    assert life2.clock_rejections == 1
+
+
+def test_g1_runtime_config_uses_strike_time_and_a3_keeps_countdown():
+    from a3_deploy_onnx_ref_pingpong.config import RuntimeConfig
+
+    cfg_dir = os.path.join(_REPO, "a3_deploy", "a3_deploy_example", "config")
+    g1 = RuntimeConfig.load(os.path.join(cfg_dir, "hope_pingpong_runtime_unitree_g1.yaml"), profile="unitree_g1")
+    assert g1.lifecycle.clock == "strike_time" and g1.lifecycle.max_message_age_s == pytest.approx(0.1)
+    a3 = RuntimeConfig.load(os.path.join(cfg_dir, "hope_pingpong_runtime.yaml"))
+    assert a3.lifecycle.clock == "countdown"
