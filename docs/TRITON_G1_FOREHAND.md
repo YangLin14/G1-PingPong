@@ -130,6 +130,21 @@ the ball to it, and the policy tracks that velocity.
   - racket and table contact: an impulse model with tangential grip (spin generation) and
     speed-dependent normal restitution `e(u_n) = 0.759·exp(−0.0441|u_n|)`;
   - fitted on real venue data, valid to about 7 m/s and 15 rev/s.
+* **Deploy reference clock (D17).** Every 20 ms tick the runner tells the policy how long until the
+  strike. `countdown` (original): copy the planner's `time_to_strike`, then subtract 20 ms in the same
+  tick, and keep subtracting 20 ms per tick until the next message. `strike_time` (opt-in): remember the
+  planner's absolute deadline and show `deadline − now`. Example, a message sent at 10.000 s saying
+  "0.500 s left" (deadline 10.500 s), no message delay:
+
+  | wall time | true time left | `countdown` shows | `strike_time` shows |
+  |---|---:|---:|---:|
+  | 10.000 (message arrives) | 0.500 | 0.480 | 0.500 |
+  | 10.020 | 0.480 | 0.460 | 0.480 |
+  | 10.040 | 0.460 | 0.440 | 0.460 |
+
+  `countdown` is always one tick short, which made the policy swing 20 ms early. If the message took
+  35 ms to arrive, `countdown` would show 0.480 at 10.035 (true 0.465, 15 ms long) while `strike_time`
+  shows 0.465: it is right for any delay, as long as planner and runner share a synchronized clock.
 * **Same physics everywhere.** The bank generator, the success metric, the training reward and the
   visualizer all call this one module, so they cannot disagree.
 
