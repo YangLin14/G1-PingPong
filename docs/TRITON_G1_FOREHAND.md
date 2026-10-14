@@ -52,6 +52,7 @@ rallies up to 106 shots), using references made by filming a human, lifting the 
 | D15 | **A requeued run continues its step-keyed ramps; a warm start from another run restarts them.** `train.sbatch` passes `restore_step_counter=true` only when it resumes the run's own newest checkpoint. | Cluster outages and preemption requeue jobs. `runner.load` restores weights and optimizer but left `env.common_step_counter` at 0, so the rally-pace and timing-jitter ramps started over after every requeue. The counter is already saved in the checkpoint's exact-resume state. |
 | D16 | **Treat the ball's spin as a required input, and do not buy cameras yet.** Plan a spin estimate from the opponent's racket at contact plus the ball's curved flight. | In simulation, perfect tracking without spin drops legal returns from 61 % to 10 %; with spin known, mocap and iPhone-level tracking score 56 % and 54 %, and a rough estimate (±50 %, ±40°) still gives 48–49 %. Camera quality matters far less than spin for our planner. Details: [`PERCEPTION_G1_FOREHAND.md`](PERCEPTION_G1_FOREHAND.md). |
 | D17 | **Calibrate the deploy clock: the time-to-strike the policy sees must match training.** In MuJoCo a +60 ms offset is right; on hardware it will be measured again. | The racket reached the strike point 53 ms before its clock said so (20 ms from `lifecycle.py` subtracting a tick before the policy sees it, ~30 ms not yet explained), so every ball was hit ~45 ms before the apex. With +60 ms, apex OK goes 0 → 91 % and legal 57 → 78 % (`model_15400`). The 20 ms part is now fixed in code: `lifecycle.py` `clock: strike_time` (the G1 default since 2026-10-14; A3 keeps `countdown`) uses the planner's absolute deadline, with a guard against unsynced clocks; the rest is the calibration `lifecycle.tts_offset_s` (G1: 0.04 s from MuJoCo; re-measure on hardware). Status log 2026-10-14. |
+| D18 | **Correct systematic aim errors in the planner (aim offset), not in the racket command; measure the offset with the real racket.** | Returns landed 30–60 cm short and drifted wide. Re-commanding the racket for its velocity bias made results worse (the policy does not follow out-of-distribution commands), while moving the planner's aim point by the mean miss tripled in-zone landings (11.7 → 35 % in MuJoCo, 34 % at rally pace). The offset depends on the racket contact (0.40 m vs 0.63 m for two racket models). Status log 2026-10-14. |
 
 ---
 
@@ -145,6 +146,14 @@ the ball to it, and the policy tracks that velocity.
   `countdown` is always one tick short, which made the policy swing 20 ms early. If the message took
   35 ms to arrive, `countdown` would show 0.480 at 10.035 (true 0.465, 15 ms long) while `strike_time`
   shows 0.465: it is right for any delay, as long as planner and runner share a synchronized clock.
+* **Changing the racket.** The policy is trained to put the racket *centre point* (0.21, 0.015, 0.01 m
+  from the right wrist) at a target position with a target velocity and face normal; it does not know
+  about rubber. So: a new rubber or blade of the same shape, size and similar mass needs **no
+  retraining**, only a new paddle model for the planner (fit restitution and grip from recorded hits)
+  and new timing/aim offsets. A different mount position, handle length or clearly different mass
+  changes where the racket centre is and how the arm moves: update `G1_MOUNT_OFFSET` and the generated
+  URDF/MJCF (`unitree/scripts/build_g1_pingpang_models.py`), then **fine-tune** from the current
+  checkpoint (warm start, a few thousand iterations) rather than train from scratch.
 * **Same physics everywhere.** The bank generator, the success metric, the training reward and the
   visualizer all call this one module, so they cannot disagree.
 
@@ -175,6 +184,7 @@ the ball to it, and the policy tracks that velocity.
 | `mujoco_eval_onnx.py` (extended) | `--serve-bank` (real ball fed from our bank), `--zones`, `--feed-lead-s`, `--rally-pace` / `--rally-gap-s` (next feed 0.7–1.0 s after our contact, announced only at launch); club scoring per ball and per zone. Default mode unchanged. |
 | `mujoco_pingpong_scene.py` (extended) | Opt-in Magnus force, target-zone drawing, ball spin, and the venue table-bounce model (MuJoCo's own bounce put the apex 20–40 cm too deep). |
 | `check_rally_pace.py` | Isaac check of the rally-pace clock and timing jitter (swing entry time, strike-to-strike interval, falls). |
+| `mujoco_eval_onnx.py` (more) | `--racket-contact venue` (training paddle model instead of MuJoCo's soft contact), `--aim-offset DX DY` (D18), `--trace-out` (per-tick log incl. racket normal, ball spin). |
 | `onnx_from_checkpoint.py` | policy.onnx for a checkpoint without Isaac: copies the actor weights into an exported graph of the same task (CPU). Verified identical to a real export. |
 | `ball_perception.py`, `perception_sweep.py` | Camera model for `mujoco_eval_onnx.py --perception` (rate, latency, noise, dropout, HITTER-style fit, spin unknown / known / read with error) and the sweep over camera systems. `--reset-after-fall` stands the robot up between balls. |
 | `view_feed_bank.py` | MuJoCo visualizer of the bank: diagonal feed from the opponent's right → bounce → apex → return, with the feed origin, all zones (current target highlighted) and racket target; interactive or MP4, `--camera behind|top`. |
@@ -397,7 +407,9 @@ Full tables, curves and the status log are in
 7. Spin estimation (D16): opponent-racket reading + Magnus fit of the flight; train with spin errors.
    Hardware target from the perception study: ≥120 Hz, ≤15–30 ms, ≤5 mm, synced views of the table
    and the opponent's racket.
-8. **To do:** test whether the `strike_time` clock also helps the original A3 setup (A3 policy in its own
+8. **Aim precision (D18):** the remaining miss is scatter (~20 cm); needs a more precise swing in training
+   (e.g. more weight on racket velocity at the strike), and the real racket's paddle model + aim offset.
+   **To do:** test whether the `strike_time` clock also helps the original A3 setup (A3 policy in its own
    MuJoCo evaluation, `countdown` vs `strike_time`), and find the remaining ~40 ms (Isaac-vs-MuJoCo replay).
 9. Before hardware: measure the real racket adapter, refit ball physics on our table, and write a
    G1 deploy runner (the C++ runner is A3-only).

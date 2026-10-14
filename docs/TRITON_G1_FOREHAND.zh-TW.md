@@ -43,6 +43,7 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 | D15 | **同一個 run 被 requeue 後，依步數漸進的設定會接著走；從別的 run 接續權重時則從頭開始。** `train.sbatch` 只有在接續這個 run 自己最新的 checkpoint 時才會加上 `restore_step_counter=true`。 | 叢集停機和被搶佔都會讓 job requeue。`runner.load` 會還原權重和 optimizer，但 `env.common_step_counter` 會停在 0，所以對打節奏和時機誤差的漸進比例每次 requeue 都從頭開始。這個計數器本來就存在 checkpoint 的 exact-resume 狀態裡。 |
 | D16 | **把球的旋轉當成必要的輸入，現在先不買攝影機。** 規劃用「對手擊球時的球拍」加上「球的彎曲軌跡」來估計旋轉。 | 模擬中，追蹤完美但不知道旋轉時，合法回球從 61% 掉到 10%；知道旋轉時，mocap 和 iPhone 等級分別是 56% 和 54%；粗略估計（±50%、±40°）仍有 48–49%。對我們的規劃器來說，攝影機好壞遠不如旋轉重要。細節見 [`PERCEPTION_G1_FOREHAND.zh-TW.md`](PERCEPTION_G1_FOREHAND.zh-TW.md)。 |
 | D17 | **校正部署端的時鐘：策略看到的「距離擊球時間」要跟訓練時一致。** MuJoCo 裡 +60 ms 最合適；實機上要重新量。 | 球拍比時鐘早 53 ms 到達擊球點（20 ms 來自 `lifecycle.py` 在策略看到之前先減掉一個 tick，約 30 ms 還沒找到原因），所以每一球都約比最高點早 45 ms 擊球。加上 +60 ms 後，最高點擊球從 0 升到 91%，合法回球從 57% 升到 78%（`model_15400`）。其中 20 ms 已經在程式裡修好：`lifecycle.py` 的 `clock: strike_time`（2026-10-14 起是 G1 的預設；A3 維持 `countdown`）改用規劃器給的絕對擊球時刻，並有時鐘沒對好時的保護；剩下的部分是校正參數 `lifecycle.tts_offset_s`（G1：依 MuJoCo 設為 0.04 秒；上實機要重新量）。見狀態紀錄 2026-10-14。 |
+| D18 | **系統性的瞄準誤差在規劃器修正（瞄準補償），不改球拍指令；補償值要用真的球拍量。** | 回球落點短 30–60 cm、而且往外偏。針對球拍速度偏差改指令反而更差（策略不會照訓練範圍外的指令做）；把規劃器的瞄準點往平均偏差的反方向移，落在目標區的比例變成三倍（MuJoCo 11.7% → 35%，對打節奏 34%）。補償值取決於球拍碰撞模型（兩種模型分別是 0.40 m 和 0.63 m）。見狀態紀錄 2026-10-14。 |
 
 ---
 
@@ -111,6 +112,11 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 
   `countdown` 永遠少一個 tick，所以策略提早 20 ms 揮拍。如果訊息晚了 35 ms 才到，`countdown` 在 10.035 會顯示 0.480
   （真正是 0.465，多了 15 ms），`strike_time` 則顯示 0.465。只要規劃器和部署端的時鐘有同步，不管延遲多少它都是對的。
+* **換球拍要不要重新訓練？** 策略學的是把球拍*中心點*（右手腕往外 0.21、0.015、0.01 m）在指定時間送到目標位置，帶著指定的速度和拍面方向；
+  它不知道膠皮是什麼。所以：換膠皮，或換形狀、大小、重量差不多的球拍，**不用重新訓練**，只要幫規劃器換一個球拍模型
+  （用錄下來的擊球擬合恢復係數和咬球參數），再重新量時機和瞄準補償。如果安裝位置、握柄長度或重量明顯不同，
+  球拍中心的位置和手臂的動態都會變：要更新 `G1_MOUNT_OFFSET` 和產生的 URDF/MJCF（`unitree/scripts/build_g1_pingpang_models.py`），
+  然後從目前的 checkpoint **微調**（接續權重，練幾千個 iteration），不用從頭練。
 * **到處用同一套物理**：題庫產生器、成功判定、訓練獎勵、視覺化工具都呼叫同一個模組，所以彼此的結果不會互相矛盾。
 
 ---
@@ -140,6 +146,7 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 | `mujoco_eval_onnx.py`（擴充） | `--serve-bank`（用我們的題庫餵真的球）、`--zones`、`--feed-lead-s`、`--rally-pace` / `--rally-gap-s`（我們擊球後 0.7–1.0 秒對手就回下一球，球發出時才知道打哪裡）；每一球、每個落點都用社團規則計分。預設模式不變。 |
 | `mujoco_pingpong_scene.py`（擴充） | 可選的 Magnus 力、畫出目標區、球的旋轉，以及 venue 的桌面反彈模型（MuJoCo 自己的反彈會讓最高點深 20–40 cm）。 |
 | `check_rally_pace.py` | 在 Isaac 檢查對打節奏的時鐘和時機誤差（揮拍開始時間、兩拍間隔、跌倒）。 |
+| `mujoco_eval_onnx.py`（新增） | `--racket-contact venue`（用訓練用的球拍模型取代 MuJoCo 的軟碰撞）、`--aim-offset DX DY`（D18）、`--trace-out`（逐幀紀錄，含拍面方向和球的旋轉）。 |
 | `onnx_from_checkpoint.py` | 不用 Isaac 就能產生 checkpoint 的 policy.onnx：在 CPU 上把 actor 權重放進同一個任務已匯出的 ONNX 圖。驗證過跟真正的匯出完全相同。 |
 | `ball_perception.py`、`perception_sweep.py` | `mujoco_eval_onnx.py --perception` 的攝影機模型（幀率、延遲、雜訊、漏幀、HITTER 式擬合、旋轉不知道／知道／有誤差的估計），以及跑遍各種攝影機系統的掃描腳本。`--reset-after-fall` 會在兩球之間把機器人扶起來。 |
 | `view_feed_bank.py` | 在 MuJoCo 裡播放題庫的每一題：從對手右邊斜對角餵球 → 反彈 → 最高點 → 回球，同時畫出餵球起點、所有區域（目前的目標會亮起來）和球拍目標；可以開互動視窗或輸出 MP4，鏡頭可選 `--camera behind|top`。 |
@@ -316,6 +323,7 @@ ssh -L 6006:localhost:6006 sdsc-scc '~/hope/isaac-venv/bin/tensorboard --port 60
 5. 落點選擇（D13）：在題庫加上 `target_zone_ids` 篩選，讓訓練、評估、播放都能指定落點，部署時的規劃器也提供同樣的選擇。（放寬餵球範圍：已經用快球題庫完成。）
 6. 縮小 MuJoCo 題庫評估發現的真球落差。**擊球時機：已找到原因，並在模擬中修正（D17）。** 接下來：還沒解釋的約 30 ms（Isaac 和 MuJoCo 重播比對），以及瞄準（只有 3–10% 落在目標區）。已完成（D14）：虛擬擊球的時機誤差、對打節奏下晚開始揮拍、更快的來球。還沒做：拿 MuJoCo 檢查球拍碰撞模型（MuJoCo 回球比較低）；等漸進比例加滿（約第 5600 個 iteration）後，用 `eval_rally` / `eval_bank` / Isaac 分區評估比較 `g1_fh_rally` 和 `g1_fh_diag`。
 7. 旋轉估計（D16）：從對手球拍判斷，加上飛行軌跡的 Magnus 擬合；訓練時加入旋轉誤差。感知實驗得出的硬體目標：≥120 Hz、≤15–30 ms、≤5 mm，多個同步視角涵蓋球桌和對手球拍。
-8. **待辦：** 測試 `strike_time` 時鐘對原本的 A3 是否也有改善（A3 策略在它自己的 MuJoCo 評估裡比較 `countdown` 和 `strike_time`），並找出剩下約 40 ms 的原因（Isaac 和 MuJoCo 重播比對）。
+8. **瞄準精度（D18）：** 剩下的偏差是分散（約 20 cm），要靠訓練出更精準的揮拍（例如提高擊球瞬間球拍速度的權重），以及真實球拍的模型和瞄準補償值。
+   **待辦：** 測試 `strike_time` 時鐘對原本的 A3 是否也有改善（A3 策略在它自己的 MuJoCo 評估裡比較 `countdown` 和 `strike_time`），並找出剩下約 40 ms 的原因（Isaac 和 MuJoCo 重播比對）。
 9. 上實機之前：量測實際的球拍轉接座、在我們自己的桌子上重新擬合球的物理參數、寫 G1 的部署 runner（現有的 C++ runner 只支援 A3）。
 10. 接著處理平衡和步法（站位可以移動，比約 4.4 m/s 更慢的球也需要），然後是反手，最後是發球計畫。
