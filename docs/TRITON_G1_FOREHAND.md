@@ -51,7 +51,7 @@ rallies up to 106 shots), using references made by filming a human, lifting the 
 | D14 | **Train at real rally timing, in a separate run (`g1_fh_rally`, task `HOPEPingPongUnitreeG1_FH_XC_RALLY`), warm-started from `g1_fh_diag`.** Up to 60 % of follow-up swings enter the clip late (time-to-strike 0.4–0.83 s, no hold) and the previous follow-through ends 0.7–1.0 s after its strike; the virtual ball arrives ±30 ms off the clock; feeds are faster (4.4–8.5 m/s before the bounce, was 4.4–6.6). All ramped in over 3000 iterations. | MuJoCo at real cadence (`--rally-pace`) dropped contact from 88 % to 38 % with falls on 44 % of balls: training gave 0.83 s of lead and ~3 s between strikes, a rally gives 0.4–0.8 s and ~1.5 s. Late entry is what the deploy reference clock does when the planner's time-to-strike is short, so no clip time-warp is needed. Slower feeds are impossible with the middle-third bounce and a fixed strike plane (the apex would be in front of the robot); they need forward footwork. The main run keeps going untouched as the comparison. |
 | D15 | **A requeued run continues its step-keyed ramps; a warm start from another run restarts them.** `train.sbatch` passes `restore_step_counter=true` only when it resumes the run's own newest checkpoint. | Cluster outages and preemption requeue jobs. `runner.load` restores weights and optimizer but left `env.common_step_counter` at 0, so the rally-pace and timing-jitter ramps started over after every requeue. The counter is already saved in the checkpoint's exact-resume state. |
 | D16 | **Treat the ball's spin as a required input, and do not buy cameras yet.** Plan a spin estimate from the opponent's racket at contact plus the ball's curved flight. | In simulation, perfect tracking without spin drops legal returns from 61 % to 10 %; with spin known, mocap and iPhone-level tracking score 56 % and 54 %, and a rough estimate (±50 %, ±40°) still gives 48–49 %. Camera quality matters far less than spin for our planner. Details: [`PERCEPTION_G1_FOREHAND.md`](PERCEPTION_G1_FOREHAND.md). |
-| D17 | **Calibrate the deploy clock: the time-to-strike the policy sees must match training.** In MuJoCo a +60 ms offset is right; on hardware it will be measured again. | The racket reached the strike point 53 ms before its clock said so (20 ms from `lifecycle.py` subtracting a tick before the policy sees it, ~30 ms not yet explained), so every ball was hit ~45 ms before the apex. With +60 ms, apex OK goes 0 → 91 % and legal 57 → 78 % (`model_15400`). Status log 2026-10-14. |
+| D17 | **Calibrate the deploy clock: the time-to-strike the policy sees must match training.** In MuJoCo a +60 ms offset is right; on hardware it will be measured again. | The racket reached the strike point 53 ms before its clock said so (20 ms from `lifecycle.py` subtracting a tick before the policy sees it, ~30 ms not yet explained), so every ball was hit ~45 ms before the apex. With +60 ms, apex OK goes 0 → 91 % and legal 57 → 78 % (`model_15400`). The 20 ms part is now fixed in code: `lifecycle.py` `clock: strike_time` (opt-in) uses the planner's absolute deadline; the rest (+40 ms in MuJoCo) stays a calibration. Status log 2026-10-14. |
 
 ---
 
@@ -178,6 +178,8 @@ the ball to it, and the policy tracks that velocity.
 | `tests/test_make_g1_forehand_bank.py` | 4 tests: loader schema; feed/apex/strike-box/speed constraints; the feed comes diagonally from the opponent's right; equal rows per zone and **every row is a success into its own zone**. |
 | `tests/test_gmr_video_clip_to_g1.py` | 3 tests: round trip of a published G1 clip through a fake GMR file (joints < 0.03 rad, bodies < 1 cm, strike frame ±1), sidecar schema, loop blend. |
 | `tests/test_mujoco_forehand_bank.py` | 3 tests: the MuJoCo-side flight and planner reproduce the bank's apex and racket velocity. |
+| `a3_deploy/.../reference/a3_deploy_onnx_ref_pingpong/{lifecycle,racket_command,ros_command_source,config,runner}.py` | Opt-in `clock: strike_time` (D17): the observed time-to-strike is `strike_time − now`. Default `countdown` keeps the original behaviour. |
+| `tests/test_lifecycle_strike_time.py` | 5 tests: countdown unchanged, strike_time clock exact for fresh and late messages, stamping without a deadline, fallback without `now`, ROS field [10]. |
 | `tests/test_ball_perception.py` | 4 tests: noise-free fit and latency, bounce segmentation, presets, per-ball spin-reading error. |
 | `docs/plans/SERVE_SIDE_BACKSPIN_PLAN.md` | The shelved serve plan (D4). |
 
@@ -380,7 +382,9 @@ Full tables, curves and the status log are in
 7. Spin estimation (D16): opponent-racket reading + Magnus fit of the flight; train with spin errors.
    Hardware target from the perception study: ≥120 Hz, ≤15–30 ms, ≤5 mm, synced views of the table
    and the opponent's racket.
-8. Before hardware: measure the real racket adapter, refit ball physics on our table, and write a
+8. **To do:** test whether the `strike_time` clock also helps the original A3 setup (A3 policy in its own
+   MuJoCo evaluation, `countdown` vs `strike_time`), and find the remaining ~40 ms (Isaac-vs-MuJoCo replay).
+9. Before hardware: measure the real racket adapter, refit ball physics on our table, and write a
    G1 deploy runner (the C++ runner is A3-only).
-9. Then balance and footwork (free station; also needed for feeds slower than ~4.4 m/s), then
+10. Then balance and footwork (free station; also needed for feeds slower than ~4.4 m/s), then
    backhand, then the serve plan.

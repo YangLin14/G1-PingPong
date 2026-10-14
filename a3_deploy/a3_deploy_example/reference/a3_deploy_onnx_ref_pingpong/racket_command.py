@@ -53,6 +53,10 @@ class RacketCommand:
     position: np.ndarray                   # (3,) world m
     velocity: np.ndarray                   # (3,) world m/s
     time_to_strike: float                  # s
+    # Absolute strike deadline on the shared wall clock (s), e.g. the planner's
+    # ``strike_deadline_wall_s``. None = not provided; the lifecycle then counts
+    # ``time_to_strike`` down itself (the original behaviour).
+    strike_time: float | None = None
 
     def __post_init__(self) -> None:
         self.position = np.asarray(self.position, dtype=np.float64).reshape(3)

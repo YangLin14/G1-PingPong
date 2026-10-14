@@ -187,6 +187,28 @@ touch the ball; use `eval_bank` for the forehand.
 
 ## 5. Status log (newest first)
 
+### 2026-10-14 — `strike_time` clock implemented in the deploy reference
+* `lifecycle.py` has a second clock mode, `clock: strike_time` (default stays `countdown`, so the A3
+  behaviour is unchanged). The policy then sees `strike_time − now`: the time left from the state just
+  measured, as in training, whatever the message age. `RacketCommand` carries `strike_time`, the ROS
+  parser reads it from field [10] (0 = missing), the runner passes the wall clock in real-time mode, and
+  `mujoco_eval_onnx.py --clock strike_time` uses the simulation clock. Tests:
+  `tests/test_lifecycle_strike_time.py` (5).
+* Result (MuJoCo, 3 seeds × 40 balls per row):
+
+  | policy, mode | clock | + offset | apex OK | median vz | legal | in zone | club success |
+  |---|---|---:|---:|---:|---:|---:|---:|
+  | `g1_fh_diag` `model_15400`, 0.9 s notice | countdown (original) | 0 | 0 % | +0.48 | 57 % | 10 % | 0 % |
+  | | `strike_time` | 0 | 13 % | +0.37 | 65 % | 9 % | 1.7 % |
+  | | `strike_time` | +20 ms | 52 % | +0.27 | 72 % | 12 % | 5.0 % |
+  | | `strike_time` | **+40 ms** | **90 %** | +0.16 | **77 %** | 11 % | **10.0 %** |
+  | `g1_fh_rally` `model_5900`, rally pace | countdown (original) | 0 | 2 % | +0.48 | 61 % | 6 % | 0 % |
+  | | `strike_time` | 0 | 9 % | +0.42 | 65 % | 6 % | 0 % |
+  | | `strike_time` | +20 ms | 47 % | +0.28 | 62 % | 3 % | 0.8 % |
+  | | `strike_time` | **+40 ms** | **72 %** | +0.22 | 60 % | 3 % | 1.7 % |
+* The clock fix removes exactly the 20 ms it should (same effect as the earlier +20 ms offset). The
+  remaining ~40 ms still needs a calibration offset, and its cause is still open.
+
 ### 2026-10-14 00:30 — why the robot strikes early (solved in simulation); third zixian outage
 * **Outage:** zixian went "not responding" again at 20:15 on 10-13 (munge errors, like 10-10 and 10-12).
   4382 is queued at iteration 15 756 and resumes from `model_15700` when the node is back.

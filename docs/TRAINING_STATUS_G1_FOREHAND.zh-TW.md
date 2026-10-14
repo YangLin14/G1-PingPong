@@ -177,6 +177,25 @@ bash hope_training/slurm/pip_env/eval_checkpoint.sh --in-job auto g1_fh_diag
 
 ## 5. 狀態紀錄（最新的在最上面）
 
+### 2026-10-14：在部署參考程式實作 `strike_time` 時鐘
+* `lifecycle.py` 多了第二種時鐘模式 `clock: strike_time`（預設仍是 `countdown`，所以 A3 的行為不變）。
+  策略看到的是 `strike_time − 現在時間`，也就是「從剛量到的狀態算起還剩多久」，跟訓練時一樣，不管訊息延遲多久都對。
+  `RacketCommand` 多了 `strike_time` 欄位，ROS 解析器從第 [10] 欄讀取（0 代表沒有），即時模式的 runner 傳入牆上時鐘，
+  `mujoco_eval_onnx.py --clock strike_time` 則用模擬器的時鐘。測試：`tests/test_lifecycle_strike_time.py`（5 個）。
+* 結果（MuJoCo，每列 3 個 seed × 40 球）：
+
+  | 策略、模式 | 時鐘 | 再加上 | 最高點 | 垂直速度中位數 | 合法 | 目標區 | 社團成功 |
+  |---|---|---:|---:|---:|---:|---:|---:|
+  | `g1_fh_diag` `model_15400`, 提前 0.9 秒告知 | countdown（原本的） | 0 | 0% | +0.48 | 57% | 10% | 0% |
+  | | `strike_time` | 0 | 13% | +0.37 | 65% | 9% | 1.7% |
+  | | `strike_time` | +20 ms | 52% | +0.27 | 72% | 12% | 5.0% |
+  | | `strike_time` | **+40 ms** | **90%** | +0.16 | **77%** | 11% | **10.0%** |
+  | `g1_fh_rally` `model_5900`, 對打節奏 | countdown（原本的） | 0 | 2% | +0.48 | 61% | 6% | 0% |
+  | | `strike_time` | 0 | 9% | +0.42 | 65% | 6% | 0% |
+  | | `strike_time` | +20 ms | 47% | +0.28 | 62% | 3% | 0.8% |
+  | | `strike_time` | **+40 ms** | **72%** | +0.22 | 60% | 3% | 1.7% |
+* 時鐘修正剛好拿掉應該拿掉的 20 ms（效果跟之前加 +20 ms 一樣）。剩下約 40 ms 仍然要用校正值補，原因還沒找到。
+
 ### 2026-10-14 00:30：機器人為什麼擊球太早（模擬中已解決）；zixian 第三次停機
 * **停機：** zixian 在 10-13 20:15 又變成「not responding」（又是 munge 錯誤，跟 10-10、10-12 一樣）。
   4382 停在第 15,756 個 iteration，正在排隊，節點恢復後會從 `model_15700` 接續。

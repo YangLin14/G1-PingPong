@@ -78,7 +78,10 @@ class PingPongReferenceRunner:
 
                 state = self.bridge.read_state()
                 cmd = self.source.poll()
-                target = self.lifecycle.update(cmd, state)
+                # The "strike_time" clock needs the wall clock shared with the planner
+                # (its strike_time comes from system_clock). Only meaningful when the loop
+                # runs in real time; otherwise the lifecycle falls back to its countdown.
+                target = self.lifecycle.update(cmd, state, now=time.time() if realtime else None)
 
                 obs = build_observation(
                     state, target, self.last_action, self.default_q, self.base_target_xy,

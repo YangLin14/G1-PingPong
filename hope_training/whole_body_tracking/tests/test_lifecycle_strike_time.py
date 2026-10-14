@@ -1,0 +1,68 @@
+"""Deploy reference clock: original countdown vs the absolute ``strike_time`` clock."""
+
+from __future__ import annotations
+
+import os
+import sys
+
+import numpy as np
+import pytest
+
+_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.join(_REPO, "a3_deploy", "a3_deploy_example", "reference"))
+
+from a3_deploy_onnx_ref_pingpong.lifecycle import LifecycleConfig, Phase, SwingLifecycle  # noqa: E402
+from a3_deploy_onnx_ref_pingpong.observation import RobotState  # noqa: E402
+from a3_deploy_onnx_ref_pingpong.racket_command import FOREHAND, RacketCommand  # noqa: E402
+from a3_deploy_onnx_ref_pingpong.ros_command_source import parse_flat_racket_command  # noqa: E402
+
+DT = 0.02
+STATE = RobotState(np.zeros(3), np.array([1.0, 0, 0, 0]), np.zeros(3), np.zeros(29), np.zeros(29))
+
+
+def _cmd(tts, strike_time=None, rev=0):
+    return RacketCommand(task_id=1, task_revision=rev, swing_sign=FOREHAND, position=[0.45, -0.35, 0.95],
+                         velocity=[1.9, 0.3, 1.0], time_to_strike=tts, strike_time=strike_time)
+
+
+def test_countdown_is_unchanged_and_ages_a_fresh_command_by_one_tick():
+    life = SwingLifecycle(LifecycleConfig(dt=DT))
+    assert life.update(_cmd(0.5), STATE).time_to_strike == pytest.approx(0.5 - DT)
+    assert life.update(None, STATE).time_to_strike == pytest.approx(0.5 - 2 * DT)
+    # now is ignored by the original clock
+    life2 = SwingLifecycle(LifecycleConfig(dt=DT))
+    assert life2.update(_cmd(0.5, strike_time=100.5), STATE, now=100.0).time_to_strike == pytest.approx(0.5 - DT)
+
+
+def test_strike_time_clock_reports_time_left_from_now_whatever_the_message_age():
+    life = SwingLifecycle(LifecycleConfig(dt=DT, clock="strike_time"))
+    # fresh message: exactly the planner's value, no extra tick
+    assert life.update(_cmd(0.5, strike_time=100.5), STATE, now=100.0).time_to_strike == pytest.approx(0.5)
+    # next ticks without messages follow the wall clock
+    assert life.update(None, STATE, now=100.02).time_to_strike == pytest.approx(0.48)
+    # a revision that arrives 35 ms late still gives the right time left
+    out = life.update(_cmd(0.47, strike_time=100.52, rev=1), STATE, now=100.035)
+    assert out.time_to_strike == pytest.approx(0.485)
+    # contact at the deadline, then negative through the follow-through
+    life.update(None, STATE, now=100.52)
+    assert life.phase == Phase.FOLLOW_THROUGH
+    assert life.update(None, STATE, now=100.6).time_to_strike == pytest.approx(-0.08)
+
+
+def test_strike_time_clock_stamps_commands_without_a_deadline_and_falls_back_without_now():
+    life = SwingLifecycle(LifecycleConfig(dt=DT, clock="strike_time"))
+    assert life.update(_cmd(0.4), STATE, now=50.0).time_to_strike == pytest.approx(0.4)
+    assert life.update(None, STATE, now=50.1).time_to_strike == pytest.approx(0.3)
+    old = SwingLifecycle(LifecycleConfig(dt=DT, clock="strike_time"))
+    assert old.update(_cmd(0.4, strike_time=50.4), STATE).time_to_strike == pytest.approx(0.4 - DT)
+
+
+def test_ros_parser_reads_strike_time_and_treats_zero_as_missing():
+    head = [1.0, 1.0, 1.0, 0.45, -0.35, 0.95, 1.9, 0.3, 1.0, 0.5]
+    assert parse_flat_racket_command(head + [1234.5]).strike_time == pytest.approx(1234.5)
+    assert parse_flat_racket_command(head + [0.0]).strike_time is None
+
+
+def test_unknown_clock_is_rejected():
+    with pytest.raises(ValueError):
+        SwingLifecycle(LifecycleConfig(clock="bogus")).update(None, STATE)

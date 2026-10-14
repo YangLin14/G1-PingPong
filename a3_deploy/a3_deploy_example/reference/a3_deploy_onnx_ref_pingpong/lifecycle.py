@@ -22,6 +22,16 @@ Contract points enforced here:
 The reference clock: ``time_to_strike`` is seeded from the command and counts down
 by ``dt`` each tick, passing through zero at contact and continuing negative through
 the follow-through (matching the training reference clock).
+
+Two clock modes (``LifecycleConfig.clock``):
+  * ``"countdown"`` (default, original): a new command's ``time_to_strike`` is copied
+    and then counted down by one ``dt`` in the same tick, so the policy sees it one
+    tick older than sent. That is right only if the message is one tick old on arrival.
+  * ``"strike_time"``: the observed value is ``strike_time - now`` on the shared wall
+    clock, so it is right whatever the message age. Training observes the time left
+    from the state just measured, which is what this gives. A command without
+    ``strike_time`` is stamped on receipt (``now + time_to_strike``, no extra tick).
+    Needs ``update(..., now=...)``; without ``now`` it falls back to countdown.
 """
 
 from __future__ import annotations
@@ -45,6 +55,7 @@ class Phase(Enum):
 @dataclass
 class LifecycleConfig:
     dt: float = 0.02
+    clock: str = "countdown"        # "countdown" (original) | "strike_time" (see module doc)
     follow_through_s: float = 0.6   # goal held after contact so the swing completes
     recovery_s: float = 0.8         # in-place recentring window before the next ball
     ready_time_to_strike: float = 1.0
@@ -72,6 +83,8 @@ class SwingLifecycle:
         self._last_engaged_task_id: int = -1
         # highest task_revision already applied to the active task (pre-contact only).
         self._applied_revision: int = -1
+        # absolute strike deadline of the active task ("strike_time" clock only)
+        self._strike_time: float | None = None
 
     # -- helpers ------------------------------------------------------------
     def _ready_target_pos_w(self, state: RobotState) -> np.ndarray:
@@ -86,7 +99,18 @@ class SwingLifecycle:
         return self.phase in (Phase.READY, Phase.RECOVERY)
 
     # -- main tick ----------------------------------------------------------
-    def update(self, cmd: RacketCommand | None, state: RobotState) -> ObsTarget:
+    def _deadline(self, cmd: RacketCommand, now: float | None) -> float | None:
+        if self.cfg.clock != "strike_time" or now is None:
+            return None
+        if cmd.strike_time is not None:
+            return float(cmd.strike_time)
+        return float(now) + float(cmd.time_to_strike)
+
+    def update(self, cmd: RacketCommand | None, state: RobotState, now: float | None = None) -> ObsTarget:
+        """Advance one tick. ``now``: the shared wall-clock time of ``state`` (s), used by
+        the ``"strike_time"`` clock; ignored by the original countdown."""
+        if self.cfg.clock not in ("countdown", "strike_time"):
+            raise ValueError(f"unknown lifecycle clock {self.cfg.clock!r}")
         c = self.cfg
 
         # 1) Engage a new ball, or refine the active one before contact.
@@ -100,6 +124,7 @@ class SwingLifecycle:
                 self._target_pos_w = np.asarray(cmd.position, dtype=np.float64).copy()
                 self._target_vel_w = np.asarray(cmd.velocity, dtype=np.float64).copy()
                 self._tts = float(cmd.time_to_strike)
+                self._strike_time = self._deadline(cmd, now)
                 self.phase = Phase.SWING
             elif (
                 cmd.task_id == self.active_task_id
@@ -113,15 +138,17 @@ class SwingLifecycle:
                 self._target_pos_w = np.asarray(cmd.position, dtype=np.float64).copy()
                 self._target_vel_w = np.asarray(cmd.velocity, dtype=np.float64).copy()
                 self._tts = float(cmd.time_to_strike)
+                self._strike_time = self._deadline(cmd, now)
 
         # 2) Advance the reference clock and step the phase machine.
+        absolute = self._strike_time is not None and now is not None
         if self.phase == Phase.SWING:
-            self._tts -= c.dt
+            self._tts = self._strike_time - float(now) if absolute else self._tts - c.dt
             if self._tts <= 0.0:
                 self.phase = Phase.FOLLOW_THROUGH
                 self._follow_t = 0.0
         elif self.phase == Phase.FOLLOW_THROUGH:
-            self._tts -= c.dt
+            self._tts = self._strike_time - float(now) if absolute else self._tts - c.dt
             self._follow_t += c.dt
             if self._follow_t >= c.follow_through_s:
                 self.phase = Phase.RECOVERY

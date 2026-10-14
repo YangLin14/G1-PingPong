@@ -42,7 +42,7 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 | D14 | **用真實對打的時間節奏訓練，開一個獨立的 run（`g1_fh_rally`，task `HOPEPingPongUnitreeG1_FH_XC_RALLY`），從 `g1_fh_diag` 接續權重。** 最多 60% 的後續揮拍會晚開始（距離擊球 0.4–0.83 秒、沒有等待），前一拍的收拍在擊球後 0.7–1.0 秒就結束；虛擬球到達時間有 ±30 ms 誤差；來球更快（反彈前 4.4–8.5 m/s，原本 4.4–6.6）。三項都在 3000 個 iteration 內逐步加入。 | MuJoCo 真實對打節奏（`--rally-pace`）下，接觸率從 88% 掉到 38%，44% 的球會跌倒：訓練時有 0.83 秒預告、兩拍之間約 3 秒，真實對打只有 0.4–0.8 秒和約 1.5 秒。「晚開始」正是部署時規劃器給的時間比較短時，參考時鐘會做的事，所以不需要把動作做時間壓縮。在彈跳點固定於中間三分之一、擊球平面固定的情況下，較慢的來球物理上做不到（最高點會在機器人前面），需要往前移動的步伐才行。主要 run 繼續跑不動，作為對照。 |
 | D15 | **同一個 run 被 requeue 後，依步數漸進的設定會接著走；從別的 run 接續權重時則從頭開始。** `train.sbatch` 只有在接續這個 run 自己最新的 checkpoint 時才會加上 `restore_step_counter=true`。 | 叢集停機和被搶佔都會讓 job requeue。`runner.load` 會還原權重和 optimizer，但 `env.common_step_counter` 會停在 0，所以對打節奏和時機誤差的漸進比例每次 requeue 都從頭開始。這個計數器本來就存在 checkpoint 的 exact-resume 狀態裡。 |
 | D16 | **把球的旋轉當成必要的輸入，現在先不買攝影機。** 規劃用「對手擊球時的球拍」加上「球的彎曲軌跡」來估計旋轉。 | 模擬中，追蹤完美但不知道旋轉時，合法回球從 61% 掉到 10%；知道旋轉時，mocap 和 iPhone 等級分別是 56% 和 54%；粗略估計（±50%、±40°）仍有 48–49%。對我們的規劃器來說，攝影機好壞遠不如旋轉重要。細節見 [`PERCEPTION_G1_FOREHAND.zh-TW.md`](PERCEPTION_G1_FOREHAND.zh-TW.md)。 |
-| D17 | **校正部署端的時鐘：策略看到的「距離擊球時間」要跟訓練時一致。** MuJoCo 裡 +60 ms 最合適；實機上要重新量。 | 球拍比時鐘早 53 ms 到達擊球點（20 ms 來自 `lifecycle.py` 在策略看到之前先減掉一個 tick，約 30 ms 還沒找到原因），所以每一球都約比最高點早 45 ms 擊球。加上 +60 ms 後，最高點擊球從 0 升到 91%，合法回球從 57% 升到 78%（`model_15400`）。見狀態紀錄 2026-10-14。 |
+| D17 | **校正部署端的時鐘：策略看到的「距離擊球時間」要跟訓練時一致。** MuJoCo 裡 +60 ms 最合適；實機上要重新量。 | 球拍比時鐘早 53 ms 到達擊球點（20 ms 來自 `lifecycle.py` 在策略看到之前先減掉一個 tick，約 30 ms 還沒找到原因），所以每一球都約比最高點早 45 ms 擊球。加上 +60 ms 後，最高點擊球從 0 升到 91%，合法回球從 57% 升到 78%（`model_15400`）。其中 20 ms 已經在程式裡修好：`lifecycle.py` 的 `clock: strike_time`（需要手動開啟）改用規劃器給的絕對擊球時刻；剩下的部分（MuJoCo 裡 +40 ms）仍然當作校正值。見狀態紀錄 2026-10-14。 |
 
 ---
 
@@ -145,6 +145,8 @@ HOPE 的架構來自 UC Berkeley 的 **HITTER**（[arXiv 2508.21043](https://arx
 | `tests/test_make_g1_forehand_bank.py` | 4 個測試：符合載入器的格式；符合餵球區／最高點／擊球範圍／球拍速度的限制；餵球確實從對手右邊斜對角過來；每個落點題數相同，而且**每一題用它自己的落點檢查都是成功**。 |
 | `tests/test_gmr_video_clip_to_g1.py` | 3 個測試：把現有的 G1 clip 偽裝成 GMR 輸出再轉回來（關節誤差 < 0.03 rad、身體位置誤差 < 1 cm、擊球幀誤差 ±1），sidecar 格式正確，結尾混接正確。 |
 | `tests/test_mujoco_forehand_bank.py` | 3 個測試：MuJoCo 端的飛行模型和規劃器算出來的最高點、球拍速度跟題庫一致。 |
+| `a3_deploy/.../reference/a3_deploy_onnx_ref_pingpong/{lifecycle,racket_command,ros_command_source,config,runner}.py` | 可選的 `clock: strike_time`（D17）：策略看到的距離擊球時間是 `strike_time − 現在時間`。預設 `countdown` 維持原本的行為。 |
+| `tests/test_lifecycle_strike_time.py` | 5 個測試：countdown 不變、strike_time 時鐘對新訊息和晚到的訊息都準確、沒有絕對時刻時改用收到時間、沒有 `now` 時退回 countdown、ROS 第 [10] 欄。 |
 | `tests/test_ball_perception.py` | 4 個測試：無雜訊的擬合和延遲、反彈切段、preset、每顆球固定的旋轉估計誤差。 |
 | `docs/plans/SERVE_SIDE_BACKSPIN_PLAN.md` | 暫緩的發球計畫（D4）。 |
 
@@ -301,5 +303,6 @@ ssh -L 6006:localhost:6006 sdsc-scc '~/hope/isaac-venv/bin/tensorboard --port 60
 5. 落點選擇（D13）：在題庫加上 `target_zone_ids` 篩選，讓訓練、評估、播放都能指定落點，部署時的規劃器也提供同樣的選擇。（放寬餵球範圍：已經用快球題庫完成。）
 6. 縮小 MuJoCo 題庫評估發現的真球落差。**擊球時機：已找到原因，並在模擬中修正（D17）。** 接下來：還沒解釋的約 30 ms（Isaac 和 MuJoCo 重播比對），以及瞄準（只有 3–10% 落在目標區）。已完成（D14）：虛擬擊球的時機誤差、對打節奏下晚開始揮拍、更快的來球。還沒做：拿 MuJoCo 檢查球拍碰撞模型（MuJoCo 回球比較低）；等漸進比例加滿（約第 5600 個 iteration）後，用 `eval_rally` / `eval_bank` / Isaac 分區評估比較 `g1_fh_rally` 和 `g1_fh_diag`。
 7. 旋轉估計（D16）：從對手球拍判斷，加上飛行軌跡的 Magnus 擬合；訓練時加入旋轉誤差。感知實驗得出的硬體目標：≥120 Hz、≤15–30 ms、≤5 mm，多個同步視角涵蓋球桌和對手球拍。
-8. 上實機之前：量測實際的球拍轉接座、在我們自己的桌子上重新擬合球的物理參數、寫 G1 的部署 runner（現有的 C++ runner 只支援 A3）。
-9. 接著處理平衡和步法（站位可以移動，比約 4.4 m/s 更慢的球也需要），然後是反手，最後是發球計畫。
+8. **待辦：** 測試 `strike_time` 時鐘對原本的 A3 是否也有改善（A3 策略在它自己的 MuJoCo 評估裡比較 `countdown` 和 `strike_time`），並找出剩下約 40 ms 的原因（Isaac 和 MuJoCo 重播比對）。
+9. 上實機之前：量測實際的球拍轉接座、在我們自己的桌子上重新擬合球的物理參數、寫 G1 的部署 runner（現有的 C++ runner 只支援 A3）。
+10. 接著處理平衡和步法（站位可以移動，比約 4.4 m/s 更慢的球也需要），然後是反手，最後是發球計畫。

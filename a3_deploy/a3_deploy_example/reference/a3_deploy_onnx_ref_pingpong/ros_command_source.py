@@ -105,6 +105,8 @@ def parse_flat_racket_command(values: Sequence[float]) -> RacketCommand | None:
         position=(head[2], head[3], head[4]),
         velocity=(head[5], head[6], head[7]),
         time_to_strike=head[8],
+        # [10] strike_time: absolute deadline; planners write 0 when they have none.
+        strike_time=head[9] if head[9] > 0.0 else None,
     )
 
 
