@@ -5,6 +5,32 @@
 
 
 
+
+### 2026-10-15 13:00 — diag finished; fist run balances much better; late diag checkpoints regress in MuJoCo
+* **4382 `g1_fh_diag` finished** (20 000, `model_19999`, Isaac legal 57 %, falls 0.2 %).
+  **5686 `g1_fh_fist`** at 23 416 / 32 300, 7.9 s/it, ETA ~20 h. Oren's 4218 runs; GPU idx 5 still avoided.
+* Isaac metrics of the fist run (progress.sh): legal return 58 % → 42–45 % and "all OK" 61 % → 31–34 %
+  while rally pace, timing jitter and shoves ramped in (to 20 300); flat since, falls ≤ 0.2 %.
+* **Push test** (MuJoCo, 120 balls per row, same seeds as before; fist policy on the fist model):
+
+  | policy | shove up to | falls | hits the ball | legal return |
+  |---|---:|---:|---:|---:|
+  | `g1_fh_fist` `model_23400` | none | **0 %** | 93 % | 84 % |
+  | | 0.5 | **0 %** | 88 % | 66 % |
+  | | 0.75 | 2.5 % | 72 % | 53 % |
+  | | 1.0 | 3.3 % | 69 % | 44 % |
+  | `g1_fh_diag` `model_15700` (before) | 0.5 / 1.0 | 5.8 % / 25.8 % | 82 % / 52 % | 61 % / 37 % |
+
+  Shoves in training work: falls at 1 m/s drop from 26 % to 3 %, and more balls are still hit after a
+  shove. Without shoves it is about as good as the old best (84 % vs 86 % legal), with the new grip.
+  In-zone is low (3 %) because the aim offset (D18) was measured for the old grip; it must be re-measured.
+* **Finding: the last diag checkpoints get worse in MuJoCo** even though Isaac says they are fine
+  (unpushed, 120 balls): `model_15700` falls 0 %, hits 100 %, legal 86 %; `model_17300` 1.7 % / 92 % / 70 %;
+  `model_19999` **14 % / 68 % / 53 %**. The policy keeps fitting Isaac details that MuJoCo (and so
+  probably the real robot) does not share. Rule from now on: **pick checkpoints by the MuJoCo test, not by
+  "latest"**; for diag, `model_15700` stays the best. Watch the fist run the same way (test every ~2000).
+* Balance reward: not needed for now (decision rule in the 10-14 answer: falls ≤ 2 % at 0.5 m/s → met).
+
 ### 2026-10-14 21:40 — fist grip done properly: racket perpendicular to the forearm; retraining started
 * The first fist (17:00 entry) only changed the hand's look and kept the racket along the forearm. A real
   fist holds the handle **across the palm**, so the racket stands perpendicular to the forearm (shakehand

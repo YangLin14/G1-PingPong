@@ -11,7 +11,7 @@
 | 5640 | `g1_fh_rally` | as 5560 | 10-13 | failed at start ("CUDA unknown error" node-wide) | 5985 | resubmission of 5584; superseded by `g1_fh_bal` |
 | 5584 | `g1_fh_rally` | as 5560 | 10-12 12:39 | crashed 10-12 17:22 (GPU idx 5 fell off the bus), cancelled | 5985 (`model_5900`) | continued 5560 with the step counter restored |
 | 5560 | `g1_fh_rally` | `HOPEPingPongUnitreeG1_FH_XC_RALLY` (faster-feed bank + rally pace + timing jitter, D14) | 10-11 21:04 | killed by the 10-12 02:29 outage (not requeued) | 4677 | warm start from `g1_fh_diag` `model_2600`; 2 GPUs requested because of a broken GPU ([status log](log.md)) |
-| 4382 | `g1_fh_diag` | `HOPEPingPongUnitreeG1_FH_XC` (our bank: diagonal feed, apex, 4 zones) | 10-10 20:12 | **queued** (nodes down) | 15 756 (`model_15700`) | **main run**; requeued 13 times (outages, preemption; [status log](log.md)) |
+| 4382 | `g1_fh_diag` | `HOPEPingPongUnitreeG1_FH_XC` (our bank: diagonal feed, apex, 4 zones) | 10-10 20:12 | **finished** 10-15 | 20 000 (`model_19999`; best in MuJoCo: `model_15700`) | **main run**; requeued 13 times (outages, preemption; [status log](log.md)) |
 | 5554 | `g1_fh_rally` | as 5560 | 10-11 21:02 | failed at start | – | assigned the broken GPU |
 | 4354 | `g1_fh` | `HOPEPingPongUnitreeG1_FH` (inherited A3-geometry questions) | 10-10 18:07 | failed (node crash), not resumed | 2196 | baseline; kept at `model_2100` |
 | 4381 | `g1_fh_diag` | earlier bank version | 10-10 20:03 | cancelled after 3 min | – | superseded by the zone fix |
