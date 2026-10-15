@@ -9,13 +9,13 @@ arrived); everything is designed so the sim-to-real path stays open.
 ## Current status (2026-10-14)
 
 * **Cluster:** zixian is back (10-14 17:05). `g1_fh_diag` (main run) trains at 17 261 / 20 000, ETA ~6 h;
-  GPU idx 5 is still avoided; `g1_fh_rally` stopped at 5900 and is replaced by the
-  new balance run (`g1_fh_bal`, D19), not submitted yet.
+  GPU idx 5 is still avoided; the **fist-grip run `g1_fh_fist`** (job 5686, D20) trains from
+  17 300 to 32 300 (~33 h).
 * **Best policy** (`g1_fh_diag` `model_15700`, MuJoCo, deploy defaults): hits 100 %, at the apex 97 %,
   legal return 82 %; with the aim offset (D18) 35 % land in the target zone.
 * **Balance:** a 0.5 m/s shove makes it fall on 6 % of balls, 1 m/s on 26 %; the training had no
   shoves at all. Fix in progress (D19).
-* **Robot model:** the right hand now holds the racket in a closed fist (D20, looks only).
+* **Robot model:** fist grip, racket perpendicular to the forearm (D20); needs the new run above.
 
 Details: [status/log.md](status/log.md) (newest first).
 

@@ -30,6 +30,4 @@
 11. **Balance (D19):** submit `g1_fh_bal` when zixian is back (runbook 4); compare with the push table
     (status log 2026-10-14 17:00). If hits still drop under shoves, also randomize the torso CoM more
     and add pushes during the swing only after this works.
-12. **Fist adapter for the real G1 (D20):** the stock rubber hand cannot close. Design a 3D-printed fist
-    holder that puts the blade centre at `G1_MOUNT_OFFSET` (0.210, 0.015, 0.010) m in the wrist frame;
-    if it ends up elsewhere, update the mount and fine-tune.
+12. **Fist holder for the real G1 (D20):** the stock rubber hand cannot close. Design a 3D-printed fist holder that puts the handle across the palm with the blade origin at `G1_FIST_MOUNT_OFFSET` (0.083, 0.0226, 0.14) m, rpy (0, −90°, 0) in the wrist frame; if the real part differs, update the FIST mount and fine-tune. Track `g1_fh_fist` (job 5686) with the per-zone and push tables, using the fist MJCF.

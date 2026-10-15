@@ -148,6 +148,9 @@ squeue -u $USER                    # 列出 job
 
 ---
 
+**握拳 run（`g1_fh_fist`，D20）：** 評估時一定要用握拳模型，不然球拍位置是錯的：在 `mujoco_eval_onnx.py` 加上
+`--model-xml unitree/URDF/g1_29dof_pingpang_fist/mjcf/g1_29dof_pingpang_fist.xml`。`onnx_from_checkpoint.py` 不用改（網路一樣）。
+
 ## 4b. 在 MuJoCo 做平衡測試（筆電）
 
 ```bash

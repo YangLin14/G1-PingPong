@@ -172,6 +172,10 @@ squeue -u $USER                    # list
 
 ---
 
+**Fist-grip runs (`g1_fh_fist`, D20):** always evaluate with the fist model, otherwise the racket is in the
+wrong place: add `--model-xml unitree/URDF/g1_29dof_pingpang_fist/mjcf/g1_29dof_pingpang_fist.xml` to
+`mujoco_eval_onnx.py`. `onnx_from_checkpoint.py` works unchanged (same network).
+
 ## 4b. Balance test in MuJoCo (laptop)
 
 ```bash

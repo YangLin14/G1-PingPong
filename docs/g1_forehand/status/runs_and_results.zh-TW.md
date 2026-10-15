@@ -6,7 +6,8 @@
 
 | Job | Run 名稱 | Task（題目） | 開始 | 狀態 | 最後 iteration | 備註 |
 |---|---|---|---|---|---|---|
-| – | `g1_fh_bal` | `HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL`（對打節奏設定 + 隨機推擠，D19） | 還沒（zixian 停機） | **待送出** | – | 從最新的 `g1_fh_diag` checkpoint 接著訓練；取代接續 `g1_fh_rally` |
+| 5686 | `g1_fh_fist` | `HOPEPingPongUnitreeG1_FH_FIST`（對打節奏 + 推擠 + **握拳**，D19/D20） | 10-14 21:40 | **執行中** | 從 17 300 接續 → 32 300 | 上實機要用的 run |
+| – | `g1_fh_bal` | `HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL`（舊安裝 + 推擠，D19） | – | 不送了 | – | 由 `g1_fh_fist` 取代 |
 | 5640 | `g1_fh_rally` | 同 5560 | 10-13 | 一開始就失敗（整個節點「CUDA unknown error」） | 5985 | 5584 的重新送出；由 `g1_fh_bal` 取代 |
 | 5584 | `g1_fh_rally` | 同 5560 | 10-12 12:39 | 10-12 17:22 當掉（GPU idx 5 從匯流排掉線），已取消 | 5985（`model_5900`） | 接續 5560，並還原步數計數器 |
 | 5560 | `g1_fh_rally` | `HOPEPingPongUnitreeG1_FH_XC_RALLY`（更快來球的題庫 + 對打節奏 + 時機誤差，D14） | 10-11 21:04 | 10-12 02:29 停機時被取消（沒有 requeue） | 4677 | 從 `g1_fh_diag` `model_2600` 接續；因為有一張壞掉的 GPU，所以申請 2 張（[狀態紀錄](log.zh-TW.md)） |

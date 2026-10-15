@@ -6,7 +6,8 @@
 
 | Job | Run name | Task (questions) | Started | State | Last iteration | Note |
 |---|---|---|---|---|---|---|
-| – | `g1_fh_bal` | `HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL` (rally recipe + random shoves, D19) | not yet (zixian down) | **to submit** | – | warm start from the latest `g1_fh_diag` checkpoint; replaces resuming `g1_fh_rally` |
+| 5686 | `g1_fh_fist` | `HOPEPingPongUnitreeG1_FH_FIST` (rally pace + shoves + **fist grip**, D19/D20) | 10-14 21:40 | **running** | warm start 17 300 → 32 300 | the run that matters for the real robot |
+| – | `g1_fh_bal` | `HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL` (shoves on the old mount, D19) | – | not submitted | – | superseded by `g1_fh_fist` |
 | 5640 | `g1_fh_rally` | as 5560 | 10-13 | failed at start ("CUDA unknown error" node-wide) | 5985 | resubmission of 5584; superseded by `g1_fh_bal` |
 | 5584 | `g1_fh_rally` | as 5560 | 10-12 12:39 | crashed 10-12 17:22 (GPU idx 5 fell off the bus), cancelled | 5985 (`model_5900`) | continued 5560 with the step counter restored |
 | 5560 | `g1_fh_rally` | `HOPEPingPongUnitreeG1_FH_XC_RALLY` (faster-feed bank + rally pace + timing jitter, D14) | 10-11 21:04 | killed by the 10-12 02:29 outage (not requeued) | 4677 | warm start from `g1_fh_diag` `model_2600`; 2 GPUs requested because of a broken GPU ([status log](log.md)) |

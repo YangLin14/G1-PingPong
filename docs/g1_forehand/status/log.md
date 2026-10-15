@@ -4,6 +4,28 @@
 
 
 
+
+### 2026-10-14 21:40 — fist grip done properly: racket perpendicular to the forearm; retraining started
+* The first fist (17:00 entry) only changed the hand's look and kept the racket along the forearm. A real
+  fist holds the handle **across the palm**, so the racket stands perpendicular to the forearm (shakehand
+  grip photos). Revised D20: a separate model `g1_29dof_pingpang_fist` (handle across the fist, red face on
+  the palm side, blade origin (0.083, 0.0226, 0.14) m in the wrist frame); the original model is back to
+  the open hand and is still what `g1_fh_diag` trains on. Pictures: [fist grip](../assets/right_fist.png),
+  [clip at the strike, original vs fist](../assets/clip_strike_forearm_vs_fist.png).
+* **Retraining is required:** `g1_fh_diag` `model_15700` on the fist model in MuJoCo hits 0 of 6 balls.
+* **Reach check (no retraining needed for the bank):** whole upper-body IK (waist 3 + arm 7) from the
+  station puts the fist racket on 100 % of 200 sampled bank strike points (position < 3 cm, face < 15°),
+  same as the old mount. With the arm alone, the fist racket reaches ~10 cm less far out along the arm.
+* **Reference clips:** the A3 clips retargeted by IK on the fist model (`g1ikfist_hope_*`): face error
+  6° mean, 8° at the strike; racket-centre error 15 cm (the A3 clip reaches further out than a fist
+  racket can with the clip's legs and waist; the bank, not the clip, sets the strike point).
+* **Smoke test** 5685 (GPU idx 0): all 7 steps OK; the log shows the fist asset `assets/unitree_g1_fist`,
+  the fist mount, the shoves and the fist clips.
+* **Training job 5686 `g1_fh_fist`** (`HOPEPingPongUnitreeG1_FH_FIST`: rally pace + shoves + fist grip),
+  warm start from `g1_fh_diag` `model_17300`, to 32 300 (15 000 iterations, ~33 h at 7.8 s/it).
+  `g1_fh_bal` (shoves on the old mount) is not submitted: the fist run already includes the shoves.
+* `g1_smoke.sbatch` now also refuses GPU idx 5.
+
 ### 2026-10-14 21:05 — zixian back; all GPUs except idx 5 healthy
 * zixian came back at ~17:05 (outage ~21 h). 4382 `g1_fh_diag` resumed on GPU idx 3 (14th requeue) and is
   at iteration 17 261 / 20 000 (`model_17200`), 7.8 s per iteration, ETA ~6 h. Oren's 4218 runs on idx 2;
@@ -41,7 +63,7 @@
   iterations. Warm start from the latest `g1_fh_diag` checkpoint. Not submitted: zixian is down and
   Isaac cannot be smoke-tested elsewhere. Success check afterwards: the push table above, same seeds.
 * **Right hand closed into a fist (D20):** the open rubber hand is replaced by a generated fist round
-  the handle ([picture](../assets/right_fist.png), before: [picture](../assets/right_hand_open_before.png)). Looks only: same
+  the handle (superseded at 21:40: this version kept the racket along the forearm, see the 21:40 entry). Looks only: same
   racket pose, mass, inertia and collisions (checked: identical MuJoCo model mass/inertia), so no retraining.
 * **Docs** split into `docs/g1_forehand/` (overview, decisions, implementation, operations, status,
   research, plans).

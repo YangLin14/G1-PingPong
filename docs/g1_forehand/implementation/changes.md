@@ -16,7 +16,11 @@
 | `utils/forehand_success.py` | The [club rules](../overview.md) success definition (`classify_strikes`, `ForehandSuccessTally` with misses in the denominator, `TARGET_ZONES`, `FEED_ZONE`, feed origin). The tally is a funnel (contact → over the net → on the opponent's half → in the zone); `ZoneSuccessReport` splits it per zone. Isaac-free. |
 | `tasks/tracking/mdp/events.py`, `scripts/train.py` | `push_by_setting_velocity_ramped` (Isaac's push with its range ramped on `env.common_step_counter`); task-YAML `domain_rand.push_velocity_range` / `push_interval_s` / `push_ramp_steps` / `push_ramp_start_steps` install `events.push_robot` (absent = unchanged). Tests: `tests/test_domain_rand_overrides.py`. |
 | `cfg/task/HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL.yaml` | `_FH_XC_RALLY` + shoves (D19). |
-| `unitree/scripts/build_g1_pingpang_models.py` | Right fist (D20): generates `unitree/URDF/g1_29dof_pingpang/meshes/right_fist.STL` (`FIST_*` constants) and uses it as the `right_rubber_hand` visual in the URDF and MJCF; `--check` compares it too. |
+| `unitree/scripts/build_g1_pingpang_models.py` | Two racket mounts (`Mount`): `FOREARM` (the original, open hand) and `FIST` (D20: handle across the fist, racket perpendicular to the forearm) -> `unitree/URDF/g1_29dof_pingpang_fist/` with a generated fist mesh `right_fist.STL`; `--check` compares both. |
+| `robots/g1.py`, `scripts/train.py` | `G1_FIST_MOUNT_OFFSET/QUAT`, `G1_RACKET_MOUNTS`; task-YAML `g1_racket_mount: fist` swaps the Isaac asset (its own `assets/unitree_g1_fist`, prepared automatically) and the racket-target mount. |
+| `retarget_a3_clip_to_g1_ik.py --mount fist` | IK retarget on the fist model -> `g1ikfist_hope_{forehand,backhand}`; the racket arm follows only the racket centre and face (strike-frame face error 8°). |
+| `cfg/task/HOPEPingPongUnitreeG1_FH_FIST.yaml` | `_FH_XC_RALLY_BAL` + fist mount + fist clips (D20). |
+| `slurm/pip_env/g1_smoke.sbatch` | Gets the `AVOID_GPU_IDX` guard (never runs on idx 5). |
 
 ### Tools (`hope_training/whole_body_tracking/scripts/`)
 

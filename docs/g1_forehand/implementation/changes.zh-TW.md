@@ -16,7 +16,11 @@
 | `utils/forehand_success.py` | [社團規則](../overview.zh-TW.md)的成功判定：`classify_strikes`、`ForehandSuccessTally`（分母包含沒打到的球）、`TARGET_ZONES`、`FEED_ZONE`、餵球起點。統計是一層一層的漏斗（接觸 → 過網 → 落在對方半場 → 落在目標區），`ZoneSuccessReport` 再按落點分開。不需要 Isaac 也能執行。 |
 | `tasks/tracking/mdp/events.py`、`scripts/train.py` | `push_by_setting_velocity_ramped`（Isaac 的推擠，範圍隨 `env.common_step_counter` 從 0 增加）；task YAML 的 `domain_rand.push_velocity_range` / `push_interval_s` / `push_ramp_steps` / `push_ramp_start_steps` 會裝上 `events.push_robot`（沒寫就不變）。測試：`tests/test_domain_rand_overrides.py`。 |
 | `cfg/task/HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL.yaml` | `_FH_XC_RALLY` + 推擠（D19）。 |
-| `unitree/scripts/build_g1_pingpang_models.py` | 右手握拳（D20）：產生 `unitree/URDF/g1_29dof_pingpang/meshes/right_fist.STL`（`FIST_*` 常數），URDF 和 MJCF 的 `right_rubber_hand` 外觀改用它；`--check` 也比對這個檔案。 |
+| `unitree/scripts/build_g1_pingpang_models.py` | 兩種球拍安裝（`Mount`）：`FOREARM`（原本的，張開的手）和 `FIST`（D20：握把橫穿拳頭、和前臂垂直）→ `unitree/URDF/g1_29dof_pingpang_fist/`，含產生的拳頭網格 `right_fist.STL`；`--check` 兩個都比對。 |
+| `robots/g1.py`、`scripts/train.py` | `G1_FIST_MOUNT_OFFSET/QUAT`、`G1_RACKET_MOUNTS`；task YAML 的 `g1_racket_mount: fist` 會換掉 Isaac 資產（獨立的 `assets/unitree_g1_fist`，沒有就自動準備）和球拍目標的安裝參數。 |
+| `retarget_a3_clip_to_g1_ik.py --mount fist` | 在握拳模型上做 IK 重定向 → `g1ikfist_hope_{forehand,backhand}`；持拍手臂只追球拍中心和拍面（擊球幀拍面誤差 8°）。 |
+| `cfg/task/HOPEPingPongUnitreeG1_FH_FIST.yaml` | `_FH_XC_RALLY_BAL` + 握拳安裝 + 握拳 clip（D20）。 |
+| `slurm/pip_env/g1_smoke.sbatch` | 加上 `AVOID_GPU_IDX` 保護（不會跑在 idx 5）。 |
 
 ### 工具（`hope_training/whole_body_tracking/scripts/`）
 
