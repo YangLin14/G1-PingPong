@@ -8,8 +8,8 @@ arrived); everything is designed so the sim-to-real path stays open.
 
 ## Current status (2026-10-14)
 
-* **Cluster:** zixian has been down since 10-13 20:15, so nothing trains. `g1_fh_diag` (main run) is
-  queued at 15 756 / 20 000 and resumes by itself; `g1_fh_rally` stopped at 5900 and is replaced by the
+* **Cluster:** zixian is back (10-14 17:05). `g1_fh_diag` (main run) trains at 17 261 / 20 000, ETA ~6 h;
+  GPU idx 5 is still avoided; `g1_fh_rally` stopped at 5900 and is replaced by the
   new balance run (`g1_fh_bal`, D19), to be submitted when zixian is back.
 * **Best policy** (`g1_fh_diag` `model_15700`, MuJoCo, deploy defaults): hits 100 %, at the apex 97 %,
   legal return 82 %; with the aim offset (D18) 35 % land in the target zone.

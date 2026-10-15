@@ -3,6 +3,16 @@
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
 
+
+### 2026-10-14 21:05 — zixian back; all GPUs except idx 5 healthy
+* zixian came back at ~17:05 (outage ~21 h). 4382 `g1_fh_diag` resumed on GPU idx 3 (14th requeue) and is
+  at iteration 17 261 / 20 000 (`model_17200`), 7.8 s per iteration, ETA ~6 h. Oren's 4218 runs on idx 2;
+  his sidecar 5677 waits (BeginTime).
+* GPU probe (six 1-GPU jobs, each runs `nvidia-smi` + a CUDA matmul; a job handed idx 5 exits without
+  touching it): idx 0 (3D:00.0), 1 (3E:00.0), 4 (B1:00.0), 6 (DA:00.0), 7 (DB:00.0) all **CUDA OK**,
+  33–36 °C; idx 2 and 3 are working (running training). The node-wide "CUDA unknown error" of 10-13 is
+  gone. **idx 5 (B2:00.0) not tested on purpose** (it fell off the bus on 10-12); keep avoiding it.
+
 ### 2026-10-14 17:00 — balance test, balance run prepared, right hand closed into a fist; docs reorganized
 * **Cluster:** zixian still down (since 10-13 20:15, "Not responding"). 4382 `g1_fh_diag` queued at
   15 756 / 20 000; Oren's 4218 and his sidecar 5652 also wait. Nothing can train.
