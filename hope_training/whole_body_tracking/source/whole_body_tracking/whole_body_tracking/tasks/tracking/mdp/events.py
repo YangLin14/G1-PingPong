@@ -521,3 +521,34 @@ def randomize_rigid_body_com(
 
     # Set the new coms
     asset.root_physx_view.set_coms(coms, env_ids)
+
+
+def push_ramp_scale(step: int, start_steps: int, ramp_steps: int) -> float:
+    """0 before ``start_steps``, then linear to 1 over ``ramp_steps`` env steps (1 at once if ramp_steps <= 0)."""
+    if step < start_steps:
+        return 0.0
+    if ramp_steps <= 0:
+        return 1.0
+    return min(1.0, float(step - start_steps) / float(ramp_steps))
+
+
+def push_by_setting_velocity_ramped(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    velocity_range: dict[str, tuple[float, float]],
+    ramp_steps: int = 0,
+    start_steps: int = 0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+):
+    """Isaac Lab's ``push_by_setting_velocity`` with the range scaled by a curriculum on
+    ``env.common_step_counter`` (Triton Droids balance run): add a random base velocity change
+    (x, y, z, roll, pitch, yaw; world frame) of ``push_ramp_scale(...) * velocity_range``."""
+    scale = push_ramp_scale(int(getattr(env, "common_step_counter", 0)), int(start_steps), int(ramp_steps))
+    if scale <= 0.0:
+        return
+    asset: Articulation = env.scene[asset_cfg.name]
+    vel_w = asset.data.root_vel_w[env_ids]
+    range_list = [velocity_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+    ranges = torch.tensor(range_list, device=asset.device) * scale
+    vel_w += math_utils.sample_uniform(ranges[:, 0], ranges[:, 1], vel_w.shape, device=asset.device)
+    asset.write_root_velocity_to_sim(vel_w, env_ids=env_ids)

@@ -147,6 +147,7 @@ def _apply_domain_rand(env_cfg, dr, applied: list) -> None:
         applied.append(f"events.{event_name} = {(lo, hi)}")
 
     _apply("link_mass_range", "randomize_link_mass", ("mass_distribution_params",))
+    _apply_push(events, dr, applied)
 
     pd_mode = dr.get("pd_mode")
     if pd_mode is None:
@@ -187,6 +188,45 @@ def _apply_domain_rand(env_cfg, dr, applied: list) -> None:
     if nominal is not None:
         term.params["nominal_fraction"] = float(nominal)
         applied.append(f"events.randomize_pd_gains.nominal_fraction = {float(nominal)}")
+
+
+def _apply_push(events, dr, applied: list) -> None:
+    """Install random shoves (``events.push_robot``) from ``domain_rand.push_*`` (balance training).
+
+    The HOPE recipe has no pushes (HITTER alignment, ``HOPEEventCfg.push_robot = None``). With
+    ``push_velocity_range`` set, a ``mdp.push_by_setting_velocity_ramped`` interval event is installed:
+      * ``push_velocity_range``: {x, y, z, roll, pitch, yaw: [lo, hi]} base velocity change (m/s, rad/s);
+      * ``push_interval_s``: [lo, hi] seconds between shoves per env (default [2, 4]);
+      * ``push_ramp_steps`` / ``push_ramp_start_steps``: env steps (``env.common_step_counter``) over
+        which the range grows from 0 to full, and before which there are none (default 0 / 0).
+    Absent or null ``push_velocity_range`` keeps the env cfg as it is.
+    """
+    rng = dr.get("push_velocity_range")
+    if rng is None:
+        return
+    from isaaclab.managers import EventTermCfg
+
+    from whole_body_tracking.tasks.tracking import mdp
+
+    velocity_range = {str(k): (float(v[0]), float(v[1])) for k, v in dict(rng).items()}
+    unknown = set(velocity_range) - {"x", "y", "z", "roll", "pitch", "yaw"}
+    if unknown:
+        raise ValueError(f"domain_rand.push_velocity_range: unknown axes {sorted(unknown)}")
+    interval = dr.get("push_interval_s") or (2.0, 4.0)
+    events.push_robot = EventTermCfg(
+        func=mdp.push_by_setting_velocity_ramped,
+        mode="interval",
+        interval_range_s=(float(interval[0]), float(interval[1])),
+        params={
+            "velocity_range": velocity_range,
+            "ramp_steps": int(dr.get("push_ramp_steps") or 0),
+            "start_steps": int(dr.get("push_ramp_start_steps") or 0),
+        },
+    )
+    applied.append(
+        f"events.push_robot = ramped push {velocity_range} every {tuple(events.push_robot.interval_range_s)} s, "
+        f"ramp {events.push_robot.params['ramp_steps']} steps from step {events.push_robot.params['start_steps']}"
+    )
 
 
 def _apply_task_overrides(env_cfg, cfg, applied: list) -> None:

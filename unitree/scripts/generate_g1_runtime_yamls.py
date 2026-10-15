@@ -145,7 +145,7 @@ def render_runtime(order: list[str]) -> str:
     ]
     lines += [f"  {k}: {_fmt(v)}" for k, v in LIFECYCLE]
     lines += [
-        "  # Reference clock (D17 in docs/TRITON_G1_FOREHAND.md): show the policy strike_time - now from the",
+        "  # Reference clock (D17 in docs/g1_forehand/decisions.md): show the policy strike_time - now from the",
         "  # planner's absolute deadline instead of counting the copied time_to_strike down one tick early.",
         "  # Needs planner and runner clocks synced; a command whose implied message age is negative or",
         "  # above max_message_age_s is stamped on receipt instead. The A3 config keeps countdown.",

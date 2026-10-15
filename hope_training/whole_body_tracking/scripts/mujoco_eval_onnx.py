@@ -370,6 +370,7 @@ def run_eval(args) -> dict:
     dt = runtime_cfg.control_dt
     max_ticks = max(1, int(round(args.max_trial_seconds / dt)))
     rng = np.random.default_rng(args.seed)
+    push_rng = np.random.default_rng(args.seed + 7919)  # own stream: the ball sequence is the same with or without --push
     continuous = args.eval_mode == "continuous"
 
     clock = [0]  # control ticks since the session started (rally cadence bookkeeping)
@@ -532,6 +533,15 @@ def run_eval(args) -> dict:
         fell = False
         contact_tick = None
         ticks_run = 0
+        # --push: one random shove per ball, like Isaac's push_by_setting_velocity (adds a random
+        # base velocity), at a random moment of this ball's window
+        push = getattr(args, "push", None)
+        push_tick, push_dv = None, None
+        if push is not None:
+            lo, hi = args.push_window_s
+            push_tick = int(round(push_rng.uniform(lo, hi) / dt))
+            push_dv = np.concatenate([push_rng.uniform(-push[0], push[0], 2), [0.0],
+                                      push_rng.uniform(-push[1], push[1], 3)])
 
         for _tick in range(max_ticks):
             ticks_run = _tick + 1
@@ -569,6 +579,8 @@ def run_eval(args) -> dict:
                 revision += 1
                 source.submit(cmd)
 
+            if push_tick is not None and _tick == push_tick:
+                scene.data.qvel[scene._base_vadr:scene._base_vadr + 6] += push_dv  # free joint: lin (world), ang (body)
             events, last_action = _policy_tick(lifecycle, source, last_action, base_target_xy)
             if trace is not None and club is not None:
                 rp, rv = scene.racket_site_state()
@@ -676,6 +688,8 @@ def run_eval(args) -> dict:
                 "first_bounce_xy": None if first_bounce is None else [round(float(first_bounce[0]), 3), round(float(first_bounce[1]), 3)],
                 "on_opponent_half": on_opponent,
                 "fell": bool(fell),
+                "push": None if push_dv is None else {"t_s": round(push_tick * dt, 3),
+                                                      "dv": [round(float(v), 3) for v in push_dv]},
                 "ticks": ticks_run,
                 "strike_point_w": [round(float(v), 3) for v in _strike_pt],
                 **club_record,
@@ -889,6 +903,11 @@ def parse_args() -> argparse.Namespace:
                         help="Override the runtime config's lifecycle.tts_offset_s (timing calibration, s).")
     parser.add_argument("--trace-out", default=None,
                         help="With --serve-bank: write a per-tick JSON trace (command, ball, racket, contact).")
+    parser.add_argument("--push", nargs=2, type=float, default=None, metavar=("V_XY", "W_RPY"),
+                        help="Balance test: one shove per ball, a random base velocity change of up to "
+                             "V_XY m/s (x, y) and W_RPY rad/s (roll, pitch, yaw), as Isaac's push event.")
+    parser.add_argument("--push-window-s", nargs=2, type=float, default=(0.0, 1.0), metavar=("LO", "HI"),
+                        help="When the shove comes, in s after the ball is fed (uniform).")
     parser.add_argument("--reset-after-fall", action="store_true",
                         help="Continuous mode: stand the robot back up before the next ball if it fell.")
     parser.add_argument("--seed", type=int, default=0, help="RNG seed for the example serve distribution.")

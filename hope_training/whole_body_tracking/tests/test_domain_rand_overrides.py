@@ -225,3 +225,72 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def _stub_push_modules():
+    """isaaclab / mdp stand-ins so the push branch of _apply_domain_rand runs without Isaac."""
+    managers = types.ModuleType("isaaclab.managers")
+
+    class EventTermCfg(SimpleNamespace):
+        def __init__(self, **kw):
+            super().__init__(**kw)
+
+    managers.EventTermCfg = EventTermCfg
+    sys.modules.setdefault("isaaclab", types.ModuleType("isaaclab"))
+    sys.modules["isaaclab.managers"] = managers
+    mdp = types.ModuleType("whole_body_tracking.tasks.tracking.mdp")
+    mdp.push_by_setting_velocity_ramped = lambda *a, **k: None
+    tracking = types.ModuleType("whole_body_tracking.tasks.tracking")
+    tracking.mdp = mdp
+    for name, mod in (("whole_body_tracking", types.ModuleType("whole_body_tracking")),
+                      ("whole_body_tracking.tasks", types.ModuleType("whole_body_tracking.tasks")),
+                      ("whole_body_tracking.tasks.tracking", tracking),
+                      ("whole_body_tracking.tasks.tracking.mdp", mdp)):
+        sys.modules.setdefault(name, mod)
+    return mdp
+
+
+def test_push_range_installs_ramped_push_event():
+    saved = {k: sys.modules.get(k) for k in ("isaaclab", "isaaclab.managers", "whole_body_tracking",
+                                             "whole_body_tracking.tasks", "whole_body_tracking.tasks.tracking",
+                                             "whole_body_tracking.tasks.tracking.mdp")}
+    try:
+        mdp = _stub_push_modules()
+        env_cfg = SimpleNamespace(events=SimpleNamespace(**vars(_events_cfg()), push_robot=None))
+        applied: list = []
+        train._apply_domain_rand(env_cfg, {
+            "push_velocity_range": {"x": [-0.4, 0.4], "y": [-0.4, 0.4], "roll": [-0.3, 0.3]},
+            "push_interval_s": [3.0, 5.0], "push_ramp_steps": 72000,
+        }, applied)
+        term = env_cfg.events.push_robot
+        assert term.func is mdp.push_by_setting_velocity_ramped and term.mode == "interval"
+        assert term.interval_range_s == (3.0, 5.0)
+        assert term.params["velocity_range"] == {"x": (-0.4, 0.4), "y": (-0.4, 0.4), "roll": (-0.3, 0.3)}
+        assert term.params["ramp_steps"] == 72000 and term.params["start_steps"] == 0
+        assert any("push_robot" in a for a in applied)
+        # absent key: nothing installed
+        env_cfg2 = SimpleNamespace(events=SimpleNamespace(**vars(_events_cfg()), push_robot=None))
+        train._apply_domain_rand(env_cfg2, {"link_mass_range": [0.85, 1.15]}, [])
+        assert env_cfg2.events.push_robot is None
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
+
+
+def test_push_ramp_scale():
+    import ast
+
+    src = open(os.path.join(_ROOT, "source", "whole_body_tracking", "whole_body_tracking", "tasks", "tracking",
+                            "mdp", "events.py")).read()
+    fn = next(n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef) and n.name == "push_ramp_scale")
+    ns: dict = {}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), "events.py", "exec"), ns)
+    f = ns["push_ramp_scale"]
+    assert f(0, 0, 72000) == 0.0
+    assert f(36000, 0, 72000) == 0.5
+    assert f(10**6, 0, 72000) == 1.0
+    assert f(100, 200, 1000) == 0.0
+    assert f(5, 0, 0) == 1.0

@@ -32,6 +32,11 @@ deliberately **not** reproduced.
 * Body meshes: `../../g1_description/meshes/<file>.STL` (upstream, verbatim).
 * Blade meshes: `../meshes/pingpang_red_Link.STL`, `../meshes/pingpang_black_Link.STL`
   (copied from `agibot/URDF/A3T2.5-URDF-std-pingpang/meshes/`).
+* Right hand: `../meshes/right_fist.STL`, **generated** by the build script (`fist_stl_bytes()`, the
+  `FIST_*` constants): a fist closed round the handle (palm under it, four fingers wrapped round the
+  handle axis, thumb over them). It replaces only the visual of the upstream open `right_rubber_hand`;
+  the link keeps the upstream mass/inertia and has no collision (as upstream), so the racket pose and
+  the dynamics are unchanged and trained checkpoints stay valid. `--check` also compares this file.
 
 The MJCF uses `meshdir="../../g1_description/meshes"` and refers to the blade
 meshes relative to that directory, so the model loads from a fresh clone with

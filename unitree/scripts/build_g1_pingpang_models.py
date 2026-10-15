@@ -93,6 +93,29 @@ HANDLE_FROM = (0.060, 0.015, 0.010)
 HANDLE_TO = (0.145, 0.015, 0.010)
 HANDLE_RADIUS = 0.014
 
+#: Right hand closed into a fist around the handle (Triton Droids, 2026-10-14). The upstream
+#: ``right_rubber_hand.STL`` is an open hand with the handle lying on the palm; this replaces only its
+#: VISUAL with a generated fist mesh (palm, four fingers wrapped round the handle axis, thumb over
+#: them). Mass/inertia stay the upstream rubber hand's and the hand has no collision in either model
+#: (as upstream), so the racket pose, the dynamics and every trained checkpoint are unchanged.
+#: Points are in the right_wrist_yaw_link frame (like HANDLE_*); the mesh is written in the
+#: right_rubber_hand frame (offset RUBBER_HAND_XYZ).
+RUBBER_HAND_LINK = "right_rubber_hand"
+RUBBER_HAND_XYZ = (0.0415, -0.003, 0.0)
+FIST_MESH = "right_fist.STL"
+#: Palm under the handle: capsules along x (rounded edges), at these (y, z), radius FIST_PALM_RADIUS.
+FIST_PALM_X = (0.050, 0.100)
+FIST_PALM_YZ = ((-0.010, -0.024), (-0.010, -0.008), (-0.010, 0.008), (-0.010, 0.024))
+FIST_PALM_RADIUS = 0.011
+FIST_FINGER_X = (0.064, 0.079, 0.094, 0.109)    # pinky -> index along the handle
+FIST_FINGER_RADIUS = (0.0075, 0.0085, 0.0088, 0.0085)
+#: Finger path around the handle axis: (u, w) = (z - handle z, y - handle y); starts at the palm's
+#: little-finger edge, wraps over the handle and ends with the tip against the thumb side of the palm.
+FIST_FINGER_ARC_DEG = (200, 160, 120, 80, 40, 0, -28)
+FIST_FINGER_BASE_UW = (-0.040, -0.011)
+FIST_THUMB = ((0.054, 0.034, -0.012), (0.074, 0.038, 0.012), (0.092, 0.024, 0.032))  # (x, u, w), radius below
+FIST_THUMB_RADIUS = 0.0095
+
 #: Racket (handle + blade + rubbers) lumped mass at the blade centre, thin-disc inertia.
 RACKET_MASS = 0.18
 RACKET_DISC_RADIUS = 0.08
@@ -209,6 +232,88 @@ def racket_disc_inertia() -> dict[str, float]:
     return {"ixx": i_plane, "iyy": i_axis, "izz": i_plane, "ixy": 0.0, "ixz": 0.0, "iyz": 0.0}
 
 
+def _sphere_tris(c, r, n_lat=8, n_lon=14):
+    pts = [[(c[0] + r * math.sin(math.pi * i / n_lat) * math.cos(2 * math.pi * j / n_lon),
+             c[1] + r * math.sin(math.pi * i / n_lat) * math.sin(2 * math.pi * j / n_lon),
+             c[2] + r * math.cos(math.pi * i / n_lat)) for j in range(n_lon)] for i in range(n_lat + 1)]
+    tris = []
+    for i in range(n_lat):
+        for j in range(n_lon):
+            a, b = pts[i][j], pts[i][(j + 1) % n_lon]
+            c2, d = pts[i + 1][j], pts[i + 1][(j + 1) % n_lon]
+            if i > 0:
+                tris.append((a, c2, b))
+            if i < n_lat - 1:
+                tris.append((b, c2, d))
+    return tris
+
+
+def _cylinder_tris(p, q, r, n=14):
+    axis = [q[k] - p[k] for k in range(3)]
+    length = math.sqrt(sum(a * a for a in axis))
+    ax = [a / length for a in axis]
+    ref = (1.0, 0.0, 0.0) if abs(ax[0]) < 0.9 else (0.0, 1.0, 0.0)
+    e1 = [ax[1] * ref[2] - ax[2] * ref[1], ax[2] * ref[0] - ax[0] * ref[2], ax[0] * ref[1] - ax[1] * ref[0]]
+    n1 = math.sqrt(sum(a * a for a in e1))
+    e1 = [a / n1 for a in e1]
+    e2 = [ax[1] * e1[2] - ax[2] * e1[1], ax[2] * e1[0] - ax[0] * e1[2], ax[0] * e1[1] - ax[1] * e1[0]]
+    ring = [[r * (math.cos(2 * math.pi * j / n) * e1[k] + math.sin(2 * math.pi * j / n) * e2[k]) for k in range(3)]
+            for j in range(n)]
+    tris = []
+    for j in range(n):
+        a = tuple(p[k] + ring[j][k] for k in range(3))
+        b = tuple(p[k] + ring[(j + 1) % n][k] for k in range(3))
+        c = tuple(q[k] + ring[j][k] for k in range(3))
+        d = tuple(q[k] + ring[(j + 1) % n][k] for k in range(3))
+        tris += [(a, b, c), (b, d, c)]
+    return tris
+
+
+def _tube_tris(points, r):
+    """Capsule chain through ``points``: spheres at the nodes, cylinders between them."""
+    tris = []
+    for i, p in enumerate(points):
+        tris += _sphere_tris(p, r)
+        if i:
+            tris += _cylinder_tris(points[i - 1], p, r)
+    return tris
+
+
+def fist_triangles() -> list[tuple]:
+    """The right fist in the right_rubber_hand frame (see FIST_* constants)."""
+    hy, hz = HANDLE_FROM[1], HANDLE_FROM[2]
+
+    def wrist_pt(x, u, w):
+        return (x, hy + w, hz + u)
+
+    tris = []
+    for y, z in FIST_PALM_YZ:
+        tris += _tube_tris([(FIST_PALM_X[0], y, z), (FIST_PALM_X[1], y, z)], FIST_PALM_RADIUS)
+    for x, r in zip(FIST_FINGER_X, FIST_FINGER_RADIUS):
+        arc_r = HANDLE_RADIUS + r + 0.001
+        pts = [wrist_pt(x, *FIST_FINGER_BASE_UW)]
+        pts += [wrist_pt(x, arc_r * math.cos(math.radians(a)), arc_r * math.sin(math.radians(a)))
+                for a in FIST_FINGER_ARC_DEG]
+        tris += _tube_tris(pts, r)
+    tris += _tube_tris([wrist_pt(*p) for p in FIST_THUMB], FIST_THUMB_RADIUS)
+    off = RUBBER_HAND_XYZ
+    return [tuple(tuple(round(p[k] - off[k], 6) for k in range(3)) for p in t) for t in tris]
+
+
+def fist_stl_bytes() -> bytes:
+    import struct
+
+    tris = fist_triangles()
+    out = [b"g1_29dof_pingpang right fist (generated)".ljust(80, b" "), struct.pack("<I", len(tris))]
+    for a, b, c in tris:
+        u = [b[k] - a[k] for k in range(3)]
+        v = [c[k] - a[k] for k in range(3)]
+        n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]
+        length = math.sqrt(sum(x * x for x in n)) or 1.0
+        out.append(struct.pack("<12fH", *(x / length for x in n), *a, *b, *c, 0))
+    return b"".join(out)
+
+
 def joint_effort_limits(urdf_root: ET.Element) -> dict[str, float]:
     limits: dict[str, float] = {}
     for joint in urdf_root.findall("joint"):
@@ -268,6 +373,10 @@ def build_urdf(upstream: ET.ElementTree) -> ET.ElementTree:
         filename = mesh.get("filename", "")
         if filename.startswith("meshes/"):
             mesh.set("filename", URDF_BODY_MESH_PREFIX + filename[len("meshes/"):])
+
+    # Right hand: the generated fist replaces the open rubber hand's visual mesh.
+    rubber = next(el for el in root.iter("link") if el.get("name") == RUBBER_HAND_LINK)
+    rubber.find("visual/geometry/mesh").set("filename", URDF_RACKET_MESH_PREFIX + FIST_MESH)
 
     # Handle capsule: a URDF cylinder along the handle axis (Isaac converts cylinders to capsules
     # when replace_cylinders_with_capsules=True; this is a primitive, not a mesh).
@@ -357,6 +466,11 @@ def build_mjcf(upstream: ET.ElementTree, effort_limits: dict[str, float]) -> ET.
     asset = root.find("asset")
     for link_name in (RED_LINK, BLACK_LINK):
         ET.SubElement(asset, "mesh", name=link_name, file=MJCF_RACKET_MESH_PREFIX + RACKET_MESHES[link_name])
+    ET.SubElement(asset, "mesh", name="right_fist", file=MJCF_RACKET_MESH_PREFIX + FIST_MESH)
+    hand_geoms = [g for g in root.iter("geom") if g.get("mesh") == RUBBER_HAND_LINK]
+    if len(hand_geoms) != 1:
+        raise ValueError(f"expected one {RUBBER_HAND_LINK} geom in the upstream MJCF, found {len(hand_geoms)}")
+    hand_geoms[0].set("mesh", "right_fist")
 
     # Free joint rename + pelvis site.
     pelvis = _find_body(root, "pelvis")
@@ -465,6 +579,9 @@ def generate(output_dir: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
     mjcf_path = output_dir / OUTPUT_MJCF_REL
     _write_xml(build_urdf(upstream_urdf), urdf_path, declaration=True)
     _write_xml(build_mjcf(upstream_mjcf, efforts), mjcf_path, declaration=False)
+    fist_path = output_dir / "meshes" / FIST_MESH
+    fist_path.parent.mkdir(parents=True, exist_ok=True)
+    fist_path.write_bytes(fist_stl_bytes())
     return urdf_path, mjcf_path
 
 
@@ -477,6 +594,9 @@ def check(output_dir: pathlib.Path = OUTPUT_DIR) -> list[str]:
             committed = output_dir / rel
             if not committed.is_file() or committed.read_bytes() != fresh.read_bytes():
                 stale.append(str(committed))
+        fist = output_dir / "meshes" / FIST_MESH
+        if not fist.is_file() or fist.read_bytes() != fist_stl_bytes():
+            stale.append(str(fist))
     return stale
 
 

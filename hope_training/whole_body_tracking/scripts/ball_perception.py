@@ -8,7 +8,7 @@ path (``PingPongRealPhysicsScene.ball_track``, one point per physics sub-step) i
 estimate, so the planner and the policy can be scored with a given camera system.
 
 The presets are assumptions for comparison, not measurements of a particular product (see
-``docs/PERCEPTION_G1_FOREHAND.md``).
+``docs/g1_forehand/research/perception.md``).
 """
 
 from __future__ import annotations
