@@ -7,6 +7,13 @@
 
 
 
+
+### 2026-10-15 15:10 — 握拳 run 改用第 43 幀當擊球標記，接續訓練
+* `HOPEPingPongUnitreeG1_FH_FIST` 透過 `overrides` 把 `commands.racket_target.strike_phase(_per_clip)` 設成 0.4057（第 43 幀）
+  （YAML 的 `racket:` 區塊只是說明，程式裡原本的值是 0.3868）。
+* 5686 在 23 7xx 停掉；**5719** 從 `model_23700` 接續同一個 run（GPU idx 0），步數計數器已還原（153 624），
+  訓練到 32 300（約 19 小時）。要看的：Isaac 的速度達標率（之前 37%），以及大約 25 700 時的 MuJoCo 測試。
+
 ### 2026-10-15 14:30 — 握拳 run 為什麼持平：擊球時的球拍速度
 * 最新一次迭代在 Isaac 的擊球檢查（擊球幀的達標率）：
 

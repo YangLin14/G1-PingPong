@@ -6,7 +6,8 @@
 
 | Job | Run name | Task (questions) | Started | State | Last iteration | Note |
 |---|---|---|---|---|---|---|
-| 5686 | `g1_fh_fist` | `HOPEPingPongUnitreeG1_FH_FIST` (rally pace + shoves + **fist grip**, D19/D20) | 10-14 21:40 | **running** | warm start 17 300 → 32 300 | the run that matters for the real robot |
+| 5719 | `g1_fh_fist` | as 5686, strike marked at frame 43 | 10-15 15:05 | **running** | resumes 23 700 → 32 300 | continues 5686 |
+| 5686 | `g1_fh_fist` | `HOPEPingPongUnitreeG1_FH_FIST` (rally pace + shoves + **fist grip**, D19/D20) | 10-14 21:40 | stopped 10-15 15:00 (strike mark change) | warm start 17 300 → 32 300 | continued by 5719 |
 | – | `g1_fh_bal` | `HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL` (shoves on the old mount, D19) | – | not submitted | – | superseded by `g1_fh_fist` |
 | 5640 | `g1_fh_rally` | as 5560 | 10-13 | failed at start ("CUDA unknown error" node-wide) | 5985 | resubmission of 5584; superseded by `g1_fh_bal` |
 | 5584 | `g1_fh_rally` | as 5560 | 10-12 12:39 | crashed 10-12 17:22 (GPU idx 5 fell off the bus), cancelled | 5985 (`model_5900`) | continued 5560 with the step counter restored |

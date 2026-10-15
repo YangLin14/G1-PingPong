@@ -7,6 +7,14 @@
 
 
 
+
+### 2026-10-15 15:10 — fist run continues with the strike marked at frame 43
+* `HOPEPingPongUnitreeG1_FH_FIST` now sets `commands.racket_target.strike_phase(_per_clip)` to 0.4057 (frame 43)
+  through `overrides` (the `racket:` block of the YAML is documentation only; the code value was 0.3868).
+* 5686 cancelled at 23 7xx; **5719** resumes the same run from `model_23700` (GPU idx 0), step counter
+  restored (153 624), to 32 300 (~19 h). Check: the Isaac velocity pass rate (37 % before) and the
+  MuJoCo test at ~25 700.
+
 ### 2026-10-15 14:30 — why the fist run plateaus: racket speed at the strike
 * Isaac strike checks at the latest iteration (pass rates at the strike frame):
 
