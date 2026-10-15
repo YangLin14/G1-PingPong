@@ -1,0 +1,48 @@
+# g1ikfist_hope_forehand: Unitree G1 reference clip derived from the published A3 clip hope_forehand.npz by keypoint/IK retarget (see provenance). Regenerate with
+#   python3 hope_training/whole_body_tracking/scripts/retarget_a3_clip_to_g1_ik.py
+name: g1ikfist_hope_forehand
+swing_side: 1
+fps: 50
+frame_count: 107
+frame_time_s: 0.02
+duration_s: 2.12
+body_schema: compact_tracked_bodies_v1
+provenance: 'keypoint/IK retarget of hope_forehand.npz (Agibot A3) onto the Unitree
+  G1 by hope_training/whole_body_tracking/scripts/retarget_a3_clip_to_g1_ik.py: legs,
+  waist and root from the joint-space transfer; both arms solved per frame by damped
+  least-squares IK (MuJoCo) toward the A3 elbow / wrist / racket-centre positions
+  and blade normal expressed in the torso frame and scaled by the G1/A3 segment-length
+  ratios (right upper 0.673, forearm 0.782). Preserves the A3 swing shape at G1 scale;
+  the racket-target command, not the clip, defines contact.'
+license: Apache-2.0
+strike_frame: 41
+strike_phase: 0.38679245
+strike_time_s: 0.82
+recover_end_frame: 106
+joint_order: [left_hip_pitch_joint, right_hip_pitch_joint, waist_yaw_joint, left_hip_roll_joint,
+  right_hip_roll_joint, waist_roll_joint, left_hip_yaw_joint, right_hip_yaw_joint,
+  waist_pitch_joint, left_knee_joint, right_knee_joint, left_shoulder_pitch_joint,
+  right_shoulder_pitch_joint, left_ankle_pitch_joint, right_ankle_pitch_joint, left_shoulder_roll_joint,
+  right_shoulder_roll_joint, left_ankle_roll_joint, right_ankle_roll_joint, left_shoulder_yaw_joint,
+  right_shoulder_yaw_joint, left_elbow_joint, right_elbow_joint, left_wrist_roll_joint,
+  right_wrist_roll_joint, left_wrist_pitch_joint, right_wrist_pitch_joint, left_wrist_yaw_joint,
+  right_wrist_yaw_joint]
+anchor_body: torso_link
+root_body: pelvis
+racket_link: right_wrist_yaw_link
+racket_body: pingpang_red_Link
+mount_offset_xyz: [0.083, 0.0226, 0.14]
+blade_normal_axis: y
+blade_normal_sign: 1.0
+robot: unitree_g1
+source_clip: hope_forehand.npz
+tracked_bodies: [pelvis, left_hip_roll_link, left_knee_link, left_ankle_roll_link,
+  right_hip_roll_link, right_knee_link, right_ankle_roll_link, torso_link, left_shoulder_roll_link,
+  left_elbow_link, left_wrist_yaw_link, right_shoulder_roll_link, right_elbow_link,
+  right_wrist_yaw_link]
+clamped_joints_rad: {}
+ik_mean_errors_m:
+  right: {elbow: 0.0273, wrist: 0.0376, racket: 0.1539, normal_deg: 6.1068}
+  left: {elbow: 0.0136, wrist: 0.0174}
+ik_strike_frame_errors: {elbow: 0.0489, wrist: 0.0629, racket: 0.1507, normal_deg: 7.892}
+mount_rpy: [0.0, -1.570796, 0.0]

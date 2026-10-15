@@ -45,6 +45,7 @@ import pathlib
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 
 # --------------------------------------------------------------------------------------------------
 # Paths
@@ -53,15 +54,11 @@ UNITREE_ROOT = pathlib.Path(__file__).resolve().parents[1]
 UPSTREAM_DIR = UNITREE_ROOT / "URDF" / "g1_description"
 UPSTREAM_URDF = UPSTREAM_DIR / "urdf" / "g1_29dof_rev_1_0.urdf"
 UPSTREAM_MJCF = UPSTREAM_DIR / "mjcf" / "g1_29dof_rev_1_0.xml"
-OUTPUT_DIR = UNITREE_ROOT / "URDF" / "g1_29dof_pingpang"
-OUTPUT_URDF_REL = pathlib.Path("urdf") / "g1_29dof_pingpang.urdf"
-OUTPUT_MJCF_REL = pathlib.Path("mjcf") / "g1_29dof_pingpang.xml"
 
 MODEL_NAME = "g1_29dof_pingpang"
 
 # Mesh references written into the generated files (relative to the generated file's directory).
 URDF_BODY_MESH_PREFIX = "../../g1_description/meshes/"
-URDF_RACKET_MESH_PREFIX = "../meshes/"
 MJCF_MESHDIR = "../../g1_description/meshes"
 MJCF_RACKET_MESH_PREFIX = "../../g1_29dof_pingpang/meshes/"
 
@@ -76,44 +73,111 @@ RACKET_MESHES = {RED_LINK: "pingpang_red_Link.STL", BLACK_LINK: "pingpang_black_
 RED_RGBA = "1 0 0 1"
 BLACK_RGBA = "0.1 0.1 0.1 1"
 
-#: Blade-centre (mesh origin) position in the right_wrist_yaw_link frame.
-G1_RACKET_MOUNT_XYZ = (0.210, 0.015, 0.010)
-#: Blade orientation; (0, 0, 0) keeps the A3 convention: blade plane = XZ, +Y = red face normal.
-G1_RACKET_MOUNT_RPY = (0.0, 0.0, 0.0)
-
 # The blade STLs are centred on their own origin but not perfectly symmetric
 # (x, z in [-0.0842, +0.0762]; red face y in [-0.003, 0], black face y in [-0.013, -0.010]).
 # The collision cylinder / clearance proxy are centred on the true blade centre.
 BLADE_CENTRE_OFFSET = (-0.004, -0.0066, -0.004)
 BLADE_RADIUS = 0.081          # m, covers the 160 mm blade
 BLADE_HALF_THICKNESS = 0.007  # m, red face through black face
-
-#: Handle capsule (visual + collision) running through the rubber fist to the blade edge.
-HANDLE_FROM = (0.060, 0.015, 0.010)
-HANDLE_TO = (0.145, 0.015, 0.010)
 HANDLE_RADIUS = 0.014
 
-#: Right hand closed into a fist around the handle (Triton Droids, 2026-10-14). The upstream
-#: ``right_rubber_hand.STL`` is an open hand with the handle lying on the palm; this replaces only its
-#: VISUAL with a generated fist mesh (palm, four fingers wrapped round the handle axis, thumb over
-#: them). Mass/inertia stay the upstream rubber hand's and the hand has no collision in either model
-#: (as upstream), so the racket pose, the dynamics and every trained checkpoint are unchanged.
-#: Points are in the right_wrist_yaw_link frame (like HANDLE_*); the mesh is written in the
-#: right_rubber_hand frame (offset RUBBER_HAND_XYZ).
 RUBBER_HAND_LINK = "right_rubber_hand"
-RUBBER_HAND_XYZ = (0.0415, -0.003, 0.0)
+RUBBER_HAND_XYZ = (0.0415, -0.003, 0.0)   # right_hand_palm_joint origin in the wrist frame (upstream)
 FIST_MESH = "right_fist.STL"
-#: Palm under the handle: capsules along x (rounded edges), at these (y, z), radius FIST_PALM_RADIUS.
+
+
+@dataclass(frozen=True)
+class Mount:
+    """One racket mount: where the blade sits on the wrist and what the right hand looks like.
+
+    ``xyz`` / ``rpy``: blade mesh origin and orientation in the right_wrist_yaw_link frame (blade plane
+    = racket-local XZ, racket-local +Y = red / forehand face normal, racket-local +X = from the handle
+    towards the blade tip). ``fist``: draw the right hand closed round the handle (generated mesh)
+    instead of the upstream open rubber hand.
+    """
+
+    name: str
+    xyz: tuple
+    rpy: tuple
+    handle_from: tuple
+    handle_to: tuple
+    fist: bool = False
+    finger_s: tuple = ()        # finger positions along the handle (from the grip centre), pinky -> index
+    thumb: tuple = ()           # thumb capsule chain, wrist frame
+    blade_mesh_prefix_urdf: str = "../meshes/"
+
+    @property
+    def out_dir(self) -> pathlib.Path:
+        return UNITREE_ROOT / "URDF" / self.name
+
+    @property
+    def handle_axis(self) -> tuple:
+        d = [b - a for a, b in zip(self.handle_from, self.handle_to)]
+        n = math.sqrt(sum(v * v for v in d))
+        return tuple(v / n for v in d)
+
+
+#: A3-style mount (the original G1 port): blade 21 cm out ALONG the forearm, handle lying on the open
+#: rubber hand. Every run up to 2026-10-14 (g1_fh, g1_fh_diag, g1_fh_rally) is trained on this one.
+#: A real hand cannot hold a racket like this: a closed fist puts the handle across the palm (D20).
+FOREARM = Mount(
+    name="g1_29dof_pingpang",
+    xyz=(0.210, 0.015, 0.010),
+    rpy=(0.0, 0.0, 0.0),
+    handle_from=(0.060, 0.015, 0.010),
+    handle_to=(0.145, 0.015, 0.010),
+)
+
+#: Fist grip (Triton Droids D20, 2026-10-14): the right hand is closed into a fist and the handle runs
+#: through it ACROSS the palm, from the little-finger side to the thumb side, so the racket stands
+#: perpendicular to the forearm (like a shakehand grip seen in photos). The forehand (red) face looks
+#: the same way as the palm (+Y), as in a shakehand grip. FIST_HANDLE_ANGLE_DEG is the angle between
+#: the forearm (+X) and the handle, towards the thumb (+Z); 90 = perpendicular.
+FIST_HANDLE_ANGLE_DEG = 90.0
+FIST_GRIP_CENTRE = (0.083, 0.016, 0.0)    # handle axis point in the middle of the four fingers
+FIST_BLADE_ALONG = 0.140                  # grip centre -> blade mesh origin along the handle (m)
+
+
+def _fist_mount() -> Mount:
+    a = math.radians(FIST_HANDLE_ANGLE_DEG)
+    axis = (math.cos(a), 0.0, math.sin(a))
+    c = FIST_GRIP_CENTRE
+    at = lambda s: tuple(round(c[k] + s * axis[k], 6) for k in range(3))  # noqa: E731
+    # blade origin: on the handle axis, shifted along +Y by the mesh's half thickness so the blade is
+    # centred on the handle
+    origin = at(FIST_BLADE_ALONG)
+    origin = (origin[0], round(origin[1] - BLADE_CENTRE_OFFSET[1], 6), origin[2])
+    return Mount(
+        name="g1_29dof_pingpang_fist",
+        xyz=origin,
+        rpy=(0.0, -a, 0.0),                # racket-local +X (handle -> tip) onto the handle axis
+        handle_from=at(-0.050),            # butt sticks out past the little finger
+        handle_to=at(0.075),               # into the blade throat
+        fist=True,
+        finger_s=(-0.027, -0.009, 0.009, 0.027),
+        thumb=((0.052, -0.004, 0.034), (0.070, 0.028, 0.044), (0.088, 0.034, 0.064)),
+        blade_mesh_prefix_urdf="../../g1_29dof_pingpang/meshes/",
+    )
+
+
+FIST = _fist_mount()
+MOUNTS = (FOREARM, FIST)
+
+# Back-compat names (the FOREARM mount, which every existing checkpoint uses).
+G1_RACKET_MOUNT_XYZ = FOREARM.xyz
+G1_RACKET_MOUNT_RPY = FOREARM.rpy
+HANDLE_FROM = FOREARM.handle_from
+HANDLE_TO = FOREARM.handle_to
+
+#: Fist mesh (palm, fingers curled round the handle, thumb), FIST mount only.
 FIST_PALM_X = (0.050, 0.100)
 FIST_PALM_YZ = ((-0.010, -0.024), (-0.010, -0.008), (-0.010, 0.008), (-0.010, 0.024))
 FIST_PALM_RADIUS = 0.011
-FIST_FINGER_X = (0.064, 0.079, 0.094, 0.109)    # pinky -> index along the handle
 FIST_FINGER_RADIUS = (0.0075, 0.0085, 0.0088, 0.0085)
-#: Finger path around the handle axis: (u, w) = (z - handle z, y - handle y); starts at the palm's
-#: little-finger edge, wraps over the handle and ends with the tip against the thumb side of the palm.
-FIST_FINGER_ARC_DEG = (200, 160, 120, 80, 40, 0, -28)
-FIST_FINGER_BASE_UW = (-0.040, -0.011)
-FIST_THUMB = ((0.054, 0.034, -0.012), (0.074, 0.038, 0.012), (0.092, 0.024, 0.032))  # (x, u, w), radius below
+#: Finger path round the handle axis in the plane across it: (u, w) with u towards the knuckles and
+#: w = +Y (palm normal). Starts at the knuckle, wraps over the handle, tip back against the palm.
+FIST_FINGER_ARC_DEG = (-20, 20, 60, 100, 140, 180, 208)
+FIST_FINGER_BASE_UW = (0.040, -0.011)
 FIST_THUMB_RADIUS = 0.0095
 
 #: Racket (handle + blade + rubbers) lumped mass at the blade centre, thin-disc inertia.
@@ -218,11 +282,11 @@ def _rotate(quat_wxyz, vec):
     )
 
 
-def blade_centre_xyz() -> tuple[float, float, float]:
+def blade_centre_xyz(mount: Mount = FOREARM) -> tuple[float, float, float]:
     """True blade centre in the wrist frame (mesh origin + mesh asymmetry offset)."""
-    q = _rpy_to_quat_wxyz(G1_RACKET_MOUNT_RPY)
+    q = _rpy_to_quat_wxyz(mount.rpy)
     d = _rotate(q, BLADE_CENTRE_OFFSET)
-    return tuple(m + o for m, o in zip(G1_RACKET_MOUNT_XYZ, d))
+    return tuple(m + o for m, o in zip(mount.xyz, d))
 
 
 def racket_disc_inertia() -> dict[str, float]:
@@ -279,32 +343,41 @@ def _tube_tris(points, r):
     return tris
 
 
-def fist_triangles() -> list[tuple]:
-    """The right fist in the right_rubber_hand frame (see FIST_* constants)."""
-    hy, hz = HANDLE_FROM[1], HANDLE_FROM[2]
+def fist_triangles(mount: Mount = FIST) -> list[tuple]:
+    """The right fist in the right_rubber_hand frame: palm, fingers curled round the handle, thumb."""
+    axis = mount.handle_axis
+    # grip centre = point of the handle axis nearest the palm centre
+    hf = mount.handle_from
+    rel = [FIST_GRIP_CENTRE[k] - hf[k] for k in range(3)]
+    t = sum(rel[k] * axis[k] for k in range(3))
+    c = tuple(hf[k] + t * axis[k] for k in range(3))
+    e_w = (0.0, 1.0, 0.0)                                   # palm normal
+    e_u = (axis[2], 0.0, -axis[0])                          # across the handle, towards the knuckles
+    if e_u[0] < 0:
+        e_u = tuple(-v for v in e_u)
 
-    def wrist_pt(x, u, w):
-        return (x, hy + w, hz + u)
+    def pt(s_along, u, w):
+        return tuple(c[k] + s_along * axis[k] + u * e_u[k] + w * e_w[k] for k in range(3))
 
     tris = []
     for y, z in FIST_PALM_YZ:
         tris += _tube_tris([(FIST_PALM_X[0], y, z), (FIST_PALM_X[1], y, z)], FIST_PALM_RADIUS)
-    for x, r in zip(FIST_FINGER_X, FIST_FINGER_RADIUS):
+    for s_along, r in zip(mount.finger_s, FIST_FINGER_RADIUS):
         arc_r = HANDLE_RADIUS + r + 0.001
-        pts = [wrist_pt(x, *FIST_FINGER_BASE_UW)]
-        pts += [wrist_pt(x, arc_r * math.cos(math.radians(a)), arc_r * math.sin(math.radians(a)))
+        pts = [pt(s_along, *FIST_FINGER_BASE_UW)]
+        pts += [pt(s_along, arc_r * math.cos(math.radians(a)), arc_r * math.sin(math.radians(a)))
                 for a in FIST_FINGER_ARC_DEG]
         tris += _tube_tris(pts, r)
-    tris += _tube_tris([wrist_pt(*p) for p in FIST_THUMB], FIST_THUMB_RADIUS)
+    tris += _tube_tris(list(mount.thumb), FIST_THUMB_RADIUS)
     off = RUBBER_HAND_XYZ
     return [tuple(tuple(round(p[k] - off[k], 6) for k in range(3)) for p in t) for t in tris]
 
 
-def fist_stl_bytes() -> bytes:
+def fist_stl_bytes(mount: Mount = FIST) -> bytes:
     import struct
 
-    tris = fist_triangles()
-    out = [b"g1_29dof_pingpang right fist (generated)".ljust(80, b" "), struct.pack("<I", len(tris))]
+    tris = fist_triangles(mount)
+    out = [f"{mount.name} right fist (generated)".encode().ljust(80, b" "), struct.pack("<I", len(tris))]
     for a, b, c in tris:
         u = [b[k] - a[k] for k in range(3)]
         v = [c[k] - a[k] for k in range(3)]
@@ -363,10 +436,10 @@ def _urdf_fixed_joint(name: str, parent: str, child: str, xyz, rpy) -> ET.Elemen
     return joint
 
 
-def build_urdf(upstream: ET.ElementTree) -> ET.ElementTree:
+def build_urdf(upstream: ET.ElementTree, mount: Mount = FOREARM) -> ET.ElementTree:
     tree = copy.deepcopy(upstream)
     root = tree.getroot()
-    root.set("name", MODEL_NAME)
+    root.set("name", mount.name)
 
     # Body meshes live in the verbatim upstream directory.
     for mesh in root.iter("mesh"):
@@ -374,17 +447,20 @@ def build_urdf(upstream: ET.ElementTree) -> ET.ElementTree:
         if filename.startswith("meshes/"):
             mesh.set("filename", URDF_BODY_MESH_PREFIX + filename[len("meshes/"):])
 
-    # Right hand: the generated fist replaces the open rubber hand's visual mesh.
-    rubber = next(el for el in root.iter("link") if el.get("name") == RUBBER_HAND_LINK)
-    rubber.find("visual/geometry/mesh").set("filename", URDF_RACKET_MESH_PREFIX + FIST_MESH)
+    # Right hand: with the fist grip the generated fist replaces the open rubber hand's visual mesh.
+    if mount.fist:
+        rubber = next(el for el in root.iter("link") if el.get("name") == RUBBER_HAND_LINK)
+        rubber.find("visual/geometry/mesh").set("filename", "../meshes/" + FIST_MESH)
 
     # Handle capsule: a URDF cylinder along the handle axis (Isaac converts cylinders to capsules
     # when replace_cylinders_with_capsules=True; this is a primitive, not a mesh).
-    hx = tuple((a + b) / 2 for a, b in zip(HANDLE_FROM, HANDLE_TO))
-    handle_len = math.dist(HANDLE_FROM, HANDLE_TO)
+    hx = tuple((a + b) / 2 for a, b in zip(mount.handle_from, mount.handle_to))
+    handle_len = math.dist(mount.handle_from, mount.handle_to)
+    ax = mount.handle_axis  # in the XZ plane
     handle_spec = {
         "xyz": hx,
-        "rpy": (0.0, math.pi / 2, 0.0),  # URDF cylinder axis is Z; rotate onto +X (forearm axis)
+        # URDF cylinder axis is Z; pitch it onto the handle axis (FOREARM: +X, pi/2)
+        "rpy": (0.0, math.atan2(ax[0], ax[2]), 0.0),
         "geom_tag": "cylinder",
         "geom_attrs": {"radius": f"{HANDLE_RADIUS:.6g}", "length": f"{handle_len:.6g}"},
         "rgba": "0.35 0.25 0.15 1",
@@ -393,7 +469,7 @@ def build_urdf(upstream: ET.ElementTree) -> ET.ElementTree:
         HAND_LINK,
         mass=RACKET_MASS,
         inertia=racket_disc_inertia(),
-        inertial_xyz=G1_RACKET_MOUNT_XYZ,
+        inertial_xyz=mount.xyz,
         visual=handle_spec,
         collision=dict(handle_spec, rgba=None),
     )
@@ -406,7 +482,7 @@ def build_urdf(upstream: ET.ElementTree) -> ET.ElementTree:
             "xyz": (0, 0, 0),
             "rpy": (0, 0, 0),
             "geom_tag": "mesh",
-            "geom_attrs": {"filename": URDF_RACKET_MESH_PREFIX + RACKET_MESHES[link_name]},
+            "geom_attrs": {"filename": mount.blade_mesh_prefix_urdf + RACKET_MESHES[link_name]},
             "rgba": rgba,
         }
         blade_elements.append(
@@ -415,7 +491,7 @@ def build_urdf(upstream: ET.ElementTree) -> ET.ElementTree:
         )
         blade_elements.append(
             _urdf_fixed_joint(link_name.replace("_Link", "_joint"), HAND_LINK, link_name,
-                              G1_RACKET_MOUNT_XYZ, G1_RACKET_MOUNT_RPY)
+                              mount.xyz, mount.rpy)
         )
 
     # Append after the upstream right_rubber_hand link (the last element of the upstream file).
@@ -442,10 +518,10 @@ def _mjcf_joint_names(root: ET.Element) -> list[str]:
     return [j.get("name") for j in root.iter("joint") if j.get("type") != "free"]
 
 
-def build_mjcf(upstream: ET.ElementTree, effort_limits: dict[str, float]) -> ET.ElementTree:
+def build_mjcf(upstream: ET.ElementTree, effort_limits: dict[str, float], mount: Mount = FOREARM) -> ET.ElementTree:
     tree = copy.deepcopy(upstream)
     root = tree.getroot()
-    root.set("model", MODEL_NAME)
+    root.set("model", mount.name)
     children = list(root)
 
     compiler = root.find("compiler")
@@ -466,11 +542,12 @@ def build_mjcf(upstream: ET.ElementTree, effort_limits: dict[str, float]) -> ET.
     asset = root.find("asset")
     for link_name in (RED_LINK, BLACK_LINK):
         ET.SubElement(asset, "mesh", name=link_name, file=MJCF_RACKET_MESH_PREFIX + RACKET_MESHES[link_name])
-    ET.SubElement(asset, "mesh", name="right_fist", file=MJCF_RACKET_MESH_PREFIX + FIST_MESH)
-    hand_geoms = [g for g in root.iter("geom") if g.get("mesh") == RUBBER_HAND_LINK]
-    if len(hand_geoms) != 1:
-        raise ValueError(f"expected one {RUBBER_HAND_LINK} geom in the upstream MJCF, found {len(hand_geoms)}")
-    hand_geoms[0].set("mesh", "right_fist")
+    if mount.fist:
+        ET.SubElement(asset, "mesh", name="right_fist", file=f"../../{mount.name}/meshes/{FIST_MESH}")
+        hand_geoms = [g for g in root.iter("geom") if g.get("mesh") == RUBBER_HAND_LINK]
+        if len(hand_geoms) != 1:
+            raise ValueError(f"expected one {RUBBER_HAND_LINK} geom in the upstream MJCF, found {len(hand_geoms)}")
+        hand_geoms[0].set("mesh", "right_fist")
 
     # Free joint rename + pelvis site.
     pelvis = _find_body(root, "pelvis")
@@ -484,23 +561,23 @@ def build_mjcf(upstream: ET.ElementTree, effort_limits: dict[str, float]) -> ET.
 
     # Racket on the right wrist.
     wrist = _find_body(root, WRIST_LINK)
-    mount_quat = _rpy_to_quat_wxyz(G1_RACKET_MOUNT_RPY)
-    centre = blade_centre_xyz()
+    mount_quat = _rpy_to_quat_wxyz(mount.rpy)
+    centre = blade_centre_xyz(mount)
     # MuJoCo cylinder/box axes: the blade normal is racket-local +Y, i.e. rotate local Z onto Y.
     y_axis_quat = _quat_mul(mount_quat, (math.sqrt(0.5), math.sqrt(0.5), 0.0, 0.0))
     wrist.append(ET.Comment(
-        f" HOPE racket mount: blade centre {_fmt(G1_RACKET_MOUNT_XYZ)} rpy {_fmt(G1_RACKET_MOUNT_RPY)} in the "
+        f" HOPE racket mount ({mount.name}): blade origin {_fmt(mount.xyz)} rpy {_fmt(mount.rpy)} in the "
         f"{WRIST_LINK} frame; +Y of the racket frame is the red (forehand) face normal. "
         "Generated by unitree/scripts/build_g1_pingpang_models.py; do not edit by hand. "
     ))
     for link_name, rgba in ((RED_LINK, RED_RGBA), (BLACK_LINK, BLACK_RGBA)):
         wrist.append(ET.Element(
-            "geom", name=f"{link_name}_visual", pos=_fmt(G1_RACKET_MOUNT_XYZ), quat=_fmt(mount_quat),
+            "geom", name=f"{link_name}_visual", pos=_fmt(mount.xyz), quat=_fmt(mount_quat),
             type="mesh", contype="0", conaffinity="0", group="1", density="0", rgba=rgba, mesh=link_name,
         ))
     wrist.append(ET.Element(
         "geom", name="right_racket_handle_visual", type="capsule",
-        fromto=_fmt([*HANDLE_FROM, *HANDLE_TO]), size=f"{HANDLE_RADIUS:.6g}",
+        fromto=_fmt([*mount.handle_from, *mount.handle_to]), size=f"{HANDLE_RADIUS:.6g}",
         contype="0", conaffinity="0", group="1", density="0", rgba="0.35 0.25 0.15 1",
     ))
     wrist.append(ET.Element(
@@ -510,7 +587,7 @@ def build_mjcf(upstream: ET.ElementTree, effort_limits: dict[str, float]) -> ET.
     ))
     wrist.append(ET.Element(
         "geom", name=RACKET_HANDLE_COLLISION_GEOM, attrib={"class": "collision"}, type="capsule",
-        fromto=_fmt([*HANDLE_FROM, *HANDLE_TO]), size=f"{HANDLE_RADIUS:.6g}", density="0",
+        fromto=_fmt([*mount.handle_from, *mount.handle_to]), size=f"{HANDLE_RADIUS:.6g}", density="0",
     ))
     wrist.append(ET.Comment(" Conservative box around the blade collision cylinder. Diagnostic only. "))
     wrist.append(ET.Element(
@@ -519,7 +596,7 @@ def build_mjcf(upstream: ET.ElementTree, effort_limits: dict[str, float]) -> ET.
         contype="0", conaffinity="0", group="4", density="0", rgba="0 0 0 0",
     ))
     wrist.append(ET.Element(
-        "site", name=RACKET_SITE, size="0.001", pos=_fmt(G1_RACKET_MOUNT_XYZ), quat=_fmt(mount_quat),
+        "site", name=RACKET_SITE, size="0.001", pos=_fmt(mount.xyz), quat=_fmt(mount_quat),
         rgba="0 0 0 0",
     ))
 
@@ -571,39 +648,47 @@ def build_mjcf(upstream: ET.ElementTree, effort_limits: dict[str, float]) -> ET.
 # --------------------------------------------------------------------------------------------------
 # Driver
 # --------------------------------------------------------------------------------------------------
-def generate(output_dir: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
+def generate(output_dir: pathlib.Path, mount: Mount = FOREARM) -> tuple[pathlib.Path, pathlib.Path]:
+    """Write one mount's URDF + MJCF (and its fist mesh) under ``output_dir``."""
     upstream_urdf = _parse_xml(UPSTREAM_URDF)
     upstream_mjcf = _parse_xml(UPSTREAM_MJCF)
     efforts = joint_effort_limits(upstream_urdf.getroot())
-    urdf_path = output_dir / OUTPUT_URDF_REL
-    mjcf_path = output_dir / OUTPUT_MJCF_REL
-    _write_xml(build_urdf(upstream_urdf), urdf_path, declaration=True)
-    _write_xml(build_mjcf(upstream_mjcf, efforts), mjcf_path, declaration=False)
-    fist_path = output_dir / "meshes" / FIST_MESH
-    fist_path.parent.mkdir(parents=True, exist_ok=True)
-    fist_path.write_bytes(fist_stl_bytes())
+    urdf_path = output_dir / "urdf" / f"{mount.name}.urdf"
+    mjcf_path = output_dir / "mjcf" / f"{mount.name}.xml"
+    _write_xml(build_urdf(upstream_urdf, mount), urdf_path, declaration=True)
+    _write_xml(build_mjcf(upstream_mjcf, efforts, mount), mjcf_path, declaration=False)
+    if mount.fist:
+        fist_path = output_dir / "meshes" / FIST_MESH
+        fist_path.parent.mkdir(parents=True, exist_ok=True)
+        fist_path.write_bytes(fist_stl_bytes(mount))
     return urdf_path, mjcf_path
 
 
-def check(output_dir: pathlib.Path = OUTPUT_DIR) -> list[str]:
-    """Regenerate into a temp dir and return a list of committed files that differ (empty = OK)."""
+def _generated_files(mount: Mount) -> list[pathlib.Path]:
+    rels = [pathlib.Path("urdf") / f"{mount.name}.urdf", pathlib.Path("mjcf") / f"{mount.name}.xml"]
+    return rels + ([pathlib.Path("meshes") / FIST_MESH] if mount.fist else [])
+
+
+def check(output_dir: pathlib.Path | None = None) -> list[str]:
+    """Regenerate every mount into a temp dir; return the committed files that differ (empty = OK).
+
+    ``output_dir`` checks only the FOREARM mount there (legacy single-model call)."""
     stale: list[str] = []
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_urdf, tmp_mjcf = generate(pathlib.Path(tmp))
-        for rel, fresh in ((OUTPUT_URDF_REL, tmp_urdf), (OUTPUT_MJCF_REL, tmp_mjcf)):
-            committed = output_dir / rel
-            if not committed.is_file() or committed.read_bytes() != fresh.read_bytes():
-                stale.append(str(committed))
-        fist = output_dir / "meshes" / FIST_MESH
-        if not fist.is_file() or fist.read_bytes() != fist_stl_bytes():
-            stale.append(str(fist))
+    targets = [(FOREARM, output_dir)] if output_dir is not None else [(m, m.out_dir) for m in MOUNTS]
+    for mount, out in targets:
+        with tempfile.TemporaryDirectory() as tmp:
+            generate(pathlib.Path(tmp), mount)
+            for rel in _generated_files(mount):
+                committed, fresh = out / rel, pathlib.Path(tmp) / rel
+                if not committed.is_file() or committed.read_bytes() != fresh.read_bytes():
+                    stale.append(str(committed))
     return stale
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--output-dir", type=pathlib.Path, default=OUTPUT_DIR,
-                        help="where urdf/ and mjcf/ are written (default: the committed location)")
+    parser.add_argument("--output-dir", type=pathlib.Path, default=None,
+                        help="write only the FOREARM mount here (default: every mount to its committed location)")
     parser.add_argument("--check", action="store_true",
                         help="do not write; fail if the committed files differ from a fresh generation")
     args = parser.parse_args(argv)
@@ -616,9 +701,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print("[build_g1_pingpang_models] OK: committed URDF/MJCF match a fresh generation")
         return 0
-    urdf_path, mjcf_path = generate(args.output_dir)
-    print(f"[build_g1_pingpang_models] wrote {urdf_path}")
-    print(f"[build_g1_pingpang_models] wrote {mjcf_path}")
+    targets = [(FOREARM, args.output_dir)] if args.output_dir is not None else [(m, m.out_dir) for m in MOUNTS]
+    for mount, out in targets:
+        urdf_path, mjcf_path = generate(out, mount)
+        print(f"[build_g1_pingpang_models] wrote {urdf_path}")
+        print(f"[build_g1_pingpang_models] wrote {mjcf_path}")
     return 0
 
 

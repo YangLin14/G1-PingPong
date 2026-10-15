@@ -229,6 +229,35 @@ def _apply_push(events, dr, applied: list) -> None:
     )
 
 
+def _apply_g1_racket_mount(env_cfg, mount, applied: list) -> None:
+    """``g1_racket_mount: fist`` (task YAML) swaps the G1 racket mount: Isaac URDF, racket-target mount
+    offset and quat (``robots/g1.py G1_RACKET_MOUNTS``). Absent / ``forearm`` keeps the env cfg as built.
+    The fist asset lives in its own prepared directory and is prepared here if missing."""
+    if mount is None or str(mount) == "forearm":
+        return
+    from whole_body_tracking.robots.g1 import G1_RACKET_MOUNTS
+
+    mount = str(mount)
+    if mount not in G1_RACKET_MOUNTS:
+        raise ValueError(f"g1_racket_mount={mount!r}; choose from {sorted(G1_RACKET_MOUNTS)}")
+    offset, quat, urdf = G1_RACKET_MOUNTS[mount]
+    urdf_path = pathlib.Path(urdf)
+    if not urdf_path.is_file():
+        import subprocess
+
+        repo = pathlib.Path(__file__).resolve().parents[3]
+        subprocess.run(
+            [sys.executable, str(pathlib.Path(__file__).resolve().parent / "prepare_g1_isaac_asset.py"),
+             "--source-root", str(repo / "unitree" / "URDF" / f"g1_29dof_pingpang_{mount}"),
+             "--output-root", str(urdf_path.parents[1]), "--force"],
+            check=True,
+        )
+    env_cfg.scene.robot.spawn.asset_path = str(urdf_path)
+    env_cfg.commands.racket_target.mount_offset = tuple(offset)
+    env_cfg.commands.racket_target.mount_quat = tuple(quat)
+    applied.append(f"g1_racket_mount={mount}: asset {urdf_path}, mount_offset {tuple(offset)}, mount_quat {tuple(quat)}")
+
+
 def _apply_task_overrides(env_cfg, cfg, applied: list) -> None:
     """Apply the launcher-level knobs + generic dotted-path overrides from the task cfg."""
     from whole_body_tracking.utils.task_reward_overrides import apply_reward_overrides
@@ -244,6 +273,8 @@ def _apply_task_overrides(env_cfg, cfg, applied: list) -> None:
         _set_dotted(
             env_cfg, "commands.motion.wrap_teleport", bool(motion_block.get("wrap_teleport")), applied, "motion"
         )
+    # G1 racket mount (forearm = every run before 2026-10-14; fist = D20).
+    _apply_g1_racket_mount(env_cfg, task.get("g1_racket_mount"), applied)
     # domain randomization.
     _apply_domain_rand(env_cfg, task.get("domain_rand"), applied)
     # Reward terms are registered by the EnvCfg, but Hydra's rewards mapping is

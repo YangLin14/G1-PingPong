@@ -29,6 +29,10 @@ from whole_body_tracking.assets import ASSET_DIR
 ##
 UNITREE_G1_ASSET_ROOT = f"{ASSET_DIR}/unitree_g1"
 UNITREE_G1_URDF_PATH = f"{UNITREE_G1_ASSET_ROOT}/urdf/model.urdf"
+# Fist-grip variant (unitree/URDF/g1_29dof_pingpang_fist/, D20): prepared into its OWN directory so a
+# fist run never overwrites the asset that forearm-mount runs (g1_fh_diag, ...) load on requeue.
+UNITREE_G1_FIST_ASSET_ROOT = f"{ASSET_DIR}/unitree_g1_fist"
+UNITREE_G1_FIST_URDF_PATH = f"{UNITREE_G1_FIST_ASSET_ROOT}/urdf/model.urdf"
 
 ##
 # Body / joint name constants (real names from the Unitree G1 URDF).
@@ -111,6 +115,15 @@ G1_WRIST_BODY = "right_wrist_yaw_link"          # last actuated link of the padd
 G1_RACKET_BODY = "pingpang_red_Link"            # racket-centre body (A3 name kept on purpose)
 G1_MOUNT_OFFSET = (0.210, 0.015, 0.010)         # wrist_yaw -> blade centre, wrist frame (m)
 G1_MOUNT_QUAT = (1.0, 0.0, 0.0, 0.0)            # identity: blade plane XZ, +Y = red face normal
+# Fist grip (D20; build script mount FIST): the handle runs across the closed fist, so the racket
+# stands perpendicular to the forearm (racket-local +X = wrist +Z, +Y = red face = palm normal).
+G1_FIST_MOUNT_OFFSET = (0.083, 0.0226, 0.14)    # wrist_yaw -> blade mesh origin, wrist frame (m)
+G1_FIST_MOUNT_QUAT = (0.70710678, 0.0, -0.70710678, 0.0)  # rpy (0, -pi/2, 0)
+#: Task-level choice (task YAML ``g1_racket_mount``): mount offset, mount quat, Isaac URDF.
+G1_RACKET_MOUNTS = {
+    "forearm": (G1_MOUNT_OFFSET, G1_MOUNT_QUAT, UNITREE_G1_URDF_PATH),
+    "fist": (G1_FIST_MOUNT_OFFSET, G1_FIST_MOUNT_QUAT, UNITREE_G1_FIST_URDF_PATH),
+}
 
 # Contact bodies allowed to touch (feet) or carrying the paddle (wrists + racket links); the
 # undesired-contact penalty excludes them via this negative-lookahead regex.

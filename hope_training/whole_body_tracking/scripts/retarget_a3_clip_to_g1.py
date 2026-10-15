@@ -134,11 +134,11 @@ def g1_joint_order() -> list[str]:
 class G1Kinematics:
     """MuJoCo forward kinematics on the racket-equipped G1 model."""
 
-    def __init__(self) -> None:
+    def __init__(self, mjcf: pathlib.Path | None = None) -> None:
         import mujoco
 
         self.mj = mujoco
-        self.model = mujoco.MjModel.from_xml_path(str(G1_MJCF))
+        self.model = mujoco.MjModel.from_xml_path(str(mjcf or G1_MJCF))
         self.data = mujoco.MjData(self.model)
         self.mjcf_joints = [
             mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, j)

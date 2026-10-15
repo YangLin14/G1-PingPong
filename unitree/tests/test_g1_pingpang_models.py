@@ -270,6 +270,41 @@ def test_mount_offset_mirrors_robots_g1_constant():
     raise AssertionError("G1_MOUNT_OFFSET not found in robots/g1.py")
 
 
+def _g1_constant(name):
+    tree = ast.parse(_G1_ROBOT_PY.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == name for t in node.targets):
+            return tuple(ast.literal_eval(node.value))
+    raise AssertionError(f"{name} not found in robots/g1.py")
+
+
+def test_fist_mount_mirrors_robots_g1_constants():
+    """D20: the fist mount in robots/g1.py equals the build script's FIST mount (offset and quat)."""
+    assert _g1_constant("G1_FIST_MOUNT_OFFSET") == pytest.approx(builder.FIST.xyz, abs=1e-6)
+    assert _g1_constant("G1_FIST_MOUNT_QUAT") == pytest.approx(builder._rpy_to_quat_wxyz(builder.FIST.rpy), abs=1e-6)
+
+
+def test_fist_racket_is_perpendicular_to_the_forearm_and_faces_the_palm():
+    q = builder._rpy_to_quat_wxyz(builder.FIST.rpy)
+    tip = builder._rotate(q, (1.0, 0.0, 0.0))      # racket-local +X: handle -> blade tip
+    normal = builder._rotate(q, (0.0, 1.0, 0.0))   # red face
+    assert abs(tip[0]) < 1e-6 and tip[2] == pytest.approx(1.0)      # across the forearm, to the thumb side
+    assert normal == pytest.approx((0.0, 1.0, 0.0), abs=1e-6)     # palm side
+    assert builder.FIST.handle_axis == pytest.approx(tip, abs=1e-6)
+    # the blade centre lies on the handle axis (blade centred on the handle)
+    c = builder.blade_centre_xyz(builder.FIST)
+    hf, ax = builder.FIST.handle_from, builder.FIST.handle_axis
+    rel = [c[k] - hf[k] for k in range(3)]
+    t = sum(rel[k] * ax[k] for k in range(3))
+    assert max(abs(rel[k] - t * ax[k]) for k in range(3)) < 0.005
+
+
+def test_forearm_model_has_the_open_rubber_hand():
+    """The A3-style mount keeps the upstream open hand (a fist cannot hold a racket along the forearm)."""
+    assert not builder.FOREARM.fist
+    assert "right_fist" not in (builder.FOREARM.out_dir / "mjcf" / "g1_29dof_pingpang.xml").read_text()
+
+
 # --------------------------------------------------------------------------------------------------
 # MuJoCo load (optional)
 # --------------------------------------------------------------------------------------------------

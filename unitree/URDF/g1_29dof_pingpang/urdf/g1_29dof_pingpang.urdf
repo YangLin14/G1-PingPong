@@ -975,7 +975,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/right_fist.STL" />
+        <mesh filename="../../g1_description/meshes/right_rubber_hand.STL" />
       </geometry>
       <material name="white" />
     </visual>

@@ -14,6 +14,20 @@
 set -uo pipefail
 source "$SLURM_SUBMIT_DIR/hope_training/slurm/pip_env/env.sh" 2>/dev/null || source "$HOME/hope/HOPE/hope_training/slurm/pip_env/env.sh"
 TASK="${TASK:-HOPEPingPongUnitreeG1}"
+# Never run on a known-broken GPU. AVOID_GPU_IDX lists Slurm GPU indices on zixian (default 5 =
+# 0000:B2:00.0, which fell off the bus on 2026-10-12 and crashed a run). The check reads only
+# the job's GPU indices from Slurm (this cluster sets neither SLURM_JOB_GPUS nor CUDA_VISIBLE_DEVICES)
+# and never touches the device. If Slurm hands out a listed GPU, the job stops before Isaac starts;
+# resubmit (Slurm gives the lowest free index) and consider reporting the GPU to SDSC.
+AVOID_GPU_IDX="${AVOID_GPU_IDX-5}"
+job_gpus=$(scontrol show job -d "$SLURM_JOB_ID" | grep -oE 'IDX:[0-9,-]+' | head -1 | cut -d: -f2)
+job_gpus=$(for r in ${job_gpus//,/ }; do seq "${r%-*}" "${r#*-}"; done)
+echo "[smoke] GPU index(es): ${job_gpus//$'\n'/ }"
+for g in $job_gpus; do
+  for bad in ${AVOID_GPU_IDX//,/ }; do
+    [ "$g" = "$bad" ] && { echo "[smoke] allocated GPU index $g is in AVOID_GPU_IDX=$AVOID_GPU_IDX; not starting" >&2; exit 1; }
+  done
+done
 OUT="$HOPE_ROOT/g1_smoke/$SLURM_JOB_ID"; mkdir -p "$OUT"
 cd "$WBT"
 set +u; source setup_train_env.sh; set -u

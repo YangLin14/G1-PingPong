@@ -294,3 +294,37 @@ def test_push_ramp_scale():
     assert f(10**6, 0, 72000) == 1.0
     assert f(100, 200, 1000) == 0.0
     assert f(5, 0, 0) == 1.0
+
+
+def test_g1_racket_mount_fist_swaps_asset_and_mount(tmp_path):
+    urdf = tmp_path / "unitree_g1_fist" / "urdf" / "model.urdf"
+    urdf.parent.mkdir(parents=True)
+    urdf.write_text("<robot/>")
+    g1 = types.ModuleType("whole_body_tracking.robots.g1")
+    g1.G1_RACKET_MOUNTS = {"forearm": ((0.21, 0.015, 0.01), (1, 0, 0, 0), "x"),
+                           "fist": ((0.083, 0.0226, 0.14), (0.7071, 0, -0.7071, 0), str(urdf))}
+    saved = {k: sys.modules.get(k) for k in ("whole_body_tracking", "whole_body_tracking.robots",
+                                             "whole_body_tracking.robots.g1")}
+    try:
+        sys.modules.setdefault("whole_body_tracking", types.ModuleType("whole_body_tracking"))
+        sys.modules["whole_body_tracking.robots"] = types.ModuleType("whole_body_tracking.robots")
+        sys.modules["whole_body_tracking.robots.g1"] = g1
+        env_cfg = SimpleNamespace(scene=SimpleNamespace(robot=SimpleNamespace(spawn=SimpleNamespace(asset_path="old"))),
+                                  commands=SimpleNamespace(racket_target=SimpleNamespace(mount_offset=None, mount_quat=None)))
+        applied: list = []
+        train._apply_g1_racket_mount(env_cfg, "fist", applied)
+        assert env_cfg.scene.robot.spawn.asset_path == str(urdf)
+        assert env_cfg.commands.racket_target.mount_offset == (0.083, 0.0226, 0.14)
+        assert env_cfg.commands.racket_target.mount_quat == (0.7071, 0, -0.7071, 0)
+        assert applied
+        # absent / forearm: untouched
+        env2 = SimpleNamespace(scene=SimpleNamespace(robot=SimpleNamespace(spawn=SimpleNamespace(asset_path="old"))))
+        train._apply_g1_racket_mount(env2, None, [])
+        train._apply_g1_racket_mount(env2, "forearm", [])
+        assert env2.scene.robot.spawn.asset_path == "old"
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v

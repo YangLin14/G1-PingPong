@@ -56,6 +56,14 @@ A3_MJCF = (
     / "a3_pingpong" / "a3_pingpong.xml"
 )
 CLIPS = (("hope_forehand", "g1ik_hope_forehand"), ("hope_backhand", "g1ik_hope_backhand"))
+#: --mount fist (D20): the same retarget on the fist-grip G1 (racket across the closed fist,
+#: perpendicular to the forearm) -> g1ikfist_hope_*. The A3 racket centre / face normal stay the
+#: targets, so the G1 wrist and forearm turn to put the perpendicular racket where the A3's was.
+MOUNT_MODELS = {
+    "forearm": (REPO_ROOT / "unitree" / "URDF" / "g1_29dof_pingpang" / "mjcf" / "g1_29dof_pingpang.xml", "g1ik_"),
+    "fist": (REPO_ROOT / "unitree" / "URDF" / "g1_29dof_pingpang_fist" / "mjcf" / "g1_29dof_pingpang_fist.xml", "g1ikfist_"),
+}
+FIST_MOUNT = {"mount_offset_xyz": [0.083, 0.0226, 0.14], "mount_rpy": [0.0, -1.570796, 0.0]}
 A3_BODY_OF_JOINT_OFFSET = 1  # complete_articulation_v1: body 0 = pelvis_link, body i+1 = child of joint i
 ARM_JOINTS = {
     "right": ("right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint",
@@ -66,6 +74,10 @@ ARM_JOINTS = {
 # The racket centre and face normal are what the swing is about; the wrist/elbow keep the arm shape
 # without over-constraining the (different) blade-in-wrist geometry of the two robots.
 WEIGHTS = {"elbow": 0.3, "wrist": 0.3, "racket": 1.0, "normal": 0.5}
+#: Racket arm with the fist mount: the A3 wrist position cannot be kept (its racket sat 21 cm along
+#: the forearm; the fist racket is across it), so the racket arm follows the racket centre and face
+#: normal and keeps only a weak elbow pull for the arm shape. The free arm keeps WEIGHTS.
+FIST_RACKET_ARM_WEIGHTS = {"elbow": 0.05, "wrist": 0.0, "racket": 1.0, "normal": 0.5}
 IK_ITERS = 40
 IK_DAMPING = 1e-3
 SMOOTH_TAPS = 5
@@ -194,24 +206,25 @@ class G1ArmIK:
         dofs, qadr = self.dofs[side], self.qadr[side]
         q = np.clip(q_init.copy(), self.lo[side], self.hi[side])
         elbow_b, wrist_b = self.body[f"{side}_elbow_link"], self.body[f"{side}_wrist_yaw_link"]
+        W = self.racket_arm_weights if "racket" in targets_w else WEIGHTS
         for _ in range(IK_ITERS):
             d.qpos[qadr] = q
             self._fk()
             rows, errs = [], []
             for key, bid in (("elbow", elbow_b), ("wrist", wrist_b)):
                 mj.mj_jacBody(m, d, self._jacp, self._jacr, bid)
-                rows.append(WEIGHTS[key] * self._jacp[:, dofs])
-                errs.append(WEIGHTS[key] * (targets_w[key] - d.xpos[bid]))
+                rows.append(W[key] * self._jacp[:, dofs])
+                errs.append(W[key] * (targets_w[key] - d.xpos[bid]))
             if "racket" in targets_w:
                 mj.mj_jacSite(m, d, self._jacp, self._jacr, self.site)
-                rows.append(WEIGHTS["racket"] * self._jacp[:, dofs])
-                errs.append(WEIGHTS["racket"] * (targets_w["racket"] - d.site_xpos[self.site]))
+                rows.append(W["racket"] * self._jacp[:, dofs])
+                errs.append(W["racket"] * (targets_w["racket"] - d.site_xpos[self.site]))
                 n = d.site_xmat[self.site].reshape(3, 3)[:, 1]  # racket-local +Y = red face normal
                 # Match the blade PLANE: the backhand hits with the black face, so the target normal
                 # is taken with whichever sign is closer to the current face normal.
                 n_t = targets_w["normal"] if np.dot(n, targets_w["normal"]) >= 0.0 else -targets_w["normal"]
-                rows.append(WEIGHTS["normal"] * (-_skew(n) @ self._jacr[:, dofs]))
-                errs.append(WEIGHTS["normal"] * (n_t - n))
+                rows.append(W["normal"] * (-_skew(n) @ self._jacr[:, dofs]))
+                errs.append(W["normal"] * (n_t - n))
             J = np.vstack(rows)
             e = np.concatenate(errs)
             dq = J.T @ np.linalg.solve(J @ J.T + IK_DAMPING * np.eye(J.shape[0]), e)
@@ -254,7 +267,8 @@ def _moving_average(x: np.ndarray, taps: int) -> np.ndarray:
 # --------------------------------------------------------------------------------------------------
 # retarget
 # --------------------------------------------------------------------------------------------------
-def retarget_clip(src_npz: pathlib.Path, src_yaml: pathlib.Path, kin: G1Kinematics) -> tuple[dict, dict, dict]:
+def retarget_clip(src_npz: pathlib.Path, src_yaml: pathlib.Path, kin: G1Kinematics,
+                  prefix: str = "g1ik_") -> tuple[dict, dict, dict]:
     data = np.load(src_npz)
     with open(src_yaml, "r", encoding="utf-8") as fh:
         sidecar = yaml.safe_load(fh)
@@ -264,6 +278,7 @@ def retarget_clip(src_npz: pathlib.Path, src_yaml: pathlib.Path, kin: G1Kinemati
     g1_order = g1_joint_order()
     g1_index = {n: i for i, n in enumerate(g1_order)}
     ik = G1ArmIK(kin)
+    ik.racket_arm_weights = FIST_RACKET_ARM_WEIGHTS if prefix == "g1ikfist_" else WEIGHTS
     frames = int(base_arrays["joint_pos"].shape[0])
     fps = int(np.asarray(data["fps"]).reshape(-1)[0])
     dt = 1.0 / fps
@@ -333,7 +348,7 @@ def retarget_clip(src_npz: pathlib.Path, src_yaml: pathlib.Path, kin: G1Kinemati
     }
     out_sidecar = dict(base_sidecar)
     out_sidecar.update({
-        "name": src_yaml.stem.replace("hope_", "g1ik_hope_"),
+        "name": src_yaml.stem.replace("hope_", f"{prefix}hope_"),
         "provenance": (
             f"keypoint/IK retarget of {src_npz.name} (Agibot A3) onto the Unitree G1 by "
             "hope_training/whole_body_tracking/scripts/retarget_a3_clip_to_g1_ik.py: legs, waist and root from the "
@@ -359,12 +374,17 @@ def _write_sidecar(path: pathlib.Path, sidecar: dict) -> None:
         yaml.safe_dump(sidecar, fh, sort_keys=False, default_flow_style=None, allow_unicode=True)
 
 
-def generate(out_dir: pathlib.Path) -> list[dict]:
-    kin = G1Kinematics()
+def generate(out_dir: pathlib.Path, mount: str = "forearm") -> list[dict]:
+    mjcf, prefix = MOUNT_MODELS[mount]
+    kin = G1Kinematics(mjcf)
     out_dir.mkdir(parents=True, exist_ok=True)
     reports = []
     for src_name, dst_name in CLIPS:
-        arrays, sidecar, report = retarget_clip(MOTIONS_DIR / f"{src_name}.npz", MOTIONS_DIR / f"{src_name}.yaml", kin)
+        dst_name = dst_name.replace("g1ik_", prefix)
+        arrays, sidecar, report = retarget_clip(MOTIONS_DIR / f"{src_name}.npz", MOTIONS_DIR / f"{src_name}.yaml", kin,
+                                                prefix)
+        if mount == "fist":
+            sidecar.update(FIST_MOUNT)
         np.savez(out_dir / f"{dst_name}.npz", **arrays)
         _write_sidecar(out_dir / f"{dst_name}.yaml", sidecar)
         report["clip"] = dst_name
@@ -398,6 +418,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out-dir", type=pathlib.Path, default=MOTIONS_DIR)
     parser.add_argument("--check", action="store_true", help="fail if the committed IK clips differ from a fresh retarget")
+    parser.add_argument("--mount", choices=sorted(MOUNT_MODELS), default="forearm",
+                        help="racket mount of the G1 model (fist -> g1ikfist_hope_* clips, D20)")
     args = parser.parse_args(argv)
     if args.check:
         stale = check(args.out_dir)
@@ -407,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print("[retarget_a3_clip_to_g1_ik] OK: committed IK clips match a fresh retarget")
         return 0
-    for r in generate(args.out_dir):
+    for r in generate(args.out_dir, args.mount):
         print(
             f"[retarget_a3_clip_to_g1_ik] {r['clip']}: {r['frames']} frames @ {r['fps']} Hz, A3 FK check {r['a3_fk_check_m']} m, "
             f"segment ratios {{right: {tuple(round(v, 3) for v in r['segment_ratios']['right'])}, "
