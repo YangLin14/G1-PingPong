@@ -1,6 +1,6 @@
 #!/bin/bash
 # Training progress of one job as a markdown table (one row every EVERY iterations, plus the newest),
-# ready to paste into docs/TRAINING_STATUS_G1_FOREHAND.md. Requeued jobs log some iterations twice;
+# ready to paste into docs/g1_forehand/status/runs_and_results.md. Requeued jobs log some iterations twice;
 # the later entry wins.
 #   bash hope_training/slurm/pip_env/progress.sh 4382         # every 500 iterations
 #   bash hope_training/slurm/pip_env/progress.sh 4382 250

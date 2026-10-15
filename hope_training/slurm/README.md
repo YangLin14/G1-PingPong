@@ -48,4 +48,4 @@ is off by default because Isaac Sim 5.1's RTX renderer crashes on NVIDIA driver 
 (no 64 GB image, no sudo) and documents the node workarounds it needs; [`video_to_g1/`](video_to_g1/README.md)
 turns a phone video of a human swing into a G1 reference clip (GVHMR + GMR, the HITTER pipeline).
 Both are part of the forehand cross-court line described in
-[`docs/TRITON_G1_FOREHAND.md`](../../docs/TRITON_G1_FOREHAND.md).
+[`docs/g1_forehand/README.md`](../../docs/g1_forehand/README.md).

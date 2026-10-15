@@ -1,6 +1,6 @@
 # =============================================================================
 # G1 FOREHAND RALLY-PACE recipe: HOPEPingPongUnitreeG1_FH_XC plus real rally timing (Triton Droids,
-# docs/TRAINING_STATUS_G1_FOREHAND.md). MuJoCo at real cadence showed the XC policy losing contact
+# docs/g1_forehand/status/log.md). MuJoCo at real cadence showed the XC policy losing contact
 # (88 % -> 38 %) and falling on 44 % of balls: it trains with 0.83 s of lead and ~3 s between strikes,
 # a rally gives 0.4-0.8 s and ~1.5 s. Three changes, each ramped in over 3000 iterations:
 #   rally pace     commands.motion.rally_pace_*: 60 % of swings that follow a swing enter the clip late

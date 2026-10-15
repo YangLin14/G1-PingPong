@@ -1,7 +1,9 @@
 # G1 正手的感知：機器人要怎麼「看」到球
 
-[English](PERCEPTION_G1_FOREHAND.md) · 設計：[`TRITON_G1_FOREHAND.zh-TW.md`](TRITON_G1_FOREHAND.zh-TW.md) ·
-訓練狀態：[`TRAINING_STATUS_G1_FOREHAND.zh-TW.md`](TRAINING_STATUS_G1_FOREHAND.zh-TW.md)
+[文件目錄](../README.zh-TW.md)
+
+[English](perception.md) · 設計：[文件目錄](../README.zh-TW.md) ·
+訓練狀態：[狀態紀錄](../status/log.zh-TW.md)
 
 在實機上，規劃器必須及早知道球在哪裡、跑多快，最好還有它怎麼轉，機器人才來得及揮拍。
 這份文件整理三件事：感知硬體的調查結果（為什麼有人估「10 台攝影機、$40k」、iPhone 能不能用）；

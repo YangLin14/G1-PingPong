@@ -1,7 +1,7 @@
 #!/bin/bash
 # One-time install of the HOPE training stack WITHOUT the 64 GB container: Isaac Sim 5.1 (pip) +
 # Isaac Lab v2.3.2 (isaaclab 0.54.2) + the docs/DISTROBOX_SETUP.md pins, then a headless Kit boot.
-# Idempotent; rerun after a failure. Needs no sudo (see docs/TRITON_G1_FOREHAND.md, "Cluster").
+# Idempotent; rerun after a failure. Needs no sudo (see docs/g1_forehand/operations/running.md, "Cluster").
 #   sbatch hope_training/slurm/pip_env/install_isaac.sbatch
 #SBATCH --job-name=hope-install
 #SBATCH --account=tritondroids

@@ -1,7 +1,9 @@
 # Perception for the G1 forehand: what the robot needs to see the ball
 
-[繁體中文版](PERCEPTION_G1_FOREHAND.zh-TW.md) · Design: [`TRITON_G1_FOREHAND.md`](TRITON_G1_FOREHAND.md) ·
-Training status: [`TRAINING_STATUS_G1_FOREHAND.md`](TRAINING_STATUS_G1_FOREHAND.md)
+[Docs index](../README.md)
+
+[繁體中文版](perception.zh-TW.md) · Design: [docs index](../README.md) ·
+Training status: [status log](../status/log.md)
 
 On the real robot, the planner has to know where the ball is, how fast it moves and (ideally) how it
 spins, early enough for the swing. This document collects what we found about the sensing hardware

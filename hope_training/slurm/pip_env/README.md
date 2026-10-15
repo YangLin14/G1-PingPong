@@ -4,7 +4,7 @@ The sibling jobs in `../` run Isaac inside the 64 GB `grasping` image. These run
 from a pip-installed Isaac Sim 5.1 + Isaac Lab v2.3.2 venv instead, which needs no container and
 no sudo. Submit every job **from the repository root** (`$SLURM_SUBMIT_DIR` locates `env.sh`).
 Paths are set in [`env.sh`](env.sh) (`HOPE_ROOT`, default `~/hope`; `HOPE_REPO`, default
-`~/hope/HOPE`). Full background: [`docs/TRITON_G1_FOREHAND.md`](../../../docs/TRITON_G1_FOREHAND.md).
+`~/hope/HOPE`). Full background: [`docs/g1_forehand/README.md`](../../../docs/g1_forehand/README.md).
 
 ```bash
 sbatch hope_training/slurm/pip_env/install_isaac.sbatch                     # once, ~30 min
@@ -27,8 +27,8 @@ sbatch hope_training/slurm/pip_env/run.sbatch scripts/evaluate.py --task HOPE-Hi
 | `eval_forehand.sh` | per-zone success rate under the club definition (Isaac, `scripts/evaluate_forehand.py`); `--in-job <id\|auto>` or `sbatch` |
 | `eval_checkpoint.sh` | newest (or given) checkpoint -> ONNX -> MuJoCo stats + MP4, example serves and our bank (`eval_bank.*`); `--in-job <id>` runs inside a running job, or `sbatch` it |
 
-Day-to-day commands: [`docs/RUNBOOK_G1_FOREHAND.md`](../../../docs/RUNBOOK_G1_FOREHAND.md). Status log and results:
-[`docs/TRAINING_STATUS_G1_FOREHAND.md`](../../../docs/TRAINING_STATUS_G1_FOREHAND.md).
+Day-to-day commands: [`docs/g1_forehand/operations/runbook.md`](../../../docs/g1_forehand/operations/runbook.md). Status log and results:
+[`docs/g1_forehand/status/log.md`](../../../docs/g1_forehand/status/log.md).
 
 Node workarounds (all applied by `install_isaac.sbatch`; each was a real failure):
 

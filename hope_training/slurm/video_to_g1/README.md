@@ -4,7 +4,7 @@ The HITTER reference pipeline (arXiv 2508.21043): a monocular video of a human s
 SMPL-X with [GVHMR](https://github.com/zju3dv/GVHMR), retargeted to the Unitree G1 with
 [GMR](https://github.com/YanjieZe/GMR), and converted to the HOPE G1 motion schema by
 [`gmr_video_clip_to_g1.py`](../../whole_body_tracking/scripts/gmr_video_clip_to_g1.py).
-Background and design notes: [`docs/TRITON_G1_FOREHAND.md`](../../../docs/TRITON_G1_FOREHAND.md).
+Background and design notes: [`docs/g1_forehand/README.md`](../../../docs/g1_forehand/README.md).
 
 ## One-time setup (cluster login node, from the repository root)
 

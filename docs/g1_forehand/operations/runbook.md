@@ -1,6 +1,8 @@
 # Runbook: G1 forehand training (Triton Droids)
 
-[繁體中文版](RUNBOOK_G1_FOREHAND.zh-TW.md) · Background and design: [`TRITON_G1_FOREHAND.md`](TRITON_G1_FOREHAND.md)
+[Docs index](../README.md)
+
+[繁體中文版](runbook.zh-TW.md) · Background and design: [docs index](../README.md)
 
 Copy-paste commands for daily work. Every command here was run on 2026-10-10. Job numbers in the
 examples (4382, 4354) are the runs at that time; replace them with yours from `status.sh`. Never type
@@ -108,7 +110,7 @@ sbatch hope_training/slurm/pip_env/eval_forehand.sh g1_fh_diag                  
 Scores every bank question with our success definition (apex timing, contact, over the net, on the
 opponent half, inside the question's zone) and prints one row per zone plus the total. Output:
 `~/hope/evals/<run>/<model_N>/forehand_zones.{json,txt}`. Record the result in
-[`TRAINING_STATUS_G1_FOREHAND.md`](TRAINING_STATUS_G1_FOREHAND.md) section 4.
+[`status/runs_and_results.md`](../status/runs_and_results.md) (per-zone table).
 
 ---
 
@@ -158,6 +160,29 @@ squeue -u $USER                    # list
 * Running jobs keep the code they started with. After pulling new code, restart the job to use it.
 * Smoke-test a new task before a long run:
   `sbatch --export=ALL,TASK=<task> hope_training/slurm/pip_env/g1_smoke.sbatch`.
+* **Balance run `g1_fh_bal` (D19), once zixian is back:** smoke-test the task, then warm-start it from the
+  newest `g1_fh_diag` checkpoint (use the real number in place of `<N>`):
+  ```bash
+  sbatch --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL hope_training/slurm/pip_env/g1_smoke.sbatch
+  sbatch --gres=rtx2080ti:1 --job-name=hope-g1-fh-bal --output=$HOME/hope/slurm_logs/%x-%j.out \
+    --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL,RUN_NAME=g1_fh_bal,TOTAL_ITERS=<N+12000>,INIT_CHECKPOINT=$(ls -t hope_training/whole_body_tracking/logs/rsl_rl/unitree_g1_hitter_pingpong/*_g1_fh_diag/model_<N>.pt | head -1) \
+    hope_training/slurm/pip_env/train.sbatch
+  ```
+  The startup log must show `events.push_robot = ramped push ...`.
+
+---
+
+## 4b. Balance test in MuJoCo (laptop)
+
+```bash
+.venv/bin/python hope_training/whole_body_tracking/scripts/mujoco_eval_onnx.py --robot unitree_g1 \
+  --onnx artifacts/evals/<dir>/policy.onnx \
+  --serve-bank hope_training/whole_body_tracking/assets/venue_tuple/g1_fh_crosscourt_apex_bank.npz \
+  --eval-mode continuous --reset-after-fall --num-serves 40 --seed 0 \
+  --push 0.5 0.5 --json-out /tmp/push.json        # shove up to 0.5 m/s and 0.5 rad/s once per ball
+```
+Compare `fall_rate` and the club numbers with the table in the status log (2026-10-14 17:00); use
+seeds 0, 1, 2 and push levels 0.25 / 0.5 / 0.75 / 1.0.
 
 ---
 
@@ -203,7 +228,7 @@ cd ~/hope/HOPE && sbatch --export=ALL,VIDEO=$HOME/hope/mocap/videos/forehand.mp4
 ```
 
 Trim with `START=`/`END=` (source frames, 30 Hz) and override the strike with `STRIKE=` (output frame,
-50 Hz), then resubmit. Details: [`slurm/video_to_g1/README.md`](../hope_training/slurm/video_to_g1/README.md).
+50 Hz), then resubmit. Details: [`slurm/video_to_g1/README.md`](../../../hope_training/slurm/video_to_g1/README.md).
 
 ---
 

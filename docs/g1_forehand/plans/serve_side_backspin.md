@@ -1,5 +1,7 @@
 # G1 反手側下旋發球（暫緩）
 
+[Docs index](../README.md)
+
 狀態：**擱置**（2026-10-10）。優先改做正手對打。本文件保留完整計畫，之後可直接接手。
 分支：`serve-side-backspin`（從 `triton-droids/HOPE` 的 `g1-port` 分出）。
 

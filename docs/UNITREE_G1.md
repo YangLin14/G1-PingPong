@@ -342,4 +342,4 @@ rate above 2 % → `post_swing_tilt_debt_weight` −1.0.
 
 A forehand-only recipe with an apex-strike, cross-court question bank, a club-specific success
 metric, a video -> G1 reference pipeline and a container-free cluster setup build on this port:
-[`TRITON_G1_FOREHAND.md`](TRITON_G1_FOREHAND.md) ([繁體中文](TRITON_G1_FOREHAND.zh-TW.md)).
+[`g1_forehand/README.md`](g1_forehand/README.md) ([繁體中文](g1_forehand/README.zh-TW.md)).

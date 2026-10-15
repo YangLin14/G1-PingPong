@@ -99,7 +99,7 @@ lifecycle:
   follow_through_s: 0.6
   recovery_s: 0.8
   ready_time_to_strike: 1
-  # Reference clock (D17 in docs/TRITON_G1_FOREHAND.md): show the policy strike_time - now from the
+  # Reference clock (D17 in docs/g1_forehand/decisions.md): show the policy strike_time - now from the
   # planner's absolute deadline instead of counting the copied time_to_strike down one tick early.
   # Needs planner and runner clocks synced; a command whose implied message age is negative or
   # above max_message_age_s is stamped on receipt instead. The A3 config keeps countdown.

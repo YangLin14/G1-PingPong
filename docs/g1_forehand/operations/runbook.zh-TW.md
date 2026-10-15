@@ -1,6 +1,8 @@
 # 操作手冊：G1 正手訓練（Triton Droids）
 
-[English](RUNBOOK_G1_FOREHAND.md) · 背景與設計說明：[`TRITON_G1_FOREHAND.zh-TW.md`](TRITON_G1_FOREHAND.zh-TW.md)
+[文件目錄](../README.zh-TW.md)
+
+[English](runbook.md) · 背景與設計說明：[文件目錄](../README.zh-TW.md)
 
 日常操作用的指令，可以直接複製貼上。這裡的每個指令都在 2026-10-10 實際跑過。範例裡的 job 編號（4382、4354）是當時正在跑的訓練，請換成 `status.sh` 顯示的編號。在 shell 裡不要輸入尖括號：bash 會把 `<x>` 當成「從檔案 x 讀取輸入」。
 
@@ -98,7 +100,7 @@ sbatch hope_training/slurm/pip_env/eval_forehand.sh g1_fh_diag                  
 
 用我們的成功定義（最高點擊球、接觸、過網、落在對方半場、落在該題的目標區）幫題庫的每一題打分數，
 每個目標區印一列，再加一列總計。輸出在 `~/hope/evals/<run>/<model_N>/forehand_zones.{json,txt}`。
-結果請記到 [`TRAINING_STATUS_G1_FOREHAND.zh-TW.md`](TRAINING_STATUS_G1_FOREHAND.zh-TW.md) 第 4 節。
+結果請記到 [`status/runs_and_results.zh-TW.md`](../status/runs_and_results.zh-TW.md)（各區成功率表）。
 
 ---
 
@@ -146,6 +148,28 @@ squeue -u $USER                    # 列出 job
 
 ---
 
+## 4b. 在 MuJoCo 做平衡測試（筆電）
+
+```bash
+.venv/bin/python hope_training/whole_body_tracking/scripts/mujoco_eval_onnx.py --robot unitree_g1 \
+  --onnx artifacts/evals/<dir>/policy.onnx \
+  --serve-bank hope_training/whole_body_tracking/assets/venue_tuple/g1_fh_crosscourt_apex_bank.npz \
+  --eval-mode continuous --reset-after-fall --num-serves 40 --seed 0 \
+  --push 0.5 0.5 --json-out /tmp/push.json        # 每球推一次，最多 0.5 m/s 和 0.5 rad/s
+```
+把 `fall_rate` 和社團數字跟狀態紀錄（2026-10-14 17:00）的表格比較；用 seed 0、1、2，推擠強度 0.25 / 0.5 / 0.75 / 1.0。
+
+**平衡訓練 `g1_fh_bal`（D19），等 zixian 恢復後：** 先試跑，再從最新的 `g1_fh_diag` checkpoint 接著訓練（`<N>` 換成實際數字）：
+```bash
+sbatch --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL hope_training/slurm/pip_env/g1_smoke.sbatch
+sbatch --gres=rtx2080ti:1 --job-name=hope-g1-fh-bal --output=$HOME/hope/slurm_logs/%x-%j.out \
+  --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL,RUN_NAME=g1_fh_bal,TOTAL_ITERS=<N+12000>,INIT_CHECKPOINT=$(ls -t hope_training/whole_body_tracking/logs/rsl_rl/unitree_g1_hitter_pingpong/*_g1_fh_diag/model_<N>.pt | head -1) \
+  hope_training/slurm/pip_env/train.sbatch
+```
+啟動 log 裡一定要看到 `events.push_robot = ramped push ...`。
+
+---
+
 ## 5. 改程式碼，然後更新叢集
 
 ```bash
@@ -183,7 +207,7 @@ cd ~/hope/HOPE && sbatch --export=ALL,VIDEO=$HOME/hope/mocap/videos/forehand.mp4
 # 結果：~/hope/mocap/clips/g1vid_forehand/{g1vid_forehand.npz,.yaml,.mp4}（紅框是擊球那一幀）
 ```
 
-可以用 `START=`/`END=` 裁切（原始影片的幀數，30 Hz），用 `STRIKE=` 手動指定擊球幀（輸出 clip 的幀數，50 Hz），然後重新送出。詳細說明見 [`slurm/video_to_g1/README.md`](../hope_training/slurm/video_to_g1/README.md)。
+可以用 `START=`/`END=` 裁切（原始影片的幀數，30 Hz），用 `STRIKE=` 手動指定擊球幀（輸出 clip 的幀數，50 Hz），然後重新送出。詳細說明見 [`slurm/video_to_g1/README.md`](../../../hope_training/slurm/video_to_g1/README.md)。
 
 ---
 
