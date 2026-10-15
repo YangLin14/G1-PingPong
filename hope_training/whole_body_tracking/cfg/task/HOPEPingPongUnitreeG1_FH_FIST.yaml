@@ -388,9 +388,9 @@ racket:
       z:
       - 0.0
       - 1.35
-  strike_phase: 0.38679245
+  strike_phase: 0.40566038  # set in overrides (fist clip strike mark)
   strike_phase_per_clip:
-  - 0.38679245
+  - 0.40566038
   - 0.44444444
   strike_window_s: 0.12
   strike_success_pos_thresh: 0.075
@@ -583,3 +583,8 @@ overrides:
   commands.motion.rally_pace_post_strike_range: [0.7, 1.0]
   commands.racket_target.vb_timing_jitter_s: 0.03
   commands.racket_target.vb_timing_jitter_ramp_steps: 72000
+  # Fist clip strike mark (2026-10-15): the fast part of the g1ikfist forehand swing is frames 41-46, so
+  # the strike is marked at frame 43 (43/106) instead of 41; at 41 the reference racket moves at only
+  # 1.41 m/s (old clips 2.3 m/s, bank targets ~2.5 m/s). Backhand unchanged (never sampled here).
+  commands.racket_target.strike_phase: 0.40566038
+  commands.racket_target.strike_phase_per_clip: [0.40566038, 0.44444444]
