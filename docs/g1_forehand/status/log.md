@@ -6,6 +6,25 @@
 
 
 
+
+### 2026-10-15 14:30 — why the fist run plateaus: racket speed at the strike
+* Isaac strike checks at the latest iteration (pass rates at the strike frame):
+
+  | run | position | velocity | face | all three | legal |
+  |---|---:|---:|---:|---:|---:|
+  | `g1_fh_diag` 19 999 (old grip, normal pace) | 98 % | 65 % | 100 % | 64 % | 57 % |
+  | `g1_fh_rally` 5 985 (old grip, rally pace) | 80 % | 38 % | 99 % | 30 % | 37 % |
+  | `g1_fh_fist` 23 416 (fist, rally pace + shoves) | 91 % | **37 %** | 100 % | 34 % | 47 % |
+
+  The bottleneck is the **racket speed at the strike** (error 2.1 m/s). It is mostly the rally recipe
+  (faster feeds, less time; the old grip drops the same way), not the fist grip.
+* **One fixable cause in the fist clip:** at its marked strike frame (41) the reference racket moves at
+  only 1.41 m/s (old clips: 2.3–2.4 m/s; bank targets: median 2.5 m/s). The fast part of the fist swing
+  runs from frame 41 to 46, so the strike mark sits at its very start and the imitation reward teaches a
+  slow racket at contact. Fix candidate: mark the strike at frame 43 (`strike_phase_per_clip[0]` 0.3868 →
+  0.4057) for the fist clip. Scaling the A3 racket path down did not help (the IK solution and the speed
+  hardly change), so that was dropped.
+
 ### 2026-10-15 13:00 — diag finished; fist run balances much better; late diag checkpoints regress in MuJoCo
 * **4382 `g1_fh_diag` finished** (20 000, `model_19999`, Isaac legal 57 %, falls 0.2 %).
   **5686 `g1_fh_fist`** at 23 416 / 32 300, 7.9 s/it, ETA ~20 h. Oren's 4218 runs; GPU idx 5 still avoided.
