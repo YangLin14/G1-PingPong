@@ -9,6 +9,29 @@
 
 
 
+### 2026-10-16 12:20 — aim offset for the fist policy `model_32299`
+* Method (as D18): measure the median miss (landing − aim) on seeds 0–2 (120 balls), set the offset to
+  minus that, test on seeds 3–5 (120 other balls). Fist model, deploy defaults.
+* Measured offsets: **(+0.14, −0.03) m** with the training paddle model (`--racket-contact venue`),
+  **(+0.19, +0.04) m** with MuJoCo's contact. Much smaller than the old grip (+0.40 / +0.63 m): the fist
+  policy already hits much closer to the aim point.
+* Held-out balls (seeds 3–5, 120 per row, no shoves, 0 falls everywhere):
+
+  | racket contact | aim offset | hits | at apex | legal | in zone | club success | median miss |
+  |---|---|---:|---:|---:|---:|---:|---:|
+  | training paddle model | none | 100 % | 93 % | 85 % | 29.2 % | 27.5 % | 17 cm |
+  | training paddle model | (+0.14, −0.03) | 100 % | 98 % | 80 % | **42.5 %** | **41.7 %** | 14 cm |
+  | MuJoCo contact | none | 100 % | 95 % | 81 % | 18.3 % | 18.3 % | 24 cm |
+  | MuJoCo contact | (+0.19, +0.04) | 100 % | 95 % | 68 % | **35.8 %** | **34.2 %** | 16 cm |
+
+  Per zone (training paddle model, with offset): middle 52 %, deep 52 %, corner 34 %, centre line 30 %.
+* For comparison, the old-grip best (`model_15700`, same method) was 35 % / 25.8 %: the fist policy is
+  now the best one in both contact models.
+* Cost: aiming deeper sends more balls long (legal 85 → 80 %, 81 → 68 % with MuJoCo's contact); the
+  remaining error is scatter (~15 cm median), not bias.
+* Video (16 balls, seed 3, training paddle model + offset): 16/16 hits, 13 legal, 6 in zone, 0 falls —
+  `artifacts/evals/g1_fh_fist_model_32299/eval_bank_aim.mp4`.
+
 ### 2026-10-16 11:50 — fist run finished; best checkpoint `model_32299`; balance check
 * 5719 reached 32 299 / 32 300 and saved `model_32299` (10-16 11:35), then hung while Isaac shut down
   (the process kept running with no output). Cancelled at 11:45 after checking the file was complete.

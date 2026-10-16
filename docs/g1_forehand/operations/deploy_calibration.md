@@ -14,7 +14,7 @@ changing the policy checkpoint, the racket or rubber, the cameras or the planner
 | Reference clock | runtime YAML `lifecycle.clock` | `strike_time` | D17 | in the G1 config |
 | Allowed message age | `lifecycle.max_message_age_s` | 0.1 s | D17 | in the G1 config |
 | **Timing offset** | `lifecycle.tts_offset_s` | **+0.04 s** | MuJoCo, `model_15700` | in the G1 config; **re-measure** |
-| **Aim offset** (along the table, sideways) | planner; today only `mujoco_eval_onnx.py --aim-offset` | **(+0.40, −0.10) m** with the training paddle model; (+0.63, −0.06) m with MuJoCo's contact | MuJoCo, `model_15700` | **not yet in the deploy planner**; re-measure |
+| **Aim offset** (along the table, sideways) | planner; today only `mujoco_eval_onnx.py --aim-offset` | **(+0.14, −0.03) m** with the training paddle model; (+0.19, +0.04) m with MuJoCo's contact (old grip `model_15700`: +0.40/−0.10 and +0.63/−0.06) | MuJoCo, fist `model_32299` | **not yet in the deploy planner**; re-measure with the real racket |
 | Racket centre (mount offset) | `G1_MOUNT_OFFSET`, generated URDF/MJCF | (0.21, 0.015, 0.01) m from the right wrist | CAD estimate | measure the real adapter |
 | Paddle model (restitution, grip) | `configs/ball_physics_venue.yaml` `paddle` | venue fit (another table, another racket) | HOPE | refit with our racket |
 | Table bounce / ball flight | `configs/ball_physics_venue.yaml` | venue fit | HOPE | refit on our table |
