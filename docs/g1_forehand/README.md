@@ -6,16 +6,16 @@ What the Triton Droids team built on top of HOPE and the club's G1 port: a G1 th
 cross-court forehand into one of four target zones. Simulation only for now (the G1 has not
 arrived); everything is designed so the sim-to-real path stays open.
 
-## Current status (2026-10-14)
+## Current status (2026-10-16)
 
-* **Cluster:** zixian is back (10-14 17:05). `g1_fh_diag` finished (best in MuJoCo: `model_15700`; later ones regress);
-  GPU idx 5 is still avoided; the **fist-grip run `g1_fh_fist`** (job 5719, D20) is at 26 300 / 32 300 (~13 h left);
-  in the push test it does not fall up to 0.5 m/s (old best: 6 %).
-* **Best policy** (`g1_fh_diag` `model_15700`, MuJoCo, deploy defaults): hits 100 %, at the apex 97 %,
-  legal return 82 %; with the aim offset (D18) 35 % land in the target zone.
-* **Balance:** a 0.5 m/s shove makes it fall on 6 % of balls, 1 m/s on 26 %; the training had no
-  shoves at all. Fix in progress (D19).
-* **Robot model:** fist grip, racket perpendicular to the forearm (D20); needs the new run above.
+* **Cluster:** no job of ours is running. GPU idx 5 is still avoided. `g1_fh_fist` (D20) finished at 32 299.
+* **Best policy: `g1_fh_fist` `model_32299`** (fist grip, MuJoCo, deploy defaults, no aim offset, 240 balls):
+  hits 100 %, at the apex ~95 %, legal return ~86 %, in the target zone ~26 %. Aim offset not measured yet.
+  (Previous best, old grip `g1_fh_diag` `model_15700`: 35 % in zone with the aim offset.)
+* **Balance:** no falls without shoves or with shoves up to 0.5 m/s; 5 % at 1.0 m/s (old: 26 %).
+  Passes our criterion, so no new balance reward (D19).
+* **Robot model:** fist grip, racket perpendicular to the forearm (D20).
+* Neighbouring checkpoints differ a lot (32 000: 73 % hits): always pick by the MuJoCo test.
 
 Details: [status/log.md](status/log.md) (newest first).
 

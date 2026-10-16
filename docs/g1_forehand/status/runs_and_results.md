@@ -6,7 +6,7 @@
 
 | Job | Run name | Task (questions) | Started | State | Last iteration | Note |
 |---|---|---|---|---|---|---|
-| 5719 | `g1_fh_fist` | as 5686, strike marked at frame 43 | 10-15 15:05 | **running** | resumes 23 700 → 32 300 | continues 5686 |
+| 5719 | `g1_fh_fist` | as 5686, strike marked at frame 43 | 10-15 15:05 | finished 10-16 11:35 (cancelled 11:45: hung at Isaac shutdown) | resumes 23 700 → 32 299 | best in MuJoCo: `model_32299` |
 | 5686 | `g1_fh_fist` | `HOPEPingPongUnitreeG1_FH_FIST` (rally pace + shoves + **fist grip**, D19/D20) | 10-14 21:40 | stopped 10-15 15:00 (strike mark change) | warm start 17 300 → 32 300 | continued by 5719 |
 | – | `g1_fh_bal` | `HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL` (shoves on the old mount, D19) | – | not submitted | – | superseded by `g1_fh_fist` |
 | 5640 | `g1_fh_rally` | as 5560 | 10-13 | failed at start ("CUDA unknown error" node-wide) | 5985 | resubmission of 5584; superseded by `g1_fh_bal` |

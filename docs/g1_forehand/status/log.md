@@ -9,6 +9,42 @@
 
 
 
+### 2026-10-16 11:50 — fist run finished; best checkpoint `model_32299`; balance check
+* 5719 reached 32 299 / 32 300 and saved `model_32299` (10-16 11:35), then hung while Isaac shut down
+  (the process kept running with no output). Cancelled at 11:45 after checking the file was complete.
+  The GPU is free; no job of ours is running.
+* Isaac, last 8 000 iterations: flat. Velocity pass 34–37 %, virtual contact 65–66 %; falls
+  (`base_fell_tilt`) 0.01–0.08 % of episodes even with training shoves (x/y up to 0.5 m/s, roll/pitch up to 0.4 rad/s).
+* MuJoCo push test (fist model, 120 balls per row, seeds 0–2, no aim offset):
+
+  | checkpoint | shove | falls | hits | legal | in zone | club success |
+  |---|---:|---:|---:|---:|---:|---:|
+  | `model_26300` | none | 0 % | 98 % | 76 % | 12.5 % | 10.8 % |
+  | `model_28300` | none | 0 % | 98 % | 82 % | 16.7 % | 16.7 % |
+  | `model_30300` | none | 0 % | 93 % | 71 % | 5.0 % | 5.0 % |
+  | `model_32299` | none | 0 % | **100 %** | **92 %** | **34.2 %** | **32.5 %** |
+  | `model_28300` | 0.5 | 0 % | 91 % | 71 % | 10.8 % | 9.2 % |
+  | `model_30300` | 0.5 | 0 % | 79 % | 58 % | 10.0 % | 8.3 % |
+  | `model_32299` | 0.5 | 0 % | 97 % | 79 % | 21.7 % | 18.3 % |
+  | `model_28300` | 1.0 | 7.5 % | 71 % | 48 % | 10.8 % | 10.0 % |
+  | `model_30300` | 1.0 | 0.8 % | 71 % | 49 % | 4.2 % | 2.5 % |
+  | `model_32299` | 1.0 | 5.0 % | 82 % | 58 % | 13.3 % | 10.0 % |
+
+  (0.25 and 0.75 rows are in the scratch results; 32299 at 0.75: 0.8 % falls, 93 % hits.)
+* Re-check on new seeds 3–5 (120 balls, unpushed): `model_32299` hits 100 %, apex 95 %, legal 81 %,
+  in zone 18.3 %; `model_28300` 98 % / 96 % / 78 % / 7.5 %. So over 240 balls 32299 is about
+  **100 % hits, 86 % legal, 26 % in zone, with no aim offset**. (The diag `model_15700` reached 35 % only with the aim offset.)
+* **Checkpoints next to each other differ a lot:** `model_32000` hits 73 % (in zone 0.8 %), `model_32200`
+  75 % (12.5 %), `model_32299` 100 %. Isaac averages hide this. Rule kept: pick by the MuJoCo test.
+* **Balance verdict:**
+  * Unpushed: 0 falls in 960+ balls over all fist checkpoints. Up to 0.5 m/s: 0 falls. 0.75 m/s: ≤ 1 %.
+  * At 1.0 m/s (twice the training range) 5 % falls (diag: 26 %, rally: 38 %). Almost all falls come
+    from shoves that are large in **both** sideways speed and roll/pitch rate (0.6–1.0 rad/s), mostly
+    before the hit; the ball is then missed.
+  * By the criterion we set (falls ≤ 2 % and hits ≥ 95 % at 0.5 m/s), `model_32299` passes:
+    **no new balance reward needed**. What pushes cost now is accuracy (hits 100 → 97 %, in zone 34 → 22 % at 0.5 m/s), not falls.
+* Next: measure the aim offset for `model_32299` (D18), then video and deploy notes.
+
 ### 2026-10-15 20:30 — fist run at 26 300: three times more in-zone returns in MuJoCo
 * 5719 at 26 307 / 32 300, 7.95 s/it, ETA ~13 h. New checkpoints go to a new directory on each resume
   (`2026-10-15_13-48-31_g1_fh_fist`).
