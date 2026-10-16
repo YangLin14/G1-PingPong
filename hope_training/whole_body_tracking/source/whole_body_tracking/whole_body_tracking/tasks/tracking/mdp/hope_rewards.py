@@ -3953,3 +3953,79 @@ def rally_ready_leg_settle_debt(
     gate = _rally_ready_stance_gate(cmd, motion, station_reach, heading_gate, 0.0)
     cmd.metrics["ready_leg_speed_rms"] = speed_rms * gate.float()
     return debt * gate.float()
+
+
+# ============================================================================================== #
+# BALANCE FIRST (Triton Droids, docs/g1_forehand/decisions.md D21): a lower centre of mass and a
+# centre of mass kept over the feet. Both are zero-income debts (never pay for anything, only cost),
+# with a Huber tail so the gradient does not vanish far from the target.
+# ============================================================================================== #
+def _huber(scaled: torch.Tensor) -> torch.Tensor:
+    return torch.where(scaled <= 1.0, 0.5 * torch.square(scaled), scaled - 0.5)
+
+
+def root_height_ceiling_debt(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    max_height: float = 0.66,
+    std: float = 0.03,
+) -> torch.Tensor:
+    """Cost for the pelvis standing ABOVE ``max_height`` (always on): teaches a lower stance.
+
+    The mirror of ``rally_ready_root_height_debt`` (a floor). Exactly zero at or below
+    ``max_height``; 0.5*(excess/std)^2 up to one std, linear beyond.
+    """
+    if std <= 0.0:
+        raise ValueError(f"root height ceiling requires std > 0, got {std}")
+    cmd = _cmd(env, command_name)
+    z = cmd.robot.data.root_pos_w[:, 2]
+    excess = torch.clamp(z - float(max_height), min=0.0)
+    cmd.metrics["root_height"] = z
+    cmd.metrics["root_height_ceiling_excess"] = excess
+    return _huber(excess / float(std))
+
+
+def _robot_masses(cmd) -> torch.Tensor:
+    """Per-env, per-body masses (after startup mass randomization), cached on the command term."""
+    masses = getattr(cmd, "_balance_body_masses", None)
+    if masses is None:
+        masses = cmd.robot.root_physx_view.get_masses().to(cmd.robot.data.root_pos_w.device).float()
+        cmd._balance_body_masses = masses
+    return masses
+
+
+def com_support_debt(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    foot_body_names: tuple[str, str] = ("left_ankle_roll_link", "right_ankle_roll_link"),
+    margin: float = 0.03,
+    std: float = 0.05,
+) -> torch.Tensor:
+    """Cost for the whole-body centre of mass leaving the area above the feet (always on).
+
+    Ground projection of the CoM vs the segment between the two ankle-roll links (a thin support
+    polygon). Zero within ``margin`` of the segment; Huber beyond. Both feet are used regardless of
+    contact: a step is short and the term only asks the CoM to stay between where the feet are.
+    """
+    if margin < 0.0 or std <= 0.0:
+        raise ValueError(f"CoM support debt requires margin >= 0 and std > 0, got {margin}, {std}")
+    cmd = _cmd(env, command_name)
+    robot = cmd.robot
+    foot_ids = getattr(cmd, "_balance_foot_ids", None)
+    if foot_ids is None:
+        foot_ids = robot.find_bodies(list(foot_body_names), preserve_order=True)[0]
+        if len(foot_ids) != 2:
+            raise RuntimeError(f"CoM support debt needs exactly two foot bodies, got {foot_ids}")
+        cmd._balance_foot_ids = foot_ids
+    masses = _robot_masses(cmd)
+    com_b = robot.data.body_com_pos_w
+    com = (com_b * masses.unsqueeze(-1)).sum(dim=1) / masses.sum(dim=1, keepdim=True)
+    a = robot.data.body_link_pos_w[:, foot_ids[0], :2]
+    b = robot.data.body_link_pos_w[:, foot_ids[1], :2]
+    ab = b - a
+    t = ((com[:, :2] - a) * ab).sum(-1) / torch.clamp((ab * ab).sum(-1), min=1.0e-9)
+    closest = a + t.clamp(0.0, 1.0).unsqueeze(-1) * ab
+    offset = torch.linalg.norm(com[:, :2] - closest, dim=-1)
+    cmd.metrics["com_height"] = com[:, 2]
+    cmd.metrics["com_support_offset"] = offset
+    return _huber(torch.clamp(offset - float(margin), min=0.0) / float(std))

@@ -543,6 +543,7 @@ def run_eval(args) -> dict:
             push_dv = np.concatenate([push_rng.uniform(-push[0], push[0], 2), [0.0],
                                       push_rng.uniform(-push[1], push[1], 3)])
 
+        posture_log = []
         for _tick in range(max_ticks):
             ticks_run = _tick + 1
             ball_pos, ball_vel = scene.ball_state()
@@ -607,6 +608,9 @@ def run_eval(args) -> dict:
             #     racket moving toward it). ---
             if scene.base_fallen():
                 fell = True
+            pose = scene.posture()
+            if pose is not None and not fell:
+                posture_log.append((pose["pelvis_z"], pose["com_z"], pose["com_offset"]))
             if not contacted:
                 r_pos, r_vel = scene.racket_site_state()
                 b_pos, _b_vel = scene.ball_state()
@@ -691,6 +695,11 @@ def run_eval(args) -> dict:
                 "push": None if push_dv is None else {"t_s": round(push_tick * dt, 3),
                                                       "dv": [round(float(v), 3) for v in push_dv]},
                 "ticks": ticks_run,
+                "posture": None if not posture_log else {
+                    "pelvis_z_mean": round(float(np.mean([p[0] for p in posture_log])), 4),
+                    "com_z_mean": round(float(np.mean([p[1] for p in posture_log])), 4),
+                    "com_offset_mean": round(float(np.mean([p[2] for p in posture_log])), 4),
+                    "com_offset_max": round(float(np.max([p[2] for p in posture_log])), 4)},
                 "strike_point_w": [round(float(v), 3) for v in _strike_pt],
                 **club_record,
             }

@@ -190,6 +190,9 @@ class PingPongRealPhysicsScene:
         self._racket_gid = self._geom_id(self.racket_collision_geom)
         self._gyro_adr = self._sensor_adr(self.gyro_sensor)
         self._zone_gids = [self._geom_id(f"target_zone_{k}") for k in range(len(self.zone_rects))]
+        # posture readout (balance diagnostics): robot root body + both feet, if the model has them
+        self._root_bid = int(m.jnt_bodyid[self._joint_id(self.base_free_joint)])
+        self._foot_bids = [self._body_id(n) for n in ("left_ankle_roll_link", "right_ankle_roll_link")]
 
         # Controlled-joint qpos/qvel addresses + driving actuator indices.
         self._q_adr = np.zeros(self.num_joints, dtype=int)
@@ -409,6 +412,19 @@ class PingPongRealPhysicsScene:
 
     def base_pos_w(self) -> np.ndarray:
         return self.data.qpos[self._base_qadr:self._base_qadr + 3].copy()
+
+    def posture(self) -> dict | None:
+        """Pelvis height, whole-robot CoM height, and how far the CoM (ground projection) is from the
+        line between the two feet (0 = right above it; a balance margin proxy). None without feet."""
+        if min(self._foot_bids) < 0:
+            return None
+        d = self.data
+        com = d.subtree_com[self._root_bid]
+        a, b = d.xpos[self._foot_bids[0], :2], d.xpos[self._foot_bids[1], :2]
+        ab = b - a
+        t = float(np.clip(np.dot(com[:2] - a, ab) / max(float(np.dot(ab, ab)), 1e-9), 0.0, 1.0))
+        return {"pelvis_z": float(d.qpos[self._base_qadr + 2]), "com_z": float(com[2]),
+                "com_offset": float(np.linalg.norm(com[:2] - (a + t * ab)))}
 
     def base_fallen(self, min_height: float = 0.4) -> bool:
         """Crude fall check: pelvis dropped well below the stand height."""

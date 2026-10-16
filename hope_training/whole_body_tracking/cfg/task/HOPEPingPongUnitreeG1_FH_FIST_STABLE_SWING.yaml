@@ -1,0 +1,620 @@
+# =============================================================================
+# G1 FOREHAND, BALANCE FIRST + STEADIER SWING (D21): _FH_FIST_STABLE plus sharper racket rewards, so
+# the returns scatter less (median miss ~15 cm with model_32299). Same weights (balance stays on top),
+# narrower kernels: the reward only pays well for a racket close to the commanded state.
+#   racket_velocity_std 0.6 -> 0.4 m/s, racket_position_std 0.15 -> 0.10 m
+# Run next to _FH_FIST_STABLE (same warm start) to see what the swing change adds on its own.
+#   hope_isaac_py scripts/train.py task=HOPEPingPongUnitreeG1_FH_FIST_STABLE_SWING headless=true run_name=g1_fh_stable_swing
+# =============================================================================
+# G1 FOREHAND, BALANCE FIRST (Triton Droids, docs/g1_forehand/decisions.md D21). The robot must stay
+# up before anything else, so this run weights balance above the swing:
+#   lower stance     the pelvis stood at ~0.72 m (MuJoCo) while the fist clip crouches at 0.675 m,
+#                    because rally_ready_root_height_debt (min 0.70 m, an A3 number rescaled) taxed
+#                    any lower stance. Floor -> 0.58 m and a new ceiling cost above 0.66 m
+#                    (root_height_ceiling, mdp.root_height_ceiling_debt): about 6 cm lower than now.
+#                    Reach checked: upper-body IK puts the fist racket on 100 % of bank strike points
+#                    with the pelvis anywhere from 0.60 to 0.71 m.
+#   CoM over feet    new cost when the whole-body centre of mass leaves the line between the feet by
+#                    more than 3 cm (com_support, mdp.com_support_debt)
+#   bigger shoves    x/y 0.5 -> 0.8 m/s, roll/pitch 0.4 -> 0.6 rad/s, yaw 0.6 -> 0.8, every 2-5 s
+#                    (was 3-6), ramped in over 2000 iterations
+#   stronger upright upright -1 -> -3, base_ang_vel_xy -0.05 -> -0.15, post_swing_tilt_debt -0.7 -> -1.5
+# The swing rewards are unchanged. Warm start from g1_fh_fist model_32299.
+#   hope_isaac_py scripts/train.py task=HOPEPingPongUnitreeG1_FH_FIST_STABLE headless=true run_name=g1_fh_stable
+# =============================================================================
+# G1 FOREHAND RALLY + BALANCE with the FIST GRIP (Triton Droids, docs/g1_forehand/decisions.md D20).
+# A real hand closes into a fist round the handle, so the racket stands PERPENDICULAR to the forearm
+# (handle across the palm, red face = palm side). Every earlier G1 run uses the A3-style mount (blade
+# 21 cm along the forearm), which no hand can hold. Changes over _FH_XC_RALLY_BAL:
+#   g1_racket_mount: fist   Isaac asset unitree_g1_fist (unitree/URDF/g1_29dof_pingpang_fist), racket
+#                           target mount offset/quat robots/g1.py G1_FIST_MOUNT_* (train.py)
+#   reference clips         g1ikfist_hope_{forehand,backhand}: the A3 clips retargeted by IK on the fist
+#                           model (racket centre + face normal; strike-frame face error 8 deg)
+# The bank is unchanged: an IK check puts the fist racket on 100 % of sampled bank strike targets
+# (position < 3 cm, face < 15 deg) from the station with waist + arm alone.
+# Warm start from the latest g1_fh_diag checkpoint (balance and footwork carry over; the arm relearns).
+#   hope_isaac_py scripts/train.py task=HOPEPingPongUnitreeG1_FH_FIST headless=true run_name=g1_fh_fist
+# =============================================================================
+# G1 FOREHAND RALLY + BALANCE recipe: HOPEPingPongUnitreeG1_FH_XC_RALLY plus random shoves (Triton Droids,
+# docs/g1_forehand/decisions.md D19). The HOPE/HITTER recipe trains with NO external
+# pushes (HOPEEventCfg.push_robot = None); only mass, friction, CoM and PD-gain randomization. A real
+# robot gets bumped, steps on uneven floor and is shaken by its own fast swings, and the MuJoCo push
+# test (mujoco_eval_onnx.py --push) shows how quickly the current policies lose the ball / fall.
+# One change, ramped in over 3000 iterations (72000 env steps, env.common_step_counter):
+#   shoves   domain_rand.push_*: every 3-6 s per env a random base velocity change (x, y, z, roll,
+#            pitch, yaw; mdp.push_by_setting_velocity_ramped), range growing from 0 to full
+# Warm-started from the latest g1_fh_diag checkpoint (train.sbatch INIT_CHECKPOINT): in the MuJoCo push
+# test it balances far better than g1_fh_rally model_5900 (falls at 0.5 m/s shoves: 6 % vs 23 %).
+#   hope_isaac_py scripts/train.py task=HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL headless=true run_name=g1_fh_bal
+# =============================================================================
+# G1 FOREHAND RALLY-PACE recipe: HOPEPingPongUnitreeG1_FH_XC plus real rally timing (Triton Droids,
+# docs/g1_forehand/status/log.md). MuJoCo at real cadence showed the XC policy losing contact
+# (88 % -> 38 %) and falling on 44 % of balls: it trains with 0.83 s of lead and ~3 s between strikes,
+# a rally gives 0.4-0.8 s and ~1.5 s. Three changes, each ramped in over 3000 iterations:
+#   rally pace     commands.motion.rally_pace_*: 60 % of swings that follow a swing enter the clip late
+#                  (time-to-strike 0.4-0.83 s, no hold) and the previous follow-through is cut
+#                  0.7-1.0 s after its strike (strike-to-strike ~1.1-1.8 s)
+#   timing jitter  commands.racket_target.vb_timing_jitter_s: the virtual ball arrives +-30 ms off the
+#                  strike clock (only the ball outcome sees it)
+#   faster feeds   g1_fh_crosscourt_apex_bank_wide: feed 4.5-8.4 m/s before the bounce (was 4.4-6.6),
+#                  spin up to 8 rev/s, end line -> apex 0.38-0.81 s; same zones and strike box
+# Warm-started from a g1_fh_diag checkpoint (train.sbatch INIT_CHECKPOINT) so the swing is not relearned.
+#   hope_isaac_py scripts/train.py task=HOPEPingPongUnitreeG1_FH_XC_RALLY headless=true run_name=g1_fh_rally
+# =============================================================================
+# G1 FOREHAND-ONLY rally recipe: HOPEPingPongUnitreeG1 (recipe v2, variant A clips) with every
+# swing forced to the forehand clip. Both clips stay loaded because the command code indexes
+# forehand = clip 0 / backhand = clip 1; only clip 0 is ever sampled:
+#   * commands.motion.eval_clip_sequence = (0,)          every new swing samples clip 0
+#   * commands.motion.fixed_clip_env_fraction_per_clip=0 no permanent backhand cohort (12.5 % before)
+#   * commands.racket_target.active_clip_ids=(0,)  ability gate checks forehand only; both venue-tuple
+#     cohorts become forehand (otherwise the never-sampled backhand locks the gate forever and the
+#     tuple cohort disagrees with the clip)
+# Everything else is the variant A recipe verbatim.
+#   hope_isaac_py scripts/train.py task=HOPEPingPongUnitreeG1_FH headless=true run_name=g1_fh
+# =============================================================================
+# Unitree G1 (29-DoF) HitterPingPong task: the A3 Build recipe (HitterV11 V14 strike contract plus
+# reviewed recovery/plant deltas) retargeted to the racket-equipped G1 (docs/UNITREE_G1.md).
+# Differences from HOPEPingPong.yaml are marked "G1:"; everything else is the A3 recipe verbatim.
+#
+# G1: reference motions default to g1_hope_forehand/backhand.npz -- JOINT-SPACE TRANSFERS of the
+# published A3 clips (scripts/retarget_a3_clip_to_g1.py): same joint angles by name, root rescaled to
+# the G1, body poses by G1 forward kinematics. They carry the swing style only; the A3's reach and
+# contact geometry are NOT preserved. Replace them with a keypoint/IK retarget when available:
+#   motion_file=<g1_forehand.npz> motion_file_2=<g1_backhand.npz>
+#
+# G1: RECIPE V2 (2026-10). The first G1 run (job 4047) proved the A3 reach values unreachable for the
+# G1 (strike matrix -9 cm x / -10 cm z, a permanent root-height debt). The values marked "G1 v2:"
+# below are the A3 numbers rescaled to the G1 geometry by the rule in
+# source/.../tasks/tracking/config/g1/g1_recipe.py (horizontal reach x0.79, shoulder-relative
+# heights, pelvis ratio 0.76/1.068, hip-spacing ratio 0.87). train.py applies only the env/motion/
+# domain_rand/rewards/overrides sections of this file; the racket: block documents the values the env
+# cfg sets in code (g1_recipe.apply_recipe) and tests/test_g1_recipe_scaling.py pins both to the module.
+defaults:
+- /base/env_base@_here_
+- /base/sim_base@_here_
+- /base/randomization_base@_here_
+- _self_
+name: HitterPingPongUnitreeG1_FH_FIST_STABLE_SWING
+g1_racket_mount: fist  # D20
+robot: unitree_g1  # G1
+gym_task: HOPE-HitterPingPong-UnitreeG1-v0  # G1
+experiment_name: unitree_g1_hitter_pingpong  # G1: matches agents/rsl_rl_ppo_cfg.py
+actor_obs_contract: hitter_pure_unitree_g1  # G1: 104-D (17 + 3*29)
+# Reference motions: the derived G1 pair below, or your own G1-retargeted clips on the command line —
+#   motion_file=<g1_forehand.npz> motion_file_2=<g1_backhand.npz>
+env:
+  # Formal Build batch. The permanent 75% core / 12.5% FH / 12.5% BH
+  # cohorts therefore contain 4608 / 768 / 768 environments.
+  num_envs: 6144
+  episode_length_s: 10.0
+motion:
+  wrap_teleport: false
+  stand_start_prob: 0.25
+  stand_start_min_hold: 45
+  stand_start_yaw_range:
+  - -0.6
+  - 0.6
+  stand_start_yaw_ramp_steps: 96000
+  hold_steps_range:
+  - 45
+  - 60
+  hold_long_prob: 0.15
+  hold_long_steps_range:
+  - 150
+  - 300
+  post_swing_start_prob: 0.35
+  clip_switch_prob: 0.0
+  fixed_clip_env_fraction_per_clip: 0.125
+  stand_start_x_range:
+  - 0.03
+  - 0.1
+  # Match the actual HitterV11/V14 recovery path.  V14 inherits the 8192-entry
+  # legacy ring from V13 and admits only states captured after a complete clip
+  # wrap; there are no timed/risk-edge follow-through captures.
+  post_swing_replay_contract: legacy_state_v1
+  post_swing_buffer_size: 8192
+  post_swing_min_fill: 256
+  post_swing_capture_phase_bins: 1
+  post_swing_capture_severity_bins: 1
+  post_swing_risk_edge_capture: false
+  post_swing_failure_adaptive: false
+  post_swing_min_fill_per_bucket: 1
+  post_swing_curriculum_scaled: false
+  # Once 256 genuinely completed wraps have filled the legacy bank, the true-reset
+  # mass is V14's fixed 0.35.  The independent racket ability gate below controls
+  # only mocap corruption and never gates this V14 replay path.
+  post_swing_ability_gate_enabled: false
+  post_swing_replay_ramp_probabilities: []
+  post_swing_min_hold: 45
+action:
+  contract: v11_affine_safe_qdes_v1
+  actual_q_hard_tolerance_rad: 0.002
+  # Unitree-aligned training semantics: record/latch actual-q hard-limit evidence, but do not
+  # shorten PPO episodes. Any nonzero fault still blocks checkpoint promotion and real deployment.
+  actual_q_hard_audit_mode: telemetry
+  qdes_delay_min_steps: 0
+  qdes_delay_max_steps: 0
+  qdes_delay_nominal_fraction: 1.0
+rewards:
+  racket_position_weight: 14.0
+  racket_position_std: 0.10  # D21 swing (was 0.15)
+  racket_velocity_weight: 14.0
+  racket_velocity_std: 0.4  # D21 swing (was 0.6)
+  racket_normal_weight: 5.0
+  racket_normal_std: 0.3
+  base_position_weight: 2.0
+  base_position_std: 0.2
+  post_strike_brake_weight: 0.0
+  post_strike_brake_std: 0.5
+  hold_heading_weight: 1.0
+  hold_heading_std: 0.6
+  foot_orientation_weight: -0.8
+  foot_orientation_hold_gate: true
+  lower_body_plant_imitation_weight: 0.0
+  lower_body_plant_imitation_std: 0.5
+  hold_ready_weight: 1.0
+  hold_ready_std: 1.5
+  hold_ready_reach: 0.24  # G1 v2: A3 0.3 x 0.79 reach ratio
+  hold_ready_reach_mode: station
+  hold_ready_include_ang_vel: true
+  hold_ready_heading_gate_rad: 0.25
+  rally_ankle_qdes_saturation_weight: -0.3
+  rally_ankle_qdes_safe_abs: 0.2
+  rally_ankle_qdes_std: 0.1
+  rally_ankle_qdes_t_pre: 1.4
+  rally_ankle_qdes_t_post: 1.8
+  hold_upper_pose_imitation_weight: 1.0
+  hold_upper_pose_imitation_std: 0.5
+  stance_width_weight: 0.0
+  stance_width_lo: 0.22  # G1 v2: A3 0.25 x 0.87 hip-spacing ratio
+  stance_width_hi: 0.30  # G1 v2: A3 0.35 x 0.87
+  stance_width_std: 0.05
+  racket_normal_alignment_debt_weight: -2.0
+  racket_normal_alignment_debt_margin: 0.1
+  racket_normal_alignment_debt_std: 0.35
+  post_strike_x_settle_weight: 2.0
+  post_strike_x_settle_std: 0.08
+  post_strike_x_settle_t_hi: 1.2
+  post_strike_vx_quiet_weight: 1.0
+  post_strike_vx_quiet_std: 0.15
+  post_strike_vx_quiet_t_hi: 1.0
+  post_strike_leg_quiet_weight: -0.04
+  post_strike_leg_quiet_t_hi: 1.2
+  joint_torques_weight: -3.0e-05
+  action_rate_weight: -0.1
+  joint_acc_weight: -2.5e-7
+  joint_limit_weight: -10.0
+  undesired_contacts_weight: -0.1
+  windup_x_recovery_weight: -0.4
+  windup_x_recovery_x_margin: 0.02
+  windup_x_recovery_x_std: 0.05
+  windup_x_recovery_vx_margin: 0.05
+  windup_x_recovery_vx_std: 0.2
+  windup_x_recovery_position_blend: 0.6
+  windup_x_recovery_t_hi: 1.1
+  pre_strike_station_settle_weight: -0.35
+  pre_strike_station_settle_std: 0.3
+  pre_strike_station_settle_v_gain: 2.0
+  pre_strike_station_settle_v_max: 0.8
+  pre_strike_station_settle_t_min: 0.12
+  pre_strike_station_settle_t_max: 1.1
+  pre_strike_station_settle_velocity_margin: 0.05
+  pre_strike_station_settle_debt_huber: true
+  rally_heading_debt_weight: -0.5
+  rally_heading_debt_yaw_margin: 0.1
+  rally_heading_debt_yaw_std: 0.25
+  rally_heading_debt_rate_margin: 0.05
+  rally_heading_debt_rate_std: 0.25
+  rally_heading_debt_heading_blend: 0.5
+  rally_heading_debt_ready_t_lo: 0.45
+  rally_heading_debt_ready_t_hi: 1.0
+  rally_heading_debt_post_t_lo: 0.20
+  rally_heading_debt_post_t_hi: 1.55
+  rally_heading_debt_huber_tail: true
+  # G1: no passive_head_raw_action_* keys -- the G1 has no neck and the env cfg removes that term.
+  rally_joint_qdes_saturation_weight: null
+  rally_joint_qdes_saturation_std: null
+  rally_joint_qdes_saturation_max_blend: null
+  strike_x_drift_margin: 0.02
+  strike_x_drift_std: 0.05
+  strike_x_drift_t_pre: 1.1
+  strike_x_drift_t_post: 1.55
+  strike_x_drift_huber_tail: true
+  rally_heading_debt_yaw_rate_gain: 2.0
+  rally_heading_debt_yaw_rate_max: 0.15
+  left_wrist_reference_debt_weight: -0.4
+  left_wrist_reference_debt_margin: 0.08
+  left_wrist_reference_debt_std: 0.25
+  left_wrist_reference_debt_max_blend: 0.75
+  right_elbow_extension_debt_weight: -0.5
+  right_elbow_extension_debt_extension_start: 1.25
+  right_elbow_extension_debt_std: 0.12
+  right_elbow_extension_debt_t_pre: 0.3
+  right_elbow_extension_debt_t_post: 0.2
+  ready_deadline_weight: -0.35
+  ready_deadline_x_margin: 0.1
+  ready_deadline_y_margin: 0.1
+  ready_deadline_position_std: 0.1
+  ready_deadline_speed_margin: 0.2
+  ready_deadline_speed_std: 0.2
+  ready_deadline_speed_blend: 0.6
+  ready_deadline_final_window_s: 0.12
+  ready_deadline_target_step_class: 3
+  ready_stance_station_reach: 0.1
+  ready_stance_heading_gate_rad: 0.15
+  ready_stance_speed_gate: 0.2
+  ready_stance_width_weight: -0.3
+  ready_stance_width_lo: 0.22  # G1 v2: A3 0.25 x 0.87
+  ready_stance_width_hi: 0.30  # G1 v2: A3 0.35 x 0.87
+  ready_stance_width_std: 0.05
+  ready_foot_alignment_weight: -0.15
+  ready_foot_alignment_margin: 0.12
+  ready_foot_alignment_std: 0.25
+  ready_foot_alignment_max_blend: 0.5
+  ready_leg_settle_weight: -0.05
+  ready_leg_settle_margin: 0.3
+  ready_leg_settle_std: 0.8
+  strike_x_gate_margin_weight: -1.0
+  strike_x_gate_margin_margin: 0.015
+  strike_x_gate_margin_std: 0.02
+  strike_x_gate_margin_half_window_s: 0.04
+  idle_left_wrist_debt_weight: -0.4
+  idle_left_wrist_debt_position_margin: 0.02
+  idle_left_wrist_debt_position_std: 0.12
+  idle_left_wrist_debt_velocity_margin: 0.05
+  idle_left_wrist_debt_velocity_std: 0.25
+  idle_left_wrist_debt_velocity_blend: 0.25
+  idle_left_wrist_debt_max_blend: 0.75
+  waist_qdes_saturation_weight: null
+  waist_qdes_saturation_std: null
+  waist_qdes_saturation_max_blend: null
+  all_joint_qdes_barrier_weight: -0.65
+  all_joint_qdes_barrier_safe_margin_fraction: 0.08
+  all_joint_qdes_barrier_std_fraction: 0.03
+  all_joint_qdes_barrier_topk: 4
+  all_joint_qdes_barrier_topk_blend: 0.9
+  right_elbow_extension_debt_forehand_only: true
+  strike_x_gate_margin_forehand_scale: 0.75
+  strike_x_gate_margin_backhand_scale: 1.25
+  post_swing_xlock_weight: -0.45
+  post_swing_xlock_margin: 0.03
+  post_swing_xlock_std: 0.04
+  post_swing_xlock_t_lo: 0.10
+  post_swing_xlock_t_hi: 1.55
+  post_swing_xlock_forehand_scale: 1.0
+  post_swing_xlock_backhand_scale: 1.25
+  rally_heading_debt_forehand_scale: 1.25
+  rally_heading_debt_backhand_scale: 1.5
+  ready_deadline_target_step_classes:
+  - 1
+  - 2
+  - 3
+  post_swing_base_quiet_weight: -0.35
+  post_swing_base_quiet_std: 0.25
+  post_swing_base_quiet_margin: 0.08
+  post_swing_base_quiet_t_lo: 0.20
+  post_swing_base_quiet_t_hi: 1.55
+  post_swing_base_quiet_huber_tail: true
+  post_swing_leg_quiet_weight: -0.08
+  post_swing_leg_quiet_std: 0.8
+  post_swing_leg_quiet_margin: 0.3
+  post_swing_leg_quiet_t_lo: 0.20
+  post_swing_leg_quiet_t_hi: 1.55
+  post_swing_leg_quiet_huber_tail: true
+  settle_foot_slip_weight: -0.1
+  settle_foot_slip_std: 0.12
+  settle_foot_slip_margin: 0.03
+  settle_foot_slip_station_reach: 0.15
+  settle_foot_slip_pre_t_max: 1.1
+  settle_foot_slip_strike_t_post: 0.1
+  settle_foot_slip_post_t_lo: 0.2
+  settle_foot_slip_post_t_hi: 1.55
+  settle_foot_slip_huber_tail: true
+  rally_ready_root_height_debt_weight: -0.35
+  rally_ready_root_height_debt_min_height: 0.58  # D21: floor below the new 0.66 m ceiling (was 0.70); G1 v2: A3 0.98 x (0.76 / 1.068 pelvis ratio); the G1 pelvis stands at 0.76 m
+  rally_ready_root_height_debt_std: 0.05
+  rally_ready_root_height_debt_ready_t_lo: -0.1
+  rally_ready_root_height_debt_ready_t_hi: 1.1
+  rally_ready_root_height_debt_post_t_lo: 0.2
+  rally_ready_root_height_debt_post_t_hi: 1.55
+  post_swing_tilt_debt_weight: -1.5  # D21 (was -0.7)
+  post_swing_tilt_debt_margin: 0.1
+  post_swing_tilt_debt_std: 0.2
+  post_swing_tilt_debt_t_lo: 0.1
+  post_swing_tilt_debt_t_hi: 1.55
+racket:
+  target_mode: hitter_pure
+  normal_mode: velocity
+  base_target_x_range:
+  - 0.0
+  - 0.0
+  base_target_y_range:
+  - -0.35
+  - 0.35
+  station_y_step_range:
+  - 0.12
+  - 0.35
+  station_y_same_prob: 0.5
+  station_y_small_step_prob: 0.2
+  station_y_small_step_range:
+  - 0.03
+  - 0.12
+  station_side_explicit: true
+  ready_monitor_step_range:
+  - 0.0
+  - 0.35
+  # G1 v2: strike plane 0.58 -> 0.46 (x0.79), y bands x0.79, z box shoulder-relative (A3 [0.85, 1.30]
+  # is [shoulder-0.51, shoulder-0.06]; G1 shoulder 1.05 m, clamped to table top + 4 cm, extended to
+  # shoulder + 5 cm). Set in code by g1_recipe.apply_recipe; documented here.
+  pos_range_per_clip:
+    forehand:
+      x:
+      - 0.46
+      - 0.46
+      y:
+      - -0.38
+      - -0.32
+      z:
+      - 0.8
+      - 1.1
+    backhand:
+      x:
+      - 0.46
+      - 0.46
+      y:
+      - -0.1
+      - -0.04
+      z:
+      - 0.8
+      - 1.1
+  venue_tuple_contact_z_range:  # G1 v2: A3 (0.98, 1.26) shifted with the shoulder, clamped to the z box
+  - 0.84
+  - 1.1
+  vel_range_per_clip:
+    forehand:
+      x:
+      - 1.24
+      - 2.6
+      y:
+      - -0.31
+      - 0.69
+      z:
+      - 0.4
+      - 1.66
+    backhand:
+      x:
+      - 1.5
+      - 2.6
+      y:
+      - -0.66
+      - 0.4
+      z:
+      - 0.0
+      - 1.35
+  strike_phase: 0.40566038  # set in overrides (fist clip strike mark)
+  strike_phase_per_clip:
+  - 0.40566038
+  - 0.44444444
+  strike_window_s: 0.12
+  strike_success_pos_thresh: 0.075
+  clean_reference_strike_velocity: true
+  clean_strike_vel_window: 2
+  forehand_on_negative_y: true
+  mount_normal_axis: 1
+  mount_normal_sign: 1.0
+  mount_normal_sign_per_clip:
+  - 1.0
+  - -1.0
+  achieved_target_mix_prob: 0.0
+  adaptive_sigma: false
+  hold_until_settled: false
+  midswing_resample_prob: 0.0
+  midswing_resample_tts_floor: 0.3
+  target_delay_steps: 0
+  # V14 recovery is fed only by natural clip wraps in MotionCommand.
+  post_strike_capture_delays_s: []
+  target_jitter_pos_per_s: 0.0
+  target_jitter_vel_per_s: 0.0
+  target_noise_white: 0.0
+  target_noise_ar1_sigma: 0.0
+  target_noise_ar1_rho: 0.717
+  target_dropout_prob: 0.0
+  target_post_strike_dropout_s: 0.0
+  target_bias_per_swing: 0.0
+  vel_start_range_per_clip:
+    forehand:
+      x:
+      - 1.24
+      - 2.24
+      y:
+      - -0.31
+      - 0.69
+      z:
+      - 0.66
+      - 1.66
+    backhand:
+      x:
+      - 1.6
+      - 2.6
+      y:
+      - -0.66
+      - 0.34
+      z:
+      - 0.0
+      - 0.54
+  vel_planner_range_per_clip:
+    forehand:
+      x:
+      - 1.57
+      - 2.55
+      y:
+      - 0.1
+      - 0.52
+      z:
+      - 0.41
+      - 1.35
+    backhand:
+      x:
+      - 1.55
+      - 2.52
+      y:
+      - -0.18
+      - 0.29
+      z:
+      - 0.4
+      - 1.32
+  vel_planner_mix_prob: 0.75
+  vel_range_ramp_steps: 96000
+  station_y_positive_main_prob: 0.8
+  station_y_positive_main_step_range:
+  - 0.19
+  - 0.24
+  venue_tuple_enabled: true
+  venue_tuple_final_mix_prob: 0.25
+  venue_tuple_mix_mode: fixed_balanced_bank_v1
+  venue_tuple_bank_path: assets/venue_tuple/v17_r12_physical_tuple_bank.npz
+  venue_tuple_bank_receipt_path: assets/venue_tuple/v17_r12_physical_tuple_bank.receipt.json
+  venue_tuple_bank_schema_version: 2
+  venue_tuple_bank_min_rows_per_side: 50000
+  venue_tuple_unconditional_outcomes: true
+  venue_tuple_speed_limit_mps: 3.5
+  # Formal 6144-env training follows HitterV11/V14: only the analytic virtual
+  # ball is evaluated.  The rigid-body truth ball is opt-in from the bounded
+  # low-env audit script and is never part of this task recipe.
+  virtual_ball: true
+  physical_ball: false
+  physical_ball_impulse: false
+  physical_ball_substep: 1
+  base_mocap_enabled: true
+  base_mocap_orientation_enabled: true
+  # Fixed Build engineering assumptions, inherited from the reviewed V17-r12 full-pose path.
+  # They are not presented as measured transport latency.
+  base_mocap_delay_steps: 1
+  base_mocap_update_interval_steps: 1
+  base_mocap_position_noise_std:
+  - 0.003
+  - 0.003
+  - 0.005
+  base_mocap_orientation_noise_std_rad:
+  - 0.003491
+  - 0.003491
+  - 0.005236
+  base_mocap_extrinsic_residual_rpy_std_rad:
+  - 0.005236
+  - 0.005236
+  - 0.008727
+  base_mocap_dropout_prob: 0.01
+  base_mocap_velocity_ema_alpha: 0.25
+  base_mocap_max_age_s: 0.05
+  base_mocap_max_propagation_s: 0.05
+  # The actor always consumes the full-pose mocap schema, but all corruptions
+  # start at exactly zero.  This one-way gate is strike-only: no READY/stability
+  # release condition and no regression/backoff stage.
+  ability_curriculum_mode: one_way_strike_gate_v1
+  ability_min_exact_samples_per_side: 50.0
+  ability_min_completion_per_side: 0.55
+  ability_min_position_pass_per_side: 0.15
+  ability_min_composite: 0.03
+  ability_max_post_fall: 0.10
+  ability_gate_dwell_steps: 250
+  base_mocap_robustness_ramp_steps: 8000
+domain_rand:
+  link_mass_range:
+  - 0.85
+  - 1.15
+  # Balance (D19): random shoves, BeyondMimic-sized at full ramp (their G1 tracking recipe:
+  # x/y +-0.5 m/s, roll/pitch +-0.52 rad/s, yaw +-0.78 rad/s every 1-3 s); gentler cadence here.
+  # D21: bigger and more frequent than D19 (x/y 0.5, roll/pitch 0.4, yaw 0.6, every 3-6 s)
+  push_velocity_range:
+    x: [-0.8, 0.8]
+    y: [-0.8, 0.8]
+    z: [-0.15, 0.15]
+    roll: [-0.6, 0.6]
+    pitch: [-0.6, 0.6]
+    yaw: [-0.8, 0.8]
+  push_interval_s: [2.0, 5.0]
+  push_ramp_steps: 48000
+  # G1: the A3 message/passive kd randomizer (pd_mode a3_message_passive_nominal_cohort_v1) encodes the
+  # A3 drive split and refuses other assets; the G1 env installs the generic actuator-gain scale DR
+  # (events.randomize_pd_gains = mdp.randomize_actuator_gains), driven by this +-15 % band.
+  pd_gain_range:
+  - 0.85
+  - 1.15
+# G1: derived clips (joint-space transfer of the A3 pair; see the header).
+# D20: IK clips on the fist model (the joint-space clips hold the racket along the forearm).
+motion_file: ../motions/preprocessed/g1ikfist_hope_forehand.npz
+motion_file_2: ../motions/preprocessed/g1ikfist_hope_backhand.npz
+checkpoint_export_onnx: false
+# G1 v2: terminations.base_too_low.minimum_height 0.5 -> 0.40 (pelvis ratio), set in code by g1_recipe.
+build_contract:
+  actor_observation_dim: 104  # G1
+  action_dim: 29              # G1
+  forbidden_features:
+  - runtime_handoff
+  - qdes_projector
+  - qdes_rate_limiter
+  - executed_qdes_feedback
+  - ready_recovery_curriculum
+friction_contract:
+  robot_contact_bodies:  # G1 body names
+  - left_ankle_roll_link
+  - right_ankle_roll_link
+  ground_combine_mode: multiply
+  ground_static_friction: 1.0
+  ground_dynamic_friction: 1.0
+  robot_static_friction_range:
+  - 0.3
+  - 1.6
+  robot_dynamic_friction_range:
+  - 0.3
+  - 1.2
+  restitution_range:
+  - 0.0
+  - 0.5
+  make_consistent: true
+  joint_friction: legacy_v14_unidentified
+overrides:
+  commands.motion.eval_clip_sequence: [0]
+  commands.motion.fixed_clip_env_fraction_per_clip: 0.0
+  commands.racket_target.active_clip_ids: [0]
+  commands.racket_target.venue_tuple_bank_path: assets/venue_tuple/g1_fh_crosscourt_apex_bank_wide.npz
+  commands.racket_target.venue_tuple_bank_receipt_path: assets/venue_tuple/g1_fh_crosscourt_apex_bank_wide.receipt.json
+  commands.racket_target.venue_tuple_final_mix_prob: 1.0
+  # rally pace (3000 iterations x 24 steps = 72000 env steps of ramp)
+  commands.motion.rally_pace_prob: 0.6
+  commands.motion.rally_pace_ramp_steps: 72000
+  commands.motion.rally_pace_start_tts_range: [0.4, 0.83]
+  commands.motion.rally_pace_post_strike_range: [0.7, 1.0]
+  commands.racket_target.vb_timing_jitter_s: 0.03
+  commands.racket_target.vb_timing_jitter_ramp_steps: 72000
+  # Fist clip strike mark (2026-10-15): the fast part of the g1ikfist forehand swing is frames 41-46, so
+  # the strike is marked at frame 43 (43/106) instead of 41; at 41 the reference racket moves at only
+  # 1.41 m/s (old clips 2.3 m/s, bank targets ~2.5 m/s). Backhand unchanged (never sampled here).
+  commands.racket_target.strike_phase: 0.40566038
+  commands.racket_target.strike_phase_per_clip: [0.40566038, 0.44444444]
+  # Balance first (D21). The two new terms are installed at weight 0 by the G1 env cfg
+  # (config/g1/hope_env_cfg.py add_balance_terms: ceiling 0.66 m, CoM margin 0.03 m).
+  rewards.root_height_ceiling.weight: -1.0
+  rewards.com_support.weight: -2.0
+  rewards.upright.weight: -3.0
+  rewards.base_ang_vel_xy.weight: -0.15

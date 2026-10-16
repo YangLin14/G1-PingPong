@@ -34,6 +34,7 @@ only; G1 reach). See ``docs/UNITREE_G1.md``.
 """
 
 from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
@@ -113,6 +114,19 @@ def apply_unitree_g1(cfg) -> list[str]:
     return log
 
 
+def add_balance_terms(cfg) -> None:
+    """Balance-first reward terms (docs/g1_forehand/decisions.md D21), installed at weight 0 so every
+    existing task is unchanged; a task turns them on through ``overrides`` (rewards.<term>.weight)."""
+    cfg.rewards.root_height_ceiling = RewTerm(
+        func=mdp.root_height_ceiling_debt, weight=0.0,
+        params={"command_name": "racket_target", "max_height": 0.66, "std": 0.03})
+    cfg.rewards.com_support = RewTerm(
+        func=mdp.com_support_debt, weight=0.0,
+        params={"command_name": "racket_target",
+                "foot_body_names": ("left_ankle_roll_link", "right_ankle_roll_link"),
+                "margin": 0.03, "std": 0.05})
+
+
 @configclass
 class HOPEPingPongUnitreeG1EnvCfg(HOPEPingPongAgibotA3EnvCfg):
     """Full HOPE stack (imitation + racket objective) on the Unitree G1."""
@@ -137,3 +151,4 @@ class HitterPingPongUnitreeG1EnvCfg(HitterPingPongAgibotA3EnvCfg):
         super().__post_init__()
         apply_unitree_g1(self)
         g1_recipe.apply_recipe(self)
+        add_balance_terms(self)
