@@ -160,7 +160,22 @@ squeue -u $USER                    # list
 * Running jobs keep the code they started with. After pulling new code, restart the job to use it.
 * Smoke-test a new task before a long run:
   `sbatch --export=ALL,TASK=<task> hope_training/slurm/pip_env/g1_smoke.sbatch`.
-* **Balance run `g1_fh_bal` (D19), once zixian is back:** smoke-test the task, then warm-start it from the
+* * **GPUs to avoid: idx 0 and 5** (`AVOID_GPU_IDX`, default `0,5`). Slurm gives the lowest free index, so submit
+  with `--gres=rtx2080ti:2`: the job hides the bad GPU from CUDA and runs on the other one (log line
+  `[train] using GPU index N`). With `:1` it stops if it gets idx 0.
+* **Balance-first runs (D21), once CUDA works on zixian again:** smoke-test, then start both from `g1_fh_fist` `model_32299`:
+  ```bash
+  INIT=$(ls hope_training/whole_body_tracking/logs/rsl_rl/unitree_g1_hitter_pingpong/*_g1_fh_fist/model_32299.pt)
+  sbatch --gres=rtx2080ti:2 --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_FIST_STABLE_SWING hope_training/slurm/pip_env/g1_smoke.sbatch
+  for v in STABLE:g1_fh_stable STABLE_SWING:g1_fh_stable_swing; do
+    sbatch --gres=rtx2080ti:2 --job-name=hope-${v#*:} --output=$HOME/hope/slurm_logs/%x-%j.out \
+      --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_FIST_${v%%:*},RUN_NAME=${v#*:},TOTAL_ITERS=40300,INIT_CHECKPOINT=$INIT \
+      hope_training/slurm/pip_env/train.sbatch
+  done
+  ```
+  The startup log must list `rewards.root_height_ceiling.weight = -1.0`, `rewards.com_support.weight = -2.0`,
+  `rewards.upright.weight = -3.0` and the bigger `events.push_robot`. Check `root_height` going under ~0.68 m in progress.
+* *(Superseded by `g1_fh_fist`, kept for reference)* **Balance run `g1_fh_bal` (D19), once zixian is back:** smoke-test the task, then warm-start it from the
   newest `g1_fh_diag` checkpoint (use the real number in place of `<N>`):
   ```bash
   sbatch --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL hope_training/slurm/pip_env/g1_smoke.sbatch

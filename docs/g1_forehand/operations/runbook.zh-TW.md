@@ -162,7 +162,23 @@ squeue -u $USER                    # 列出 job
 ```
 把 `fall_rate` 和社團數字跟狀態紀錄（2026-10-14 17:00）的表格比較；用 seed 0、1、2，推擠強度 0.25 / 0.5 / 0.75 / 1.0。
 
-**平衡訓練 `g1_fh_bal`（D19），等 zixian 恢復後：** 先試跑，再從最新的 `g1_fh_diag` checkpoint 接著訓練（`<N>` 換成實際數字）：
+* **要避開的 GPU：idx 0 和 5**（`AVOID_GPU_IDX`，預設 `0,5`）。Slurm 會給編號最小的空 GPU，所以要用
+  `--gres=rtx2080ti:2` 送出：job 會把壞的那張對 CUDA 隱藏，用另一張跑（log 會有 `[train] using GPU index N`）。
+  用 `:1` 的話，拿到 idx 0 就會停止。
+* **平衡優先的訓練（D21），等 zixian 的 CUDA 恢復後：** 先跑 smoke，再兩個都從 `g1_fh_fist` `model_32299` 開始：
+  ```bash
+  INIT=$(ls hope_training/whole_body_tracking/logs/rsl_rl/unitree_g1_hitter_pingpong/*_g1_fh_fist/model_32299.pt)
+  sbatch --gres=rtx2080ti:2 --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_FIST_STABLE_SWING hope_training/slurm/pip_env/g1_smoke.sbatch
+  for v in STABLE:g1_fh_stable STABLE_SWING:g1_fh_stable_swing; do
+    sbatch --gres=rtx2080ti:2 --job-name=hope-${v#*:} --output=$HOME/hope/slurm_logs/%x-%j.out \
+      --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_FIST_${v%%:*},RUN_NAME=${v#*:},TOTAL_ITERS=40300,INIT_CHECKPOINT=$INIT \
+      hope_training/slurm/pip_env/train.sbatch
+  done
+  ```
+  啟動 log 裡要看到 `rewards.root_height_ceiling.weight = -1.0`、`rewards.com_support.weight = -2.0`、
+  `rewards.upright.weight = -3.0` 和變大的 `events.push_robot`。訓練中檢查 `root_height` 有沒有降到約 0.68 m 以下。
+
+*（已被 `g1_fh_fist` 取代，留著參考）* **平衡訓練 `g1_fh_bal`（D19），等 zixian 恢復後：** 先試跑，再從最新的 `g1_fh_diag` checkpoint 接著訓練（`<N>` 換成實際數字）：
 ```bash
 sbatch --export=ALL,TASK=HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL hope_training/slurm/pip_env/g1_smoke.sbatch
 sbatch --gres=rtx2080ti:1 --job-name=hope-g1-fh-bal --output=$HOME/hope/slurm_logs/%x-%j.out \

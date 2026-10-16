@@ -22,7 +22,7 @@ python3 -m venv .venv && .venv/bin/pip install -r a3_deploy/a3_deploy_example/re
 
 ### 叢集（SDSC Atlantis，`ssh sdsc-scc`）
 
-* 帳號 `tritondroids`，全社團共用 **32 CPU / 96 GB / 8 GPU**。Isaac 需要 RTX 顯卡，所以要用 `--gres=rtx2080ti:1`（節點 `zixian`，11 GB，driver 610.43）。一個訓練 run 只用一張 GPU。
+* 帳號 `tritondroids`，全社團共用 **32 CPU / 96 GB / 8 GPU**。Isaac 需要 RTX 顯卡，所以要用 `--gres=rtx2080ti:1`（idx 0 壞掉期間用 `:2`，見 runbook）（節點 `zixian`，11 GB，driver 610.43）。一個訓練 run 只用一張 GPU。
 * `zixian` 的 8 張 GPU 其他帳號也能用（10-11 有一個 `scc` 的 job 占了 4 張），所以社團配額 8 張不代表有 8 張空著。QOS `normal`（上限 4 小時）的 job 可以搶佔 QOS `long`（訓練用）的 job；被搶佔時 `train.sbatch` 會 requeue，從最新的 checkpoint 接續（最多重跑 100 個 iteration）。
 * 10-11 停機後，GPU `0000:61:00.0` 有一天讀不到，10-12 已經修好。`train.sbatch` 仍保留「CUDA 起不來就改用正常那張」的備援。
 * 檔案位置：`~/hope/{HOPE（本 repo）, isaac-venv, IsaacLab, syslibs, mocap, slurm_logs}`。

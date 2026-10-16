@@ -25,7 +25,7 @@ yellow trail is the ball; the red disc and arrow are the racket target (face and
 ### Cluster (SDSC Atlantis, `ssh sdsc-scc`)
 
 * Account `tritondroids`. The whole club shares **32 CPUs / 96 GB / 8 GPUs**. Isaac needs an RTX
-  GPU, so use `--gres=rtx2080ti:1` (node `zixian`, 11 GB, driver 610.43). One training run uses one GPU.
+  GPU, so use `--gres=rtx2080ti:1` (`:2` while idx 0 is broken, see the runbook) (node `zixian`, 11 GB, driver 610.43). One training run uses one GPU.
 * `zixian`'s 8 GPUs are also open to other accounts (on 10-11 an `scc` job held 4), so the club quota
   of 8 does not mean 8 are free. Jobs in QOS `normal` (4 h limit) can preempt QOS `long` (training);
   `train.sbatch` requeues and resumes from the newest checkpoint (up to 100 iterations are redone).

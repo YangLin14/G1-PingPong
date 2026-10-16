@@ -8,7 +8,7 @@ arrived); everything is designed so the sim-to-real path stays open.
 
 ## Current status (2026-10-16)
 
-* **Cluster:** no job of ours is running. GPU idx 5 is still avoided. `g1_fh_fist` (D20) finished at 32 299.
+* **Cluster:** no job of ours is running. **CUDA cannot start on zixian since 10-16 11:35** (GPU idx 0 failed at the end of 5719; idx 1 also fails); idx 0 and 5 are avoided. Balance-first runs (D21) are ready but not submitted. `g1_fh_fist` (D20) finished at 32 299.
 * **Best policy: `g1_fh_fist` `model_32299`** (fist grip, MuJoCo, deploy defaults, no aim offset, 240 balls):
   hits 100 %, at the apex ~95 %, legal return ~86 %, in the target zone ~26 %. With the aim offset (+0.14, −0.03) m: **42 % in zone**, 80 % legal (held-out balls, training paddle model).
   (Previous best, old grip `g1_fh_diag` `model_15700`: 35 % in zone with the aim offset.)

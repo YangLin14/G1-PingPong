@@ -18,6 +18,10 @@
 | `cfg/task/HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL.yaml` | `_FH_XC_RALLY` + 推擠（D19）。 |
 | `unitree/scripts/build_g1_pingpang_models.py` | 兩種球拍安裝（`Mount`）：`FOREARM`（原本的，張開的手）和 `FIST`（D20：握把橫穿拳頭、和前臂垂直）→ `unitree/URDF/g1_29dof_pingpang_fist/`，含產生的拳頭網格 `right_fist.STL`；`--check` 兩個都比對。 |
 | `robots/g1.py`、`scripts/train.py` | `G1_FIST_MOUNT_OFFSET/QUAT`、`G1_RACKET_MOUNTS`；task YAML 的 `g1_racket_mount: fist` 會換掉 Isaac 資產（獨立的 `assets/unitree_g1_fist`，沒有就自動準備）和球拍目標的安裝參數。 |
+| `tasks/tracking/mdp/hope_rewards.py`、`config/g1/hope_env_cfg.py` | D21：`root_height_ceiling_debt`（骨盆高於 `max_height` 的懲罰，Huber）和 `com_support_debt`（依質量加權的全身重心投影到地面，離兩個 ankle-roll link 連線超過 `margin` 的懲罰；質量在開機隨機化之後讀一次）。`add_balance_terms` 把兩個都裝到每個 G1 hitter 環境，**權重 0**（現有任務不變）；任務用 `overrides: rewards.<term>.weight` 開啟。指標 `root_height`、`com_height`、`com_support_offset`。 |
+| `cfg/task/HOPEPingPongUnitreeG1_FH_FIST_STABLE(_SWING).yaml` | D21 平衡優先的設定（見決策）。 |
+| `scripts/mujoco_pingpong_scene.py`、`scripts/mujoco_eval_onnx.py` | `scene.posture()`；每球的 JSON 多了 `posture`：平均骨盆高度、平均重心高度、重心離雙腳連線的平均 / 最大距離。 |
+| `slurm/pip_env/train.sbatch`、`g1_smoke.sbatch` | `AVOID_GPU_IDX` 預設改成 `0,5`。用 `--gres=rtx2080ti:2` 時，job 會把要避開的 GPU 對 CUDA 隱藏（`CUDA_VISIBLE_DEVICES` = 第一張好的，PCI 順序）；沒有好的就停止。smoke 第 0 步會印出 CUDA 看到的 GPU。 |
 | `retarget_a3_clip_to_g1_ik.py --mount fist` | 在握拳模型上做 IK 重定向 → `g1ikfist_hope_{forehand,backhand}`；持拍手臂只追球拍中心和拍面（擊球幀拍面誤差 8°）。 |
 | `cfg/task/HOPEPingPongUnitreeG1_FH_FIST.yaml` | `_FH_XC_RALLY_BAL` + 握拳安裝 + 握拳 clip（D20）。 |
 | `slurm/pip_env/g1_smoke.sbatch` | 加上 `AVOID_GPU_IDX` 保護（不會跑在 idx 5）。 |

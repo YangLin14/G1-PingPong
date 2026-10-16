@@ -9,6 +9,28 @@
 
 
 
+### 2026-10-16 13:10 — balance-first runs ready (D21); zixian cannot start CUDA, nothing submitted
+* **Why the robot stands tall:** in MuJoCo (new per-ball `posture` record) `model_32299` keeps the pelvis at
+  0.715–0.73 m, the CoM at ~0.66 m, and the CoM 1–4.5 cm off the line between the feet. The fist clip crouches at
+  0.675 m, but the recipe's `rally_ready_root_height_debt` (minimum 0.70 m, an A3 value rescaled) taxes
+  anything lower, so the policy was held up above its own reference.
+* **Reach is not a reason to stand tall:** upper-body IK puts the fist racket on 100 % of 200 bank strike
+  points for a pelvis at 0.71, 0.68, 0.66, 0.63 and 0.60 m.
+* **Built (D21):** two new reward terms (`root_height_ceiling`, `com_support`; formulas checked by hand on test
+  numbers) and two tasks: `_FH_FIST_STABLE` (balance only) and `_FH_FIST_STABLE_SWING` (balance + sharper racket
+  rewards), both from `model_32299` to 40 300 (~8000 iterations, ~18 h each, run side by side).
+* **Smoke test:** the startup log of 5798 lists every new setting (ceiling −1, CoM −2, upright −3, roll/pitch rate
+  −0.15, tilt −1.5, floor 0.58 m, racket std 0.10 / 0.40, shoves 0.8 m/s every 2–5 s). But Isaac never ran:
+  **CUDA cannot start on zixian** (`CUDA error 999: unknown error` at the first context), first on GPU idx 0
+  (5798), then on idx 1 too (5800). So the new terms have not run in Isaac yet.
+* **What happened to the GPUs:** 5719 printed a PhysX CUDA memory-allocator warning on its last iteration
+  (10-16 11:35), saved `model_32299`, then hung (cancelled 11:45). Since then no new CUDA context starts.
+  Same pattern as idx 5 on 10-12, which ended with the node out for ~21 h. Oren's 4218 (started before) is still running.
+* **Precautions:** idx 0 added to the avoid list (`AVOID_GPU_IDX=0,5`); jobs can now take 2 GPUs and hide the
+  bad one from CUDA. **No further jobs submitted** so the node is not touched more; SDSC has to look at it.
+* Next, when CUDA works again: smoke test, then the two runs (runbook §4). Judge by MuJoCo: falls at 0.75 / 1.0 m/s,
+  pelvis height, then hits / in-zone with the aim offset.
+
 ### 2026-10-16 12:20 — aim offset for the fist policy `model_32299`
 * Method (as D18): measure the median miss (landing − aim) on seeds 0–2 (120 balls), set the offset to
   minus that, test on seeds 3–5 (120 other balls). Fist model, deploy defaults.
