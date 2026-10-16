@@ -9,7 +9,7 @@ arrived); everything is designed so the sim-to-real path stays open.
 ## Current status (2026-10-14)
 
 * **Cluster:** zixian is back (10-14 17:05). `g1_fh_diag` finished (best in MuJoCo: `model_15700`; later ones regress);
-  GPU idx 5 is still avoided; the **fist-grip run `g1_fh_fist`** (job 5719, D20) is at 23 700 / 32 300 (~19 h left);
+  GPU idx 5 is still avoided; the **fist-grip run `g1_fh_fist`** (job 5719, D20) is at 26 300 / 32 300 (~13 h left);
   in the push test it does not fall up to 0.5 m/s (old best: 6 %).
 * **Best policy** (`g1_fh_diag` `model_15700`, MuJoCo, deploy defaults): hits 100 %, at the apex 97 %,
   legal return 82 %; with the aim offset (D18) 35 % land in the target zone.

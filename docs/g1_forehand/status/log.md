@@ -8,6 +8,28 @@
 
 
 
+
+### 2026-10-15 20:30 — fist run at 26 300: three times more in-zone returns in MuJoCo
+* 5719 at 26 307 / 32 300, 7.95 s/it, ETA ~13 h. New checkpoints go to a new directory on each resume
+  (`2026-10-15_13-48-31_g1_fh_fist`).
+* Isaac (progress.sh): flat since the strike-mark change (legal 43–47 %, velocity pass ~35 %).
+* MuJoCo (fist model, 120 balls per row, same seeds; no aim offset):
+
+  | checkpoint | shove | falls | hits | legal | in zone | club success |
+  |---|---:|---:|---:|---:|---:|---:|
+  | `model_23400` | none | 0 % | 93 % | 84 % | 3.3 % | 2.5 % |
+  | `model_26300` | none | 0 % | **98 %** | 76 % | **12.5 %** | **10.8 %** |
+  | `model_23400` | 0.5 | 0 % | 88 % | 66 % | 4.2 % | 4.2 % |
+  | `model_26300` | 0.5 | 0 % | **95 %** | 65 % | 8.3 % | 7.5 % |
+  | `model_23400` | 1.0 | 3.3 % | 69 % | 44 % | 2.5 % | 1.7 % |
+  | `model_26300` | 1.0 | 9.2 % | 71 % | 48 % | 5.0 % | 4.2 % |
+
+* Where the balls go (unpushed): 26 300 hits deeper: into the net / short 15 → 8 of the hits, the
+  on-table miss is 25 cm short instead of 42 cm; but 22 hits (was 3) go over the net and off the table.
+  Apex timing unchanged (91–93 %). So the returns are faster and longer; the aim offset (D18) has to be
+  re-measured for the fist policy, which should turn many of the off-table balls into hits.
+* Balance at ≤ 0.5 m/s still 0 % falls; at 1 m/s 9 % (was 3 %): watch it at the next check.
+
 ### 2026-10-15 15:10 — fist run continues with the strike marked at frame 43
 * `HOPEPingPongUnitreeG1_FH_FIST` now sets `commands.racket_target.strike_phase(_per_clip)` to 0.4057 (frame 43)
   through `overrides` (the `racket:` block of the YAML is documentation only; the code value was 0.3868).
