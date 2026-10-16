@@ -18,7 +18,7 @@
 * **做好的東西（D21）：** 兩個新的獎勵項（`root_height_ceiling`、`com_support`；公式用測試數字手算驗證過），
   兩個任務：`_FH_FIST_STABLE`（只改平衡）和 `_FH_FIST_STABLE_SWING`（平衡 + 更嚴格的球拍獎勵），
   都從 `model_32299` 練到 40 300（約 8000 圈，各約 18 小時，兩個同時跑）。
-* **Smoke 測試：** 5798 的啟動 log 列出了所有新設定（上限 −1、重心 −2、直立 −3、roll/pitch 角速度 −0.15、
+* **Smoke 測試：** 5798 的啟動 log 列出了所有新設定（上限 −1、重心 −2、傾斜懲罰（`upright`）−3、roll/pitch 角速度 −0.15、
   傾斜 −1.5、下限 0.58 m、球拍 std 0.10 / 0.40、推擠 0.8 m/s 每 2–5 秒）。但 Isaac 根本沒跑起來：
   **zixian 無法啟動 CUDA**（第一個 context 就 `CUDA error 999: unknown error`），先是 GPU idx 0（5798），
   再來 idx 1 也一樣（5800）。所以新的獎勵項還沒在 Isaac 裡跑過。
