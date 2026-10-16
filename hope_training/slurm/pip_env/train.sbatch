@@ -21,20 +21,28 @@ set -uo pipefail
 source "$SLURM_SUBMIT_DIR/hope_training/slurm/pip_env/env.sh" 2>/dev/null || source "$HOME/hope/HOPE/hope_training/slurm/pip_env/env.sh"
 TASK="${TASK:-HOPEPingPongUnitreeG1_FH_XC}"; RUN_NAME="${RUN_NAME:-g1_fh_xc}"
 TOTAL_ITERS="${TOTAL_ITERS:-20000}"; NUM_ENVS="${NUM_ENVS:-4096}"; EXPERIMENT="${EXPERIMENT:-unitree_g1_hitter_pingpong}"
-# Never run on a known-broken GPU. AVOID_GPU_IDX lists Slurm GPU indices on zixian (default 5 =
-# 0000:B2:00.0, which fell off the bus on 2026-10-12 and crashed a run). The check reads only
-# the job's GPU indices from Slurm (this cluster sets neither SLURM_JOB_GPUS nor CUDA_VISIBLE_DEVICES)
-# and never touches the device. If Slurm hands out a listed GPU, the job stops before Isaac starts;
-# resubmit (Slurm gives the lowest free index) and consider reporting the GPU to SDSC.
-AVOID_GPU_IDX="${AVOID_GPU_IDX-5}"
+# Never run on a known-broken GPU. AVOID_GPU_IDX lists Slurm GPU indices on zixian (default 0,5:
+# 5 = 0000:B2:00.0 fell off the bus on 2026-10-12; 0 = 0000:3D:00.0 failed at the end of job 5719
+# on 2026-10-16 and now returns CUDA error 999). The check reads only the job's GPU indices from Slurm
+# (this cluster sets neither SLURM_JOB_GPUS nor CUDA_VISIBLE_DEVICES; ConstrainDevices=yes) and never
+# touches a listed device. Slurm hands out the lowest free index, so a broken idx 0 would be picked
+# every time: submit with --gres=rtx2080ti:2 and the job hides the listed GPU from CUDA
+# (CUDA_VISIBLE_DEVICES = the first good one, PCI order = Slurm index order on zixian). With no good
+# GPU in the allocation the job stops before Isaac starts.
+AVOID_GPU_IDX="${AVOID_GPU_IDX-0,5}"
 job_gpus=$(scontrol show job -d "$SLURM_JOB_ID" | grep -oE 'IDX:[0-9,-]+' | head -1 | cut -d: -f2)
-job_gpus=$(for r in ${job_gpus//,/ }; do seq "${r%-*}" "${r#*-}"; done)
+job_gpus=$(for r in ${job_gpus//,/ }; do seq "${r%-*}" "${r#*-}"; done | sort -n)
 echo "[train] GPU index(es): ${job_gpus//$'\n'/ }"
+ordinal=0; use_ordinal=""; use_idx=""
 for g in $job_gpus; do
-  for bad in ${AVOID_GPU_IDX//,/ }; do
-    [ "$g" = "$bad" ] && { echo "[train] allocated GPU index $g is in AVOID_GPU_IDX=$AVOID_GPU_IDX; not starting" >&2; exit 1; }
-  done
+  bad_gpu=0
+  for bad in ${AVOID_GPU_IDX//,/ }; do [ "$g" = "$bad" ] && bad_gpu=1; done
+  if [ $bad_gpu = 0 ] && [ -z "$use_ordinal" ]; then use_ordinal=$ordinal; use_idx=$g; fi
+  ordinal=$((ordinal + 1))
 done
+[ -n "$use_ordinal" ] || { echo "[train] every allocated GPU is in AVOID_GPU_IDX=$AVOID_GPU_IDX; not starting (resubmit with --gres=rtx2080ti:2)" >&2; exit 1; }
+export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=$use_ordinal
+echo "[train] using GPU index $use_idx (CUDA_VISIBLE_DEVICES=$use_ordinal)"
 cd "$WBT"
 set +u; source setup_train_env.sh; set -u
 echo "[train] job=$SLURM_JOB_ID restart=${SLURM_RESTART_COUNT:-0} host=$(hostname) $(date) task=$TASK run=$RUN_NAME total=$TOTAL_ITERS envs=$NUM_ENVS"

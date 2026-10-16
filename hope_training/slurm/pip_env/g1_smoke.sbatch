@@ -14,25 +14,34 @@
 set -uo pipefail
 source "$SLURM_SUBMIT_DIR/hope_training/slurm/pip_env/env.sh" 2>/dev/null || source "$HOME/hope/HOPE/hope_training/slurm/pip_env/env.sh"
 TASK="${TASK:-HOPEPingPongUnitreeG1}"
-# Never run on a known-broken GPU. AVOID_GPU_IDX lists Slurm GPU indices on zixian (default 5 =
-# 0000:B2:00.0, which fell off the bus on 2026-10-12 and crashed a run). The check reads only
-# the job's GPU indices from Slurm (this cluster sets neither SLURM_JOB_GPUS nor CUDA_VISIBLE_DEVICES)
-# and never touches the device. If Slurm hands out a listed GPU, the job stops before Isaac starts;
-# resubmit (Slurm gives the lowest free index) and consider reporting the GPU to SDSC.
-AVOID_GPU_IDX="${AVOID_GPU_IDX-5}"
+# Never run on a known-broken GPU. AVOID_GPU_IDX lists Slurm GPU indices on zixian (default 0,5:
+# 5 = 0000:B2:00.0 fell off the bus on 2026-10-12; 0 = 0000:3D:00.0 failed at the end of job 5719
+# on 2026-10-16 and now returns CUDA error 999). The check reads only the job's GPU indices from Slurm
+# (this cluster sets neither SLURM_JOB_GPUS nor CUDA_VISIBLE_DEVICES; ConstrainDevices=yes) and never
+# touches a listed device. Slurm hands out the lowest free index, so a broken idx 0 would be picked
+# every time: submit with --gres=rtx2080ti:2 and the job hides the listed GPU from CUDA
+# (CUDA_VISIBLE_DEVICES = the first good one, PCI order = Slurm index order on zixian). With no good
+# GPU in the allocation the job stops before Isaac starts.
+AVOID_GPU_IDX="${AVOID_GPU_IDX-0,5}"
 job_gpus=$(scontrol show job -d "$SLURM_JOB_ID" | grep -oE 'IDX:[0-9,-]+' | head -1 | cut -d: -f2)
-job_gpus=$(for r in ${job_gpus//,/ }; do seq "${r%-*}" "${r#*-}"; done)
+job_gpus=$(for r in ${job_gpus//,/ }; do seq "${r%-*}" "${r#*-}"; done | sort -n)
 echo "[smoke] GPU index(es): ${job_gpus//$'\n'/ }"
+ordinal=0; use_ordinal=""; use_idx=""
 for g in $job_gpus; do
-  for bad in ${AVOID_GPU_IDX//,/ }; do
-    [ "$g" = "$bad" ] && { echo "[smoke] allocated GPU index $g is in AVOID_GPU_IDX=$AVOID_GPU_IDX; not starting" >&2; exit 1; }
-  done
+  bad_gpu=0
+  for bad in ${AVOID_GPU_IDX//,/ }; do [ "$g" = "$bad" ] && bad_gpu=1; done
+  if [ $bad_gpu = 0 ] && [ -z "$use_ordinal" ]; then use_ordinal=$ordinal; use_idx=$g; fi
+  ordinal=$((ordinal + 1))
 done
+[ -n "$use_ordinal" ] || { echo "[smoke] every allocated GPU is in AVOID_GPU_IDX=$AVOID_GPU_IDX; not starting (resubmit with --gres=rtx2080ti:2)" >&2; exit 1; }
+export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=$use_ordinal
+echo "[smoke] using GPU index $use_idx (CUDA_VISIBLE_DEVICES=$use_ordinal)"
 OUT="$HOPE_ROOT/g1_smoke/$SLURM_JOB_ID"; mkdir -p "$OUT"
 cd "$WBT"
 set +u; source setup_train_env.sh; set -u
 py() { PYTHONPATH="${HOPE_PYTHONPATH}${PYTHONPATH:+:$PYTHONPATH}" timeout -k 30 "$1" "$ISAAC_PYTHON" "${@:2}"; }
 step() { echo; echo "### $*"; }
+step "0. which GPU CUDA sees"; py 2m -c "import torch; p=torch.cuda.get_device_properties(0); print('[smoke] cuda devices', torch.cuda.device_count(), 'bus', getattr(p, 'pci_bus_id', '?'), p.name)"
 step "1. prepare G1 asset"
 py 10m scripts/prepare_g1_isaac_asset.py --force && py 10m scripts/prepare_g1_isaac_asset.py --check || exit 2
 step "2. pin joint order";      py 20m -u scripts/check_g1_asset_isaac.py; echo "[smoke] pin exit=$?"
