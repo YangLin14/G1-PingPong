@@ -4,8 +4,7 @@
 
 ### 2026-10-17 00:15 — zixian fixed (rebooted); balance-first runs (D21) started
 * **Node:** zixian was rebooted on 10-16 at 15:56 (Slurm `BootTime`). A plain torch CUDA probe (5856) works on
-  idx 1. We still never use idx 0 or 5. Oren's `hope-g1-sidecar` jobs fail every 30 min since the reboot
-  (exit 1). We cannot read his logs, so we don't know if that is the GPU.
+  idx 1. We still never use idx 0 or 5.
 * **Smoke 5857** (`_FH_FIST_STABLE_SWING`, idx 1): every step passes. Isaac now really runs the new terms:
   `root_height_ceiling` and `com_support` show up in the reward table and in `Episode_Reward/*`.
   Kit prints "Skipping NVIDIA GPU due CUDA being in bad state" (not in 5719). This is the renderer. It sees
