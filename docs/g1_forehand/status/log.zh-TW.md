@@ -2,6 +2,14 @@
 
 [English](log.md) · [文件目錄](../README.zh-TW.md)
 
+### 2026-10-17 00:15 — zixian 修好了（重開機）；平衡優先的訓練（D21）開始跑
+* **節點：** zixian 在 10-16 15:56 重開過（Slurm `BootTime`）。在 idx 1 上跑單純的 torch CUDA 測試（5856）是正常的。我們還是不用 idx 0 和 5。
+  重開之後，Oren 的 `hope-g1-sidecar` 每 30 分鐘失敗一次（exit 1）。我們讀不到他的 log，所以不知道是不是 GPU 的問題。
+* **Smoke 5857**（`_FH_FIST_STABLE_SWING`，idx 1）：每一步都通過。Isaac 這次真的有跑新的項目：`root_height_ceiling` 和 `com_support` 有出現在獎勵表和 `Episode_Reward/*` 裡。
+  Kit 會印出「Skipping NVIDIA GPU due CUDA being in bad state」，5719 沒有這行。這是渲染器的訊息：它看得到分配到的兩張 GPU，但 CUDA 只看得到一張（`CUDA_VISIBLE_DEVICES`）。物理照常在 `cuda:0`（也就是選中的那張）上跑。
+* **已開始：** 5858 `g1_fh_stable`（idx 1）和 5859 `g1_fh_stable_swing`（idx 3）。兩個都從 `model_32299` 接著訓練，跑到 40 300。
+  速度是每圈 5.5 / 6.5 秒，所以各要約 15 小時（預計 10-17 15:00 左右跑完）。
+
 
 
 

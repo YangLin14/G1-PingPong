@@ -6,9 +6,9 @@ What the Triton Droids team built on top of HOPE and the club's G1 port: a G1 th
 cross-court forehand into one of four target zones. Simulation only for now (the G1 has not
 arrived); everything is designed so the sim-to-real path stays open.
 
-## Current status (2026-10-16)
+## Current status (2026-10-17)
 
-* **Cluster:** no job of ours is running. **CUDA cannot start on zixian since 10-16 11:35** (GPU idx 0 failed at the end of 5719; idx 1 also fails); idx 0 and 5 are avoided. Balance-first runs (D21) are ready but not submitted. `g1_fh_fist` (D20) finished at 32 299.
+* **Cluster:** zixian was rebooted on 10-16 and CUDA works again. We still avoid idx 0 and 5. The balance-first runs (D21) are running: 5858 `g1_fh_stable` and 5859 `g1_fh_stable_swing`. Both start from `model_32299` and run to 40 300 (ETA 10-17 ~15:00). `g1_fh_fist` (D20) finished at 32 299.
 * **Best policy: `g1_fh_fist` `model_32299`** (fist grip, MuJoCo, deploy defaults, no aim offset, 240 balls):
   hits 100 %, at the apex ~95 %, legal return ~86 %, in the target zone ~26 %. With the aim offset (+0.14, −0.03) m: **42 % in zone**, 80 % legal (held-out balls, training paddle model).
   (Previous best, old grip `g1_fh_diag` `model_15700`: 35 % in zone with the aim offset.)
