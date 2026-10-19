@@ -11277,6 +11277,12 @@ class RacketTargetCommandCfg(CommandTermCfg):
     station_y_positive_main_prob: float = 0.0
     station_y_positive_main_step_range: tuple[float, float] | None = None
     station_side_explicit: bool = False
+    # Planted-feet termination (feet_planted_violation; 0 = off): end the episode when a foot slides
+    # more than feet_planted_max_disp (m) from where it was at the episode's first step, or lifts its
+    # ankle more than feet_planted_max_lift (m) above the flat-foot height. Read by the termination
+    # term so a task can switch it on through ``overrides`` (dict params cannot be overridden).
+    feet_planted_max_disp: float = 0.0
+    feet_planted_max_lift: float = 0.0
     # Deploy-parity readiness thresholds.  They are read-only diagnostics in legacy tasks.  A task
     # that explicitly registers ``ArmDeadlineMiss`` (currently FinalV2Plus only) uses the same single
     # source of truth to make one decision at the exogenous arm deadline: ready -> release; otherwise

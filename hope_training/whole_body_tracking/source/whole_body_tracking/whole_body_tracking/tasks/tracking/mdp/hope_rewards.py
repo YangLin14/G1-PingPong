@@ -4029,3 +4029,100 @@ def com_support_debt(
     cmd.metrics["com_height"] = com[:, 2]
     cmd.metrics["com_support_offset"] = offset
     return _huber(torch.clamp(offset - float(margin), min=0.0) / float(std))
+
+
+# --- Foot-motion terms (docs/g1_forehand/decisions.md D22): keep the feet still -------------------
+# Ankle-roll link height when the G1 foot is flat on the ground (MuJoCo fist model keyframe: 0.0368 m).
+G1_FLAT_ANKLE_Z = 0.037
+
+
+def _foot_ids(cmd, foot_body_names) -> list[int]:
+    ids = getattr(cmd, "_still_foot_ids", None)
+    if ids is None:
+        ids = cmd.robot.find_bodies(list(foot_body_names), preserve_order=True)[0]
+        if len(ids) != 2:
+            raise RuntimeError(f"foot terms need exactly two foot bodies, got {ids}")
+        cmd._still_foot_ids = ids
+    return ids
+
+
+def _feet_anchor_xy(env: ManagerBasedRLEnv, cmd, ids) -> torch.Tensor:
+    """Foot xy at each episode's first step (re-taken after every reset), cached on the command."""
+    pos = cmd.robot.data.body_link_pos_w[:, ids, :2]
+    anchor = getattr(cmd, "_feet_anchor", None)
+    if anchor is None or anchor.shape != pos.shape:
+        anchor = pos.clone()
+        cmd._feet_anchor = anchor
+    fresh = env.episode_length_buf <= 1
+    if bool(fresh.any()):
+        anchor[fresh] = pos[fresh]
+    return anchor
+
+
+def foot_motion_debt(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    foot_body_names: tuple[str, str] = ("left_ankle_roll_link", "right_ankle_roll_link"),
+    speed_margin: float = 0.05,
+    speed_std: float = 0.2,
+    lift_margin: float = 0.01,
+    lift_std: float = 0.02,
+    flat_ankle_z: float = G1_FLAT_ANKLE_Z,
+) -> torch.Tensor:
+    """Cost for moving the feet at all (always on): planar foot speed above ``speed_margin`` plus
+    ankle lift above flat-foot height + ``lift_margin``; Huber per foot, summed over both feet."""
+    if speed_std <= 0.0 or lift_std <= 0.0:
+        raise ValueError("foot_motion_debt requires positive stds")
+    cmd = _cmd(env, command_name)
+    ids = _foot_ids(cmd, foot_body_names)
+    data = cmd.robot.data
+    speed = torch.linalg.norm(data.body_link_lin_vel_w[:, ids, :2], dim=-1)
+    lift = data.body_link_pos_w[:, ids, 2] - float(flat_ankle_z)
+    cmd.metrics["foot_planar_speed_max"] = speed.max(dim=-1).values
+    cmd.metrics["foot_lift_max"] = lift.max(dim=-1).values
+    cost = _huber(torch.clamp(speed - float(speed_margin), min=0.0) / float(speed_std))
+    cost = cost + _huber(torch.clamp(lift - float(lift_margin), min=0.0) / float(lift_std))
+    return cost.sum(dim=-1)
+
+
+def foot_displacement_debt(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    foot_body_names: tuple[str, str] = ("left_ankle_roll_link", "right_ankle_roll_link"),
+    margin: float = 0.02,
+    std: float = 0.05,
+) -> torch.Tensor:
+    """Cost for a foot being away from where it stood at the episode's first step (always on)."""
+    if margin < 0.0 or std <= 0.0:
+        raise ValueError("foot_displacement_debt requires margin >= 0 and std > 0")
+    cmd = _cmd(env, command_name)
+    ids = _foot_ids(cmd, foot_body_names)
+    anchor = _feet_anchor_xy(env, cmd, ids)
+    disp = torch.linalg.norm(cmd.robot.data.body_link_pos_w[:, ids, :2] - anchor, dim=-1)
+    cmd.metrics["foot_displacement_max"] = disp.max(dim=-1).values
+    return _huber(torch.clamp(disp - float(margin), min=0.0) / float(std)).sum(dim=-1)
+
+
+def feet_planted_violation(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    foot_body_names: tuple[str, str] = ("left_ankle_roll_link", "right_ankle_roll_link"),
+    flat_ankle_z: float = G1_FLAT_ANKLE_Z,
+) -> torch.Tensor:
+    """Termination: a foot slid more than ``cfg.feet_planted_max_disp`` from its episode-start spot or
+    lifted more than ``cfg.feet_planted_max_lift``. Off (never true) while both thresholds are 0."""
+    cmd = _cmd(env, command_name)
+    max_disp = float(getattr(cmd.cfg, "feet_planted_max_disp", 0.0))
+    max_lift = float(getattr(cmd.cfg, "feet_planted_max_lift", 0.0))
+    out = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+    if max_disp <= 0.0 and max_lift <= 0.0:
+        return out
+    ids = _foot_ids(cmd, foot_body_names)
+    anchor = _feet_anchor_xy(env, cmd, ids)
+    pos = cmd.robot.data.body_link_pos_w[:, ids]
+    started = env.episode_length_buf > 1
+    if max_disp > 0.0:
+        out |= torch.linalg.norm(pos[..., :2] - anchor, dim=-1).max(dim=-1).values > max_disp
+    if max_lift > 0.0:
+        out |= (pos[..., 2] - float(flat_ankle_z)).max(dim=-1).values > max_lift
+    return out & started

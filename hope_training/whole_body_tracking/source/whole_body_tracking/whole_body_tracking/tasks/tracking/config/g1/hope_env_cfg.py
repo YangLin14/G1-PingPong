@@ -35,6 +35,7 @@ only; G1 reach). See ``docs/UNITREE_G1.md``.
 
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
@@ -127,6 +128,21 @@ def add_balance_terms(cfg) -> None:
                 "margin": 0.03, "std": 0.05})
 
 
+def add_foot_terms(cfg) -> None:
+    """Keep-the-feet-still terms (docs/g1_forehand/decisions.md D22), installed off: rewards at weight 0
+    and a termination that stays false until ``commands.racket_target.feet_planted_max_*`` > 0."""
+    feet = ("left_ankle_roll_link", "right_ankle_roll_link")
+    cfg.rewards.foot_motion = RewTerm(
+        func=mdp.foot_motion_debt, weight=0.0,
+        params={"command_name": "racket_target", "foot_body_names": feet})
+    cfg.rewards.foot_displacement = RewTerm(
+        func=mdp.foot_displacement_debt, weight=0.0,
+        params={"command_name": "racket_target", "foot_body_names": feet})
+    cfg.terminations.feet_planted = DoneTerm(
+        func=mdp.feet_planted_violation,
+        params={"command_name": "racket_target", "foot_body_names": feet})
+
+
 @configclass
 class HOPEPingPongUnitreeG1EnvCfg(HOPEPingPongAgibotA3EnvCfg):
     """Full HOPE stack (imitation + racket objective) on the Unitree G1."""
@@ -152,3 +168,4 @@ class HitterPingPongUnitreeG1EnvCfg(HitterPingPongAgibotA3EnvCfg):
         apply_unitree_g1(self)
         g1_recipe.apply_recipe(self)
         add_balance_terms(self)
+        add_foot_terms(self)
