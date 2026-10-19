@@ -2,6 +2,26 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-19 16:30 — D22 v1 still/planted fail under shoves; restarted with a recovery grace (v2)
+* As the shoves ramped up (0 → 0.8 m/s over the first 2000 iterations), the two foot-constrained jobs got
+  worse every 250 iterations, while `g1_fh_ss16k` stayed at 0 falls (share of ended episodes):
+
+  | iteration | ss16k falls | still16k falls | planted16k ended by foot rule | planted16k episode length |
+  |---:|---:|---:|---:|---:|
+  | 40 500 | 0 % | 0.1 % | 38 % | 344 |
+  | 41 000 | 0 % | 1.7 % | 58 % | 297 |
+  | 41 250 | 0 % | 8 % | 77 % | 242 |
+  | 41 500 | 0 % | **34 %** | **89 %** | 198 |
+
+  Without a step the robot cannot absorb an 0.8 m/s shove: `still` (stepping costs) falls, `planted` breaks the
+  foot rule. The hitting metric also dropped (velocity pass ~15 % vs 34 % in ss16k). This matches the survey:
+  no team plants the feet, and stepping is what saves a robot from shoves.
+* **v2 (user's choice):** v1 still/planted stopped at ~41 750 (checkpoints 40 500 and 41 000 kept). New setting
+  `foot_push_grace_s: 0.8`: the foot costs and the planted rule are off for 0.8 s after each shove, and the feet's
+  reference spot follows the feet then, so a recovery step is free and its landing spot becomes the new spot.
+  Everywhere else the feet must stay still. Runs `g1_fh_still16k_v2` and `g1_fh_planted16k_v2`, again from
+  `model_40299` to 44 300; `g1_fh_ss16k` continues.
+
 ### 2026-10-19 14:30 — deploy fix removes the stepping; three "feet still" jobs (D22) on Antioch
 * **Fix (lifecycle `hold_last_target`, on for the G1):** after contact the policy now keeps seeing the last
   ball's target with time-to-strike running negative (floor −1.26 s) until the next ball, as in training.
