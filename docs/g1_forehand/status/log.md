@@ -2,6 +2,27 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-19 12:45 — training moved to Antioch (cloud GPU); setup tested
+* **Why:** the user switched training from the SDSC cluster (broken GPUs on zixian) to Antioch.
+* **Setup** (`antioch_sim/`, usage in [antioch_sim/README.md](../../../antioch_sim/README.md)): engine `base` + our
+  own Dockerfile with the cluster's exact stack (Isaac Sim 5.1, Isaac Lab v2.3.2, torch 2.7.0+cu128, rsl-rl 3.1.2;
+  `cluster-constraints.txt` is the cluster venv's pip freeze). Antioch's own engines are Isaac Sim 6 / Isaac Lab
+  3.0, which would need a port of HOPE and could change how checkpoints behave. GPU: 1× RTX PRO 6000 Blackwell
+  (96 GB), 24 CPU cores, us-central. Launcher `hope_training/antioch/train.sh` = `train.sbatch` without Slurm.
+* **Test:** `model_40299` resumed for 20 iterations on `_FH_FIST_STABLE_SWING`: runs, the D21 terms are active,
+  value loss 0.05. The SMPL models, `artifacts/` and `.git` are not uploaded (checked on the session).
+* **Speed:** 4096 envs = ~16k steps/s, 6.0 s per iteration: **the same as the 2080 Ti**. Collection takes 5.9 s
+  of it whatever the GPU, so the step is bound by per-step overhead (many small Python/GPU calls), not GPU compute.
+  16384 envs fit and run at 45-61k steps/s (6.4-8.7 s per iteration, 3-4× the samples) but change the PPO batch;
+  not adopted without a decision.
+* **Problems found and fixed:** (1) the base image points `uv` at its Python 3.12, so every install names the
+  3.11 venv; (2) Isaac's USD libraries need `libgomp1` and `libatomic1`; (3) a download timeout from the PyTorch
+  index (longer timeout + retries); (4) Antioch sync skips git-ignored files even when committed, so the four
+  `assets/venue_tuple/g1_fh_*` bank files are copied with `antioch_sim/push_ignored.sh`; (5) after a Python error
+  Isaac hung in shutdown and kept the GPU busy for 30 min (as 5719 did on the cluster): `train.sh` now has a
+  watchdog that kills it 300 s after an error or the final save (tested).
+* Session released; nothing running. Session files are deleted on release: copy checkpoints home first.
+
 ### 2026-10-19 02:30 — cause of the post-hit sideways step: the eval/deploy "ready" target is on the wrong side
 * **Isaac does not do it.** `trace_base_motion.py` (job 6069, 256 envs × 30 s, training task with shoves,
   1706 strikes): after the strike the pelvis stays within ~1 cm until the clip ends (+1.3 s), then moves

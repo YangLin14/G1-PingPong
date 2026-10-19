@@ -61,4 +61,4 @@
 | `tests/test_ball_perception.py` | 4 個測試：無雜訊的擬合和延遲、反彈切段、preset、每顆球固定的旋轉估計誤差。 |
 | `docs/g1_forehand/plans/serve_side_backspin.md` | 暫緩的發球計畫（D4）。 |
 | `hope_training/whole_body_tracking/scripts/trace_base_motion.py`、`hope_training/slurm/pip_env/trace_base.sbatch` | Isaac 追蹤（不訓練）：每個環境每一步記錄底座 xy、朝向、底座目標、clip 幀和擊球時刻；`+no_push=true` 關掉推力。用來跟 MuJoCo 比較兩球之間的底座移動。 |
-
+| `antioch_sim/`（`antioch.yaml`、`Dockerfile`、`cluster-constraints.txt`、`push_ignored.sh`、`README.md`）、`hope_training/antioch/train.sh` | 在 Antioch 上訓練用的專案：base 引擎加叢集的 Isaac Sim 5.1 / Isaac Lab 2.3.2；啟動腳本支援接續/暖啟動，並有關閉時卡住的看門狗；把已 commit 但被忽略的題庫檔上傳的小工具。 |

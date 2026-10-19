@@ -2,6 +2,23 @@
 
 [English](log.md) · [文件目錄](../README.zh-TW.md)
 
+### 2026-10-19 12:45 — 訓練改到 Antioch（雲端 GPU）；設定已測試
+* **原因：** 使用者把訓練從 SDSC 叢集（zixian 的 GPU 會壞）改到 Antioch。
+* **設定**（`antioch_sim/`，用法在 [antioch_sim/README.md](../../../antioch_sim/README.md)）：用 `base` 引擎加我們自己的 Dockerfile，
+  裝跟叢集完全一樣的版本（Isaac Sim 5.1、Isaac Lab v2.3.2、torch 2.7.0+cu128、rsl-rl 3.1.2；`cluster-constraints.txt` 是叢集 venv 的 pip freeze）。
+  Antioch 內建的引擎是 Isaac Sim 6 / Isaac Lab 3.0，要移植 HOPE，checkpoint 的行為也可能改變。GPU：1 張 RTX PRO 6000 Blackwell（96 GB），
+  24 個 CPU 核心，us-central。啟動腳本 `hope_training/antioch/train.sh` = 拿掉 Slurm 的 `train.sbatch`。
+* **測試：** 從 `model_40299` 在 `_FH_FIST_STABLE_SWING` 上接著跑 20 圈：正常，D21 的項目有作用，value loss 0.05。
+  SMPL 模型、`artifacts/` 和 `.git` 都沒有上傳（在 session 上確認過）。
+* **速度：** 4096 個環境約 16k steps/s、每圈 6.0 秒：**跟 2080 Ti 一樣**。其中收集資料就佔 5.9 秒，跟 GPU 快慢無關，
+  所以瓶頸是每一步的額外開銷（很多小的 Python/GPU 呼叫），不是 GPU 運算。16384 個環境放得下，45–61k steps/s（每圈 6.4–8.7 秒，
+  樣本量是 3–4 倍），但會改變 PPO 的 batch，還沒決定要不要用。
+* **遇到並修好的問題：** (1) base 映像檔讓 `uv` 裝到它的 Python 3.12，所以每次安裝都指定 3.11 的 venv；(2) Isaac 的 USD 函式庫需要
+  `libgomp1` 和 `libatomic1`；(3) 從 PyTorch 下載逾時（加長逾時和重試）；(4) Antioch 同步會跳過被 git 忽略的檔案，就算已經 commit 也一樣，
+  所以四個 `assets/venue_tuple/g1_fh_*` 題庫檔用 `antioch_sim/push_ignored.sh` 複製上去；(5) Python 出錯後 Isaac 在關閉時卡住，
+  白佔 GPU 30 分鐘（跟叢集上的 5719 一樣）：`train.sh` 現在有看門狗，出錯或存完最後一個 checkpoint 300 秒後還沒結束就砍掉（測過）。
+* Session 已釋放，沒有東西在跑。釋放時 session 上的檔案會被刪掉，要先把 checkpoint 複製回來。
+
 ### 2026-10-19 02:30 — 擊球後橫向踏步的原因：評估/部署給的「準備」目標放錯邊
 * **Isaac 裡不會這樣。** `trace_base_motion.py`（job 6069，256 個環境 × 30 秒，訓練 task、有推力，1706 次擊球）：
   擊球後骨盆一直待在 1 cm 以內，到 clip 結束（+1.3 秒）才直接走到下一球的站位（在右邊就 −17 cm，在左邊就 +17 cm）。

@@ -61,4 +61,4 @@
 | `tests/test_ball_perception.py` | 4 tests: noise-free fit and latency, bounce segmentation, presets, per-ball spin-reading error. |
 | `docs/g1_forehand/plans/serve_side_backspin.md` | The shelved serve plan (D4). |
 | `hope_training/whole_body_tracking/scripts/trace_base_motion.py`, `hope_training/slurm/pip_env/trace_base.sbatch` | Isaac trace (no learning) of base xy, heading, base target, clip frame and strike frames for every env and step; `+no_push=true` turns shoves off. Used to compare base motion between balls with MuJoCo. |
-
+| `antioch_sim/` (`antioch.yaml`, `Dockerfile`, `cluster-constraints.txt`, `push_ignored.sh`, `README.md`), `hope_training/antioch/train.sh` | Antioch project for training: base engine + the cluster's Isaac Sim 5.1 / Isaac Lab 2.3.2 stack; launcher with resume/warm start and a shutdown-hang watchdog; helper that uploads committed-but-ignored bank files. |

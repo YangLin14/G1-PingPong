@@ -1,0 +1,24 @@
+schema_version: 6
+# The id is the immutable identity used by Antioch sessions.
+id: "g1-pingpong-antioch-e6dad41ead6a49a88d52bef07aedc296"
+name: "g1-pingpong-antioch"
+scenario_paths: []
+
+# G1 forehand training on Antioch (replaces the SDSC Slurm jobs). Engine "base" with our own
+# Isaac Sim 5.1 + Isaac Lab v2.3.2 install (Dockerfile), the exact stack the cluster trained with,
+# so checkpoints resume unchanged. Usage: antioch_sim/README.md.
+services:
+  sim:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    resources:
+      gpu: rtx-pro-6000
+    shm_size: 8Gi
+    # The whole repository (git-ignored files, .git and virtual envs are skipped) -> /workspace/project.
+    # Training writes checkpoints under hope_training/whole_body_tracking/logs/ on the session;
+    # files created remotely are never touched by sync. Copy them home before releasing the session.
+    sync:
+      - source: ..
+        target: /workspace/project
+        exclude: ["agibot/**", "antioch_sim/**", "artifacts/**", "MUJOCO_LOG.TXT"]

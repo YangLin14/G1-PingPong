@@ -258,3 +258,12 @@ cd ~/hope/HOPE && sbatch --export=ALL,VIDEO=$HOME/hope/mocap/videos/forehand.mp4
 | 題庫 | `hope_training/whole_body_tracking/assets/venue_tuple/g1_fh_crosscourt_apex_bank.*` |
 | 落點和成功判定 | `.../whole_body_tracking/utils/forehand_success.py` |
 | 叢集 job 腳本 | `hope_training/slurm/pip_env/`、`hope_training/slurm/video_to_g1/` |
+
+
+## 10. 在 Antioch 上訓練（目前用這個，2026-10-19 起）
+
+完整指令和注意事項：[antioch_sim/README.md](../../../antioch_sim/README.md)。簡單說，在 `antioch_sim/` 裡：
+`session new --idle-timeout 1d` → `./push_ignored.sh`（再用 `service cp` 傳接續用的 checkpoint）→
+`service exec --no-stream -- env TASK=… RUN_NAME=… TOTAL_ITERS=… bash /workspace/project/hope_training/antioch/train.sh`
+→ 看 `logs/antioch/<RUN_NAME>.log` → 用 `service cp` 把 checkpoint 拿回來 → `session release`。
+釋放 session 時上面的檔案會消失。上面 Slurm 的章節留著參考。

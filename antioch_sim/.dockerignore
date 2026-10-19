@@ -1,0 +1,4 @@
+# Only the files listed below reach the image build. Synced source is not a
+# build input, so editing it reuses the image and your running sessions.
+*
+!cluster-constraints.txt

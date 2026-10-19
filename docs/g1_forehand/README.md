@@ -8,7 +8,7 @@ arrived); everything is designed so the sim-to-real path stays open.
 
 ## Current status (2026-10-19)
 
-* **Cluster:** no job of ours is running. zixian works again since the 10-16 reboot; idx 0 and 5 are still avoided.
+* **Compute:** training now runs on **Antioch** (cloud RTX PRO 6000; `antioch_sim/README.md`); tested 10-19, nothing running. The SDSC cluster is no longer used for training.
 * **Best policy: `g1_fh_stable_swing` `model_40299`** (D21, fist grip, MuJoCo, 120 held-out balls, aim offset (+0.27, −0.08) m):
   hits 100 %, legal 63 %, **in the target zone 38 %**; with 1.0 m/s shoves: hits 98 %, in zone 21 %, **no falls**.
   Without the offset it hits short (12 % in zone), so the offset must be applied.

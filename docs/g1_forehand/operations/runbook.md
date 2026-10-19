@@ -279,3 +279,12 @@ Trim with `START=`/`END=` (source frames, 30 Hz) and override the strike with `S
 | Question bank | `hope_training/whole_body_tracking/assets/venue_tuple/g1_fh_crosscourt_apex_bank.*` |
 | Zones and success rules | `.../whole_body_tracking/utils/forehand_success.py` |
 | Cluster job scripts | `hope_training/slurm/pip_env/`, `hope_training/slurm/video_to_g1/` |
+
+
+## 10. Training on Antioch (current, since 2026-10-19)
+
+All commands and notes: [antioch_sim/README.md](../../../antioch_sim/README.md). In short, from `antioch_sim/`:
+`session new --idle-timeout 1d` → `./push_ignored.sh` (+ `service cp` a warm-start checkpoint) →
+`service exec --no-stream -- env TASK=… RUN_NAME=… TOTAL_ITERS=… bash /workspace/project/hope_training/antioch/train.sh`
+→ watch `logs/antioch/<RUN_NAME>.log` → `service cp` the checkpoints home → `session release`.
+Session files disappear on release. The Slurm sections above are kept for reference.
