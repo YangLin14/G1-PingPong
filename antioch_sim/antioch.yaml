@@ -14,6 +14,15 @@ services:
       dockerfile: Dockerfile
     resources:
       gpu: rtx-pro-6000
+    # Training runs as the service's own command: Antioch ends every process a `service exec`
+    # started (setsid/nohup included) when that exec returns, so a detached run dies at once.
+    # Without TASK the service just idles. With `session new --env TASK=... --env RUN_NAME=...`
+    # it waits for /workspace/project/.train_go (start_job.sh creates it after uploading the
+    # banks and the checkpoint), then runs hope_training/antioch/train.sh in the foreground.
+    command:
+      - bash
+      - -c
+      - 'if [ -z "${TASK:-}" ]; then exec sleep infinity; fi; until [ -f /workspace/project/.train_go ]; do sleep 5; done; exec env FOREGROUND=1 bash /workspace/project/hope_training/antioch/train.sh'
     shm_size: 8Gi
     # The whole repository (git-ignored files, .git and virtual envs are skipped) -> /workspace/project.
     # Training writes checkpoints under hope_training/whole_body_tracking/logs/ on the session;

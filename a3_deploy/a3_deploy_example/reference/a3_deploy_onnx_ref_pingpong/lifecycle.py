@@ -18,6 +18,11 @@ Contract points enforced here:
     the lifecycle never touches them, it only chooses what goal to observe.
   * Recovery is in-place recentring only (a fixed ready reach); it is never
     locomotion or footstep planning.
+  * ``hold_last_target`` (G1): after contact keep showing the last ball's target with
+    the clock still running negative (floored at ``hold_tts_floor``) until the next ball
+    engages, instead of the ready reach. That is what training shows: the strike target
+    stays until the clip wraps, with time-to-strike running down to about -1.3 s. The
+    ready reach then only covers the time before the first ball.
 
 The reference clock: ``time_to_strike`` is seeded from the command and counts down
 by ``dt`` each tick, passing through zero at contact and continuing negative through
@@ -76,6 +81,9 @@ class LifecycleConfig:
     ready_reach_x: float = 0.40
     ready_reach_y: float = 0.20
     ready_reach_z: float = -0.05    # relative to the pelvis height
+    # Training parity after contact (see module doc). Off = original ready reach.
+    hold_last_target: bool = False
+    hold_tts_floor: float = -1.26   # most negative time-to-strike training shows (clip end)
 
 
 class SwingLifecycle:
@@ -97,6 +105,7 @@ class SwingLifecycle:
         self._applied_revision: int = -1
         # absolute strike deadline of the active task ("strike_time" clock only)
         self._strike_time: float | None = None
+        self._has_target = False             # a ball has been engaged at least once
         self.clock_rejections: int = 0   # commands whose strike_time disagreed with the local clock
 
     # -- helpers ------------------------------------------------------------
@@ -141,6 +150,7 @@ class SwingLifecycle:
                 self._target_vel_w = np.asarray(cmd.velocity, dtype=np.float64).copy()
                 self._tts = float(cmd.time_to_strike) + c.tts_offset_s
                 self._strike_time = self._deadline(cmd, now)
+                self._has_target = True
                 self.phase = Phase.SWING
             elif (
                 cmd.task_id == self.active_task_id
@@ -174,10 +184,14 @@ class SwingLifecycle:
             if self._recover_t >= c.recovery_s:
                 self.phase = Phase.READY
                 self.active_task_id = None
+        holding = c.hold_last_target and self._has_target and self.phase in (Phase.RECOVERY, Phase.READY)
+        if holding:  # the strike clock keeps running after the follow-through, as in training
+            self._tts = self._strike_time - float(now) if absolute else self._tts - c.dt
+            self._tts = max(self._tts, c.hold_tts_floor)
 
         # 3) Emit the goal to observe this tick (the locked side stays internal —
         #    it shapes the ready reach but never appears in the observation).
-        if self.phase in (Phase.SWING, Phase.FOLLOW_THROUGH):
+        if self.phase in (Phase.SWING, Phase.FOLLOW_THROUGH) or holding:
             return ObsTarget(
                 pos_w=self._target_pos_w,
                 vel_w=self._target_vel_w,

@@ -101,3 +101,38 @@ def test_timing_offset_shifts_both_clocks_and_the_contact_phase():
     assert life.phase == Phase.FOLLOW_THROUGH
     old = SwingLifecycle(LifecycleConfig(dt=DT, tts_offset_s=0.04))
     assert old.update(_cmd(0.5), STATE).time_to_strike == pytest.approx(0.52)
+
+
+def test_hold_last_target_keeps_the_ball_target_and_runs_the_clock_down_to_the_floor():
+    cfg = LifecycleConfig(dt=DT, clock="strike_time", follow_through_s=0.6, recovery_s=0.8,
+                          hold_last_target=True, hold_tts_floor=-1.26)
+    life = SwingLifecycle(cfg)
+    # before any ball: the ready reach (base + reach), clock pinned
+    pre = life.update(None, STATE, now=99.0)
+    assert pre.time_to_strike == pytest.approx(cfg.ready_time_to_strike)
+    life.update(_cmd(0.5, strike_time=100.5), STATE, now=100.0)
+    for t in np.arange(100.02, 102.5, DT):
+        out = life.update(None, STATE, now=float(t))
+    # recovery is over (phase READY) but the observed goal is still the ball's target
+    assert life.phase == Phase.READY
+    np.testing.assert_allclose(out.pos_w, [0.45, -0.35, 0.95])
+    np.testing.assert_allclose(out.vel_w, [1.9, 0.3, 1.0])
+    assert out.time_to_strike == pytest.approx(-1.26)
+    mid = SwingLifecycle(cfg)
+    mid.update(_cmd(0.5, strike_time=100.5), STATE, now=100.0)
+    for t in np.arange(100.02, 101.4 + 1e-9, DT):
+        out = mid.update(None, STATE, now=float(t))
+    assert mid.phase == Phase.RECOVERY and out.time_to_strike == pytest.approx(-0.9)
+    # the next ball engages as usual
+    nxt = RacketCommand(task_id=2, task_revision=0, swing_sign=FOREHAND, position=[0.47, -0.30, 1.0],
+                        velocity=[2.0, 0.2, 1.1], time_to_strike=0.6, strike_time=103.1)
+    out = life.update(nxt, STATE, now=102.5)
+    assert life.phase == Phase.SWING and out.time_to_strike == pytest.approx(0.6)
+
+
+def test_without_hold_the_original_ready_reach_is_shown_after_follow_through():
+    life = SwingLifecycle(LifecycleConfig(dt=DT, clock="strike_time"))
+    life.update(_cmd(0.5, strike_time=100.5), STATE, now=100.0)
+    for t in np.arange(100.02, 101.2 + 1e-9, DT):  # 0.7 s after contact: recovery
+        out = life.update(None, STATE, now=float(t))
+    assert life.phase == Phase.RECOVERY and out.time_to_strike == pytest.approx(1.0)

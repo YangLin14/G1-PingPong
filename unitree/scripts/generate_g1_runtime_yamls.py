@@ -35,7 +35,7 @@ RUNTIME_OUT = REPO / "a3_deploy" / "a3_deploy_example" / "config" / "hope_pingpo
 
 #: Base-relative ready reach the racket goal holds while idle. A3 example values are
 #: (0.40, 0.20, -0.05); the G1's shoulder-to-blade reach is 0.81x the A3's (0.59 m vs 0.73 m).
-READY_REACH = (0.32, 0.16, -0.04)
+READY_REACH = (0.45, -0.35, 0.33)
 LIFECYCLE = (("follow_through_s", 0.6), ("recovery_s", 0.8), ("ready_time_to_strike", 1.0))
 
 
@@ -156,8 +156,14 @@ def render_runtime(order: list[str]) -> str:
         "  tts_offset_s: 0.04",
     ]
     lines += [
-        "  # Base-relative ready reach the racket goal holds while idle: the A3 example values",
-        "  # (0.40, 0.20, -0.05) scaled by the G1/A3 shoulder-to-blade reach ratio 0.81 (docs/UNITREE_G1.md).",
+        "  # After contact keep showing the last ball's target, clock running negative to -1.26 s, until the",
+        "  # next ball (what training shows). The old ready reach made the robot step ~25 cm left after each",
+        "  # hit in MuJoCo (docs/g1_forehand/status/log.md, 2026-10-19).",
+        "  hold_last_target: true",
+        "  hold_tts_floor: -1.26",
+        "  # Base-relative ready reach, now only used before the first ball: where the training forehand",
+        "  # targets are (0.42-0.50 m ahead, 0.32-0.38 m right, 0.9-1.1 m high = pelvis + ~0.33 m). The",
+        "  # A3-derived (0.32, +0.16, -0.04) pointed left and below the pelvis.",
         f"  ready_reach_x: {_fmt(READY_REACH[0])}",
         f"  ready_reach_y: {_fmt(READY_REACH[1])}",
         f"  ready_reach_z: {_fmt(READY_REACH[2])}",

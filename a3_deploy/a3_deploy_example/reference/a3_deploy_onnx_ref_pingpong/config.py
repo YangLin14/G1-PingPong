@@ -93,6 +93,8 @@ class RuntimeConfig:
             ready_reach_x=float(life_doc.get("ready_reach_x", 0.40)),
             ready_reach_y=float(life_doc.get("ready_reach_y", 0.20)),
             ready_reach_z=float(life_doc.get("ready_reach_z", -0.05)),
+            hold_last_target=bool(life_doc.get("hold_last_target", False)),
+            hold_tts_floor=float(life_doc.get("hold_tts_floor", -1.26)),
         )
 
         return cls(
