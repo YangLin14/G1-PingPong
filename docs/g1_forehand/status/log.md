@@ -2,6 +2,21 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-19 01:30 — why the robot leans/moves left after the hit (`model_40299`, MuJoCo)
+Measured every physics step, 16 balls (seed 3), averaged around each hit; the old `model_32299` does the same.
+* **0–0.4 s: follow-through.** The waist turns left (waist yaw +12° at +0.2 s) and the torso leans forward ~10°.
+  The reference clip does exactly this (waist yaw +12.1° at +0.2 s), so it is the normal forehand finish.
+* **0.8–1.7 s: a sideways shuffle.** The pelvis moves 25–35 cm to the left (15 of 16 hits, both feet step),
+  often past the table centre line of the robot's area (up to +21 cm), with the CoM up to 13 cm left of the feet
+  and the pelvis rolled 2–4° left. By ~2.0 s it walks back toward the next ball's station.
+  * Not from the clip: its pelvis and feet move < 1 cm sideways after the strike.
+  * Not from the eval's command: the base target is the ball's station (y −0.45…+0.12 m), never that far left.
+  * Not a balance catch: the pelvis leads the CoM, so it is a deliberate step, not a fall being caught.
+  * So it is learned behaviour from training. Cause not yet confirmed. Training also uses stations from the
+    same bank (mean y −0.21 m) and a post-swing base-speed cost (0.20–1.55 s) that should discourage it.
+    Next check: log the base target and base y after the strike in a short Isaac run.
+* No falls come from it, but it wastes ~0.6 s of movement between balls and could matter at real rally pace.
+
 ### 2026-10-19 00:40 — D21 results: no falls up to 1.0 m/s; new best `stable_swing` `model_40299`
 * **5859 `g1_fh_stable_swing`** finished 40 299 on 10-17 21:32. **5858 `g1_fh_stable`** crashed at 40 067:
   the value loss blew up to ~5e30, the action std became invalid (`normal expects all elements of std >= 0.0`),
