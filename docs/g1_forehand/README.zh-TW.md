@@ -31,6 +31,7 @@ G1 實機還沒到，目前只在模擬中進行，但所有設計都保留了�
 | `operations/` | [runbook.zh-TW.md](operations/runbook.zh-TW.md) | 日常指令：查訓練、匯出、開 MuJoCo、開始/停止 job |
 | | [running.zh-TW.md](operations/running.zh-TW.md) | 安裝和完整執行指令（筆電和叢集） |
 | | [deploy_calibration.zh-TW.md](operations/deploy_calibration.zh-TW.md) | 上實機時要量什麼、怎麼量 |
+| | [antioch.zh-TW.md](operations/antioch.zh-TW.md) | 在 Antioch（雲端 GPU）上訓練：設定、用法、遇到的問題和解法（只有中文） |
 | `status/` | [log.zh-TW.md](status/log.zh-TW.md) | 狀態紀錄：每次檢查、事故、發現，最新的在最上面 |
 | | [runs_and_results.zh-TW.md](status/runs_and_results.zh-TW.md) | 所有 run、訓練曲線、各區成功率表 |
 | | [how_we_track.zh-TW.md](status/how_we_track.zh-TW.md) | 用哪些指標、怎麼量、怎麼新增紀錄 |

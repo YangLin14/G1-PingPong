@@ -32,6 +32,7 @@ Details: [status/log.md](status/log.md) (newest first).
 | `operations/` | [runbook.md](operations/runbook.md) | Day-to-day commands: check training, export, open MuJoCo, start/stop jobs |
 | | [running.md](operations/running.md) | Setup and full run commands (laptop and cluster) |
 | | [deploy_calibration.md](operations/deploy_calibration.md) | What to measure on the real robot, and how |
+| | [antioch.zh-TW.md](operations/antioch.zh-TW.md) | Training on Antioch (cloud GPU): setup, usage, problems and fixes (Chinese only) |
 | `status/` | [log.md](status/log.md) | Status log: every check, incident and finding, newest first |
 | | [runs_and_results.md](status/runs_and_results.md) | All runs, training curves, per-zone success tables |
 | | [how_we_track.md](status/how_we_track.md) | Which metrics we use, how they are measured, how to add an entry |
