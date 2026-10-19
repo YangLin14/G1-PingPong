@@ -8,7 +8,7 @@ what the base target is at that time. ``no_push=true`` turns the shoves off.
 Usage:
     hope_isaac_py scripts/trace_base_motion.py task=HOPEPingPongUnitreeG1_FH_FIST_STABLE_SWING \
         checkpoint=logs/rsl_rl/unitree_g1_hitter_pingpong/<run>/model_<i>.pt num_envs=256 num_steps=1500 \
-        json_out=/tmp/trace.npz [no_push=true]
+        json_out=/tmp/trace.npz [+no_push=true]
 """
 
 import importlib.util

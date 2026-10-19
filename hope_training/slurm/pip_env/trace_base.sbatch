@@ -39,8 +39,8 @@ OUT="$HOPE_ROOT/trace_base/$SLURM_JOB_ID"; mkdir -p "$OUT"
 cd "$WBT"
 set +u; source setup_train_env.sh; set -u
 py() { PYTHONPATH="${HOPE_PYTHONPATH}${PYTHONPATH:+:$PYTHONPATH}" timeout -k 30 "$1" "$ISAAC_PYTHON" "${@:2}"; }
-for mode in push nopush; do
-  extra=""; [ $mode = nopush ] && extra="no_push=true"
+for mode in ${MODES:-push nopush}; do
+  extra=""; [ $mode = nopush ] && extra="+no_push=true"
   py 25m -u scripts/trace_base_motion.py task="$TASK" checkpoint="$CKPT" num_envs=256 num_steps=1500 \
     json_out="$OUT/$mode.npz" $extra
   echo "[trace] $mode exit=$?"
