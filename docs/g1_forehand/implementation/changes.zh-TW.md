@@ -60,4 +60,5 @@
 | `tests/test_lifecycle_strike_time.py` | 5 個測試：countdown 不變、strike_time 時鐘對新訊息和晚到的訊息都準確、沒有絕對時刻時改用收到時間、沒有 `now` 時退回 countdown、ROS 第 [10] 欄。 |
 | `tests/test_ball_perception.py` | 4 個測試：無雜訊的擬合和延遲、反彈切段、preset、每顆球固定的旋轉估計誤差。 |
 | `docs/g1_forehand/plans/serve_side_backspin.md` | 暫緩的發球計畫（D4）。 |
+| `hope_training/whole_body_tracking/scripts/trace_base_motion.py`、`hope_training/slurm/pip_env/trace_base.sbatch` | Isaac 追蹤（不訓練）：每個環境每一步記錄底座 xy、朝向、底座目標、clip 幀和擊球時刻；`+no_push=true` 關掉推力。用來跟 MuJoCo 比較兩球之間的底座移動。 |
 

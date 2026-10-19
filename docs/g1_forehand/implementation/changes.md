@@ -60,4 +60,5 @@
 | `tests/test_lifecycle_strike_time.py` | 5 tests: countdown unchanged, strike_time clock exact for fresh and late messages, stamping without a deadline, fallback without `now`, ROS field [10]. |
 | `tests/test_ball_perception.py` | 4 tests: noise-free fit and latency, bounce segmentation, presets, per-ball spin-reading error. |
 | `docs/g1_forehand/plans/serve_side_backspin.md` | The shelved serve plan (D4). |
+| `hope_training/whole_body_tracking/scripts/trace_base_motion.py`, `hope_training/slurm/pip_env/trace_base.sbatch` | Isaac trace (no learning) of base xy, heading, base target, clip frame and strike frames for every env and step; `+no_push=true` turns shoves off. Used to compare base motion between balls with MuJoCo. |
 

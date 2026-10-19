@@ -2,6 +2,32 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-19 02:30 — cause of the post-hit sideways step: the eval/deploy "ready" target is on the wrong side
+* **Isaac does not do it.** `trace_base_motion.py` (job 6069, 256 envs × 30 s, training task with shoves,
+  1706 strikes): after the strike the pelvis stays within ~1 cm until the clip ends (+1.3 s), then moves
+  straight to the next station (−17 cm when it is to the right, +17 cm when to the left). Only 1 % of strikes
+  move > 10 cm sideways by +1.4 s. (The run without shoves, job 6071, is not analysed yet.)
+* **The MuJoCo eval feeds something training never shows.** `SwingLifecycle` (shared with deploy) switches to
+  RECOVERY 0.6 s after the strike and then shows a "ready reach" target = pelvis + (0.32, side × 0.16, −0.04) m
+  with time-to-strike pinned at 1.0 s. For the forehand (side +1) that is 16 cm to the robot's **left** and
+  4 cm **below the pelvis**. Training forehand targets are 0.42–0.50 m ahead, 0.32–0.38 m to the **right** and
+  0.9–1.1 m high. The values are the A3 example (0.40, 0.20, −0.05) × 0.81, not re-derived for the G1. The
+  target is recomputed from the pelvis every tick, so the robot keeps chasing it to the left until the next
+  ball is announced (+1.4 s).
+* **Test** (same 16 balls, MuJoCo, base y change after the strike):
+
+  | ready reach (x, y, z) m | +1.0 s | +1.4 s | > 10 cm left at +1.4 s |
+  |---|---:|---:|---:|
+  | (0.32, +0.16, −0.04) current G1 config | +13 cm | +22 cm | 12 / 15 |
+  | (0.32, −0.16, −0.04) side flipped | +7 cm | +10 cm | 9 / 15 |
+  | (0.45, −0.35, +0.33) where training targets are | +2 cm | +3 cm | 5 / 15 |
+
+* **Hitting with the training-like ready target** (120 held-out balls, aim offset (+0.27, −0.08)): in zone 35.8 %
+  (was 37.5 %), legal 59 % (62.5 %), no falls; at 1.0 m/s shoves 15.0 % (20.8 %), hits 99 % (97.5 %). The
+  differences are within the noise of 120 balls (±4 points). The aim offset was fitted with the old ready target.
+* **Not changed yet:** `hope_pingpong_runtime_unitree_g1.yaml` still has (0.32, 0.16, −0.04); all results in these
+  docs use it. A more faithful fix is to keep showing the last strike target until the next ball, as training does.
+
 ### 2026-10-19 01:30 — why the robot leans/moves left after the hit (`model_40299`, MuJoCo)
 Measured every physics step, 16 balls (seed 3), averaged around each hit; the old `model_32299` does the same.
 * **0–0.4 s: follow-through.** The waist turns left (waist yaw +12° at +0.2 s) and the torso leans forward ~10°.
