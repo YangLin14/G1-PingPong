@@ -205,7 +205,41 @@ $A session release
 
 ---
 
-## 7. 注意事項
+### 問題 10：背景執行的訓練一開始就被砍掉（exec 結束時連子程式一起結束）
+
+* **狀況：** 第一個正式訓練用 `service exec` 啟動 `train.sh`（裡面用 `setsid nohup ... &` 放到背景），印出 `started pid 87`，
+  但馬上檢查就沒有 `train.py`，連 log 檔都沒有。
+* **怎麼確認：** 用最簡單的測試：exec 裡用 `setsid -f sleep 900` 和 `nohup sleep 901 & disown` 各開一個，exec 結束後再看，兩個都不見了。
+  **Antioch 會在 `service exec` 結束時，把它開出來的所有程式都結束**，不管有沒有 `setsid`/`nohup`。
+* **解法：** 改成讓訓練當作**服務本身的啟動指令**（`antioch.yaml` 的 `command`）：
+  * 沒有設定 `TASK` 環境變數時，服務只是 `sleep infinity`（一般的 session 不受影響）。
+  * 有設定時（`session new --env TASK=... --env RUN_NAME=...`），服務等 `/workspace/project/.train_go` 這個檔案出現，再在前景跑 `train.sh`。
+  * `antioch_sim/start_job.sh` 一次做完：開 session（帶環境變數）→ `push_ignored.sh` → 上傳 checkpoint → 建立 `.train_go`。
+* **注意：** 服務的啟動指令**不算**「活動」，所以 session 的閒置計時從開始就在算。`--idle-timeout` 要比訓練時間長（我們用 `1d`）。
+
+### 問題 11：多個 session 時指令要指定 session；zsh 不會拆字
+
+* `antioch` 指令在只有一個 session 時會自動選它；開了三個就要每個都加 `--session ses-...`。`push_ignored.sh` 改成讀 `SESSION` 環境變數。
+* 在 zsh 裡用 `set -- $p` 拆字串不會拆開（zsh 預設不做 word splitting），所以多個 job 的檢查改寫成 bash 腳本 `status.sh`。
+* macOS 內建的 bash 是 3.2，沒有 `declare -A`，`collect.sh` 改用標記檔記錄哪個 job 處理完了。
+
+## 7. 一次跑多個訓練（2026-10-19 起的做法）
+
+```bash
+cd antioch_sim
+# 每個 job 開自己的 session：TASK RUN_NAME TOTAL_ITERS [本機 checkpoint] [NUM_ENVS] [idle-timeout]
+./start_job.sh HOPEPingPongUnitreeG1_FH_FIST_STILL g1_fh_still16k 44300 \
+  ../artifacts/evals/g1_fh_stable_swing_model_40299/model_40299.pt 16384 1d
+# 看進度（可以一次列多個 session:run）
+./status.sh ses-xxxx:g1_fh_still16k ses-yyyy:g1_fh_planted16k
+# 在背景每 15 分鐘把 checkpoint（每 500 圈 + 最後一個）和 log 抓回 artifacts/antioch/<run>/，
+# 訓練結束、檔案都拿到後自動釋放那個 session（筆電要開著）
+./collect.sh ses-xxxx:g1_fh_still16k:44300 ses-yyyy:g1_fh_planted16k:44300
+```
+
+16384 個環境時每圈約 5 秒（4096 時 6 秒），所以樣本量約是 5 倍。
+
+## 8. 注意事項
 
 * **費用：** session 開著就在計費。`--idle-timeout` 設太長、或忘記釋放，都會一直算錢。`$A session status` 可以看是什麼讓它保持開著。
 * **檔案會消失：** 釋放 session 時，上面的 log 和 checkpoint 全部刪除。一定要先用 `service cp` 拿回來。

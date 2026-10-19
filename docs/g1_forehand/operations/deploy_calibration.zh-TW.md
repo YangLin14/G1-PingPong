@@ -13,7 +13,7 @@
 | 參考時鐘 | runtime YAML `lifecycle.clock` | `strike_time` | D17 | 已在 G1 設定裡 |
 | 允許的訊息延遲 | `lifecycle.max_message_age_s` | 0.1 秒 | D17 | 已在 G1 設定裡 |
 | **時機補償** | `lifecycle.tts_offset_s` | **+0.04 秒** | MuJoCo、`model_15700` | 已在 G1 設定裡；**要重新量** |
-| **瞄準補償**（沿球桌方向、左右方向） | 規劃器；目前只有 `mujoco_eval_onnx.py --aim-offset` | `stable_swing` `model_40299`（目前最好；站得較低、會打短）用 MuJoCo 碰撞：**(+0.27, −0.08) m**。`model_32299`：訓練用球拍模型 (+0.14, −0.03) m；MuJoCo 碰撞 (+0.19, +0.04) m（舊握法 `model_15700`：+0.40/−0.10 和 +0.63/−0.06） | MuJoCo、握拳 `model_32299` | **部署用的規劃器還沒有這個參數**；要用真的球拍重新量 |
+| **瞄準補償**（沿球桌方向、左右方向） | 規劃器；目前只有 `mujoco_eval_onnx.py --aim-offset` | `stable_swing` `model_40299` 加上 `hold_last_target` 部署修正，用 MuJoCo 碰撞：**(+0.23, −0.01) m**（2026-10-19；修正前是 (+0.27, −0.08) m）。`model_32299`：訓練用球拍模型 (+0.14, −0.03) m；MuJoCo 碰撞 (+0.19, +0.04) m（舊握法 `model_15700`：+0.40/−0.10 和 +0.63/−0.06） | MuJoCo、握拳 `model_32299` | **部署用的規劃器還沒有這個參數**；要用真的球拍重新量 |
 | 球拍中心（安裝偏移） | `G1_FIST_MOUNT_OFFSET` / `G1_FIST_MOUNT_QUAT`（握拳，D20）、產生的握拳 URDF/MJCF | 拍面原點在右手腕 (0.083, 0.0226, 0.14) m，球拍和前臂垂直（舊握法：`G1_MOUNT_OFFSET` (0.21, 0.015, 0.01) m） | CAD 估計 | 要量實際 3D 列印的握拳座 |
 | 球拍模型（恢復係數、咬球） | `configs/ball_physics_venue.yaml` 的 `paddle` | venue 擬合（別的球桌、別的球拍） | HOPE | 要用我們的球拍重新擬合 |
 | 桌面反彈、球的飛行 | `configs/ball_physics_venue.yaml` | venue 擬合 | HOPE | 要在我們的球桌上重新擬合 |

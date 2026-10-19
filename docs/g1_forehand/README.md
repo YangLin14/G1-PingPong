@@ -8,7 +8,8 @@ arrived); everything is designed so the sim-to-real path stays open.
 
 ## Current status (2026-10-19)
 
-* **Compute:** training now runs on **Antioch** (cloud RTX PRO 6000; `antioch_sim/README.md`); tested 10-19, nothing running. The SDSC cluster is no longer used for training.
+* **Compute:** training runs on **Antioch** (cloud RTX PRO 6000; [operations/antioch.zh-TW.md](operations/antioch.zh-TW.md)). Running now: the three D22 "feet still" jobs (16384 envs, ~5.5 h).
+* **Deploy fix (10-19):** `hold_last_target` keeps the last ball's target after contact, as in training: the robot no longer steps between balls in MuJoCo (3.5 → 0 steps per ball). Aim offset with the fix: (+0.23, −0.01) m, 30 % in zone (held-out, no shoves).
 * **Best policy: `g1_fh_stable_swing` `model_40299`** (D21, fist grip, MuJoCo, 120 held-out balls, aim offset (+0.27, −0.08) m):
   hits 100 %, legal 63 %, **in the target zone 38 %**; with 1.0 m/s shoves: hits 98 %, in zone 21 %, **no falls**.
   Without the offset it hits short (12 % in zone), so the offset must be applied.
@@ -38,6 +39,7 @@ Details: [status/log.md](status/log.md) (newest first).
 | | [how_we_track.md](status/how_we_track.md) | Which metrics we use, how they are measured, how to add an entry |
 | | [results.md](status/results.md) | Early results summary (2026-10-12) |
 | `research/` | [perception.md](research/perception.md) | Cameras / mocap: what is needed and the perception experiment |
+| | [humanoid_table_tennis.md](research/humanoid_table_tennis.md) | SMASH, PKU, HITTER, PACE: what is worth trying for balance and returns |
 | `plans/` | [next_steps.md](plans/next_steps.md) | What to do next |
 | | [serve_side_backspin.md](plans/serve_side_backspin.md) | Shelved plan: backhand side-backspin serve |
 

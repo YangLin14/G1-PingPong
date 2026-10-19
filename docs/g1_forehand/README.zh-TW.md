@@ -7,7 +7,8 @@ G1 實機還沒到，目前只在模擬中進行，但所有設計都保留了�
 
 ## 目前狀態（2026-10-19）
 
-* **運算資源：** 訓練改在 **Antioch** 上跑（雲端 RTX PRO 6000；`antioch_sim/README.md`）；10-19 測過，目前沒有在跑。SDSC 叢集不再用來訓練。
+* **運算資源：** 訓練在 **Antioch** 上跑（雲端 RTX PRO 6000；[operations/antioch.zh-TW.md](operations/antioch.zh-TW.md)）。正在跑：D22 三個「腳不動」訓練（16384 環境，約 5.5 小時）。
+* **部署修正（10-19）：** `hold_last_target` 讓擊球後繼續顯示上一球的目標，跟訓練一樣：MuJoCo 裡兩球之間不再踏步（每球 3.5 步 → 0 步）。修正後的瞄準補償 (+0.23, −0.01) m，目標區 30%（驗證球、不推）。
 * **目前最好的策略：`g1_fh_stable_swing` `model_40299`**（D21、握拳、MuJoCo、120 顆驗證用的球、瞄準補償 (+0.27, −0.08) m）：
   打到 100%、合法 63%、**目標區 38%**；推 1.0 m/s 時：打到 98%、目標區 21%、**沒有跌倒**。
   不加補償會打短（目標區 12%），所以一定要加補償。
@@ -37,6 +38,7 @@ G1 實機還沒到，目前只在模擬中進行，但所有設計都保留了�
 | | [how_we_track.zh-TW.md](status/how_we_track.zh-TW.md) | 用哪些指標、怎麼量、怎麼新增紀錄 |
 | | [results.zh-TW.md](status/results.zh-TW.md) | 早期結果摘要（2026-10-12） |
 | `research/` | [perception.zh-TW.md](research/perception.zh-TW.md) | 攝影機 / 動捕：需要什麼，以及感知實驗 |
+| | [humanoid_table_tennis.zh-TW.md](research/humanoid_table_tennis.zh-TW.md) | SMASH、北大、HITTER、PACE：平衡和回球有哪些值得試 |
 | `plans/` | [next_steps.zh-TW.md](plans/next_steps.zh-TW.md) | 下一步 |
 | | [serve_side_backspin.md](plans/serve_side_backspin.md) | 暫緩的計畫：反手側下旋發球（只有英文） |
 

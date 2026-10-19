@@ -6,6 +6,9 @@
 
 | Job | Run name | Task (questions) | Started | State | Last iteration | Note |
 |---|---|---|---|---|---|---|
+| Antioch | `g1_fh_ss16k` | `_FH_FIST_STABLE_SWING` (D22 job 1), 16384 envs | 10-19 20:46 UTC | running | `model_40299` → 44 300 | baseline at the new batch size |
+| Antioch | `g1_fh_still16k` | `_FH_FIST_STILL` (D22 job 2), 16384 envs | 10-19 20:50 UTC | running | `model_40299` → 44 300 | fixed station + foot costs |
+| Antioch | `g1_fh_planted16k` | `_FH_FIST_PLANTED` (D22 job 3), 16384 envs | 10-19 20:50 UTC | running | `model_40299` → 44 300 | + episode ends if a foot moves |
 | 5858 | `g1_fh_stable` | `_FH_FIST_STABLE` (D21, balance only) | 10-17 00:08 | crashed at 40 067 (value loss blew up to ~5e30, then hung; cancelled 10-19) | from `model_32299` → 40 000 | value loss spiked 266 times from 32 700 on; in MuJoCo worse than the swing run |
 | 5859 | `g1_fh_stable_swing` | `_FH_FIST_STABLE_SWING` (D21 + sharper racket rewards) | 10-17 00:08 | finished 10-17 21:32 | from `model_32299` → 40 299 | **new best: `model_40299`** (18 value-loss spikes) |
 | 5719 | `g1_fh_fist` | as 5686, strike marked at frame 43 | 10-15 15:05 | finished 10-16 11:35 (cancelled 11:45: hung at Isaac shutdown) | resumes 23 700 → 32 299 | best in MuJoCo: `model_32299` |

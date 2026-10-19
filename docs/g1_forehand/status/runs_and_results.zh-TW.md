@@ -6,6 +6,9 @@
 
 | Job | Run 名稱 | Task（題目） | 開始 | 狀態 | 最後 iteration | 備註 |
 |---|---|---|---|---|---|---|
+| Antioch | `g1_fh_ss16k` | `_FH_FIST_STABLE_SWING`（D22 第 1 個），16384 環境 | 10-19 20:46 UTC | 執行中 | `model_40299` → 44 300 | 新 batch 大小的基準 |
+| Antioch | `g1_fh_still16k` | `_FH_FIST_STILL`（D22 第 2 個），16384 環境 | 10-19 20:50 UTC | 執行中 | `model_40299` → 44 300 | 固定站位 + 腳的懲罰 |
+| Antioch | `g1_fh_planted16k` | `_FH_FIST_PLANTED`（D22 第 3 個），16384 環境 | 10-19 20:50 UTC | 執行中 | `model_40299` → 44 300 | 再加上腳一動就結束 |
 | 5858 | `g1_fh_stable` | `_FH_FIST_STABLE`（D21，只加強平衡） | 10-17 00:08 | 40 067 時崩潰（value loss 爆到約 5e30，然後卡住；10-19 取消） | 從 `model_32299` → 40 000 | 從 32 700 起 value loss 暴衝 266 次；MuJoCo 比 swing 版差 |
 | 5859 | `g1_fh_stable_swing` | `_FH_FIST_STABLE_SWING`（D21 + 更嚴格的揮拍獎勵） | 10-17 00:08 | 10-17 21:32 跑完 | 從 `model_32299` → 40 299 | **新的最佳：`model_40299`**（value loss 暴衝 18 次） |
 | 5719 | `g1_fh_fist` | 同 5686，擊球標記改到第 43 幀 | 10-15 15:05 | 10-16 11:35 跑完（11:45 取消：Isaac 關閉時卡住） | 從 23 700 接續 → 32 299 | MuJoCo 最好：`model_32299` |

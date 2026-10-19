@@ -2,6 +2,37 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-19 14:30 — deploy fix removes the stepping; three "feet still" jobs (D22) on Antioch
+* **Fix (lifecycle `hold_last_target`, on for the G1):** after contact the policy now keeps seeing the last
+  ball's target with time-to-strike running negative (floor −1.26 s) until the next ball, as in training.
+  The ready reach (used only before the first ball) moved to where training targets are (0.45, −0.35, +0.33).
+* **Feet** (`model_40299`, 16 balls, seed 3, per-tick log):
+
+  | | steps per ball | balls with no step | foot travel per ball | max foot shift (median) |
+  |---|---:|---:|---:|---:|
+  | old deploy target | 3.5 | 0 % | 91 cm | 26 cm |
+  | **with the fix** | **0.0** | **100 %** | **7 cm** | **2.5 cm** |
+
+  The stumbling was almost all caused by the wrong deploy target. The robot now reaches every ball from where
+  it stands (the pelvis still sways ~21 cm per ball).
+* **Aim offset re-measured** (seeds 0–2, no shoves): **(+0.23, −0.01) m** (was +0.27, −0.08; the sideways bias
+  is gone). Held-out seeds 3–5, 120 balls each, fist model, MuJoCo contact:
+
+  | shove | fell | hit | legal | in zone (fix) | in zone (old target, old offset) |
+  |---|---:|---:|---:|---:|---:|
+  | none | 0 % | 100 % | 63 % | **30 %** | 37.5 % |
+  | 0.5 m/s | 0 % | 100 % | 62 % | 21 % | 30 % |
+  | 1.0 m/s | 0 % | 99 % | 61 % | 16 % | 21 % |
+
+  Without the offset (seeds 0–2), legal returns rose with the fix at every shove level (+5 to +11 points).
+  The zone differences are within the noise of 120 balls (±4 points per row) but all point the same way, so
+  the fix may cost a little accuracy; the median miss is unchanged (~15 cm).
+* **Three 16384-env jobs on Antioch (D22),** all from `model_40299` to 44 300: `g1_fh_ss16k` (current recipe),
+  `g1_fh_still16k` (fixed station + foot costs), `g1_fh_planted16k` (+ episode ends if a foot slides 5 cm / lifts
+  3 cm). ~5 s per iteration with 16384 envs (4× the samples of the cluster runs per iteration), ~5.5 h each.
+  Early: planted job ends 36 % of episodes on the foot rule (learning to stop), no falls in any job.
+* **Research** on SMASH / PKU / HITTER / PACE: [research/humanoid_table_tennis.md](../research/humanoid_table_tennis.md).
+
 ### 2026-10-19 12:45 — training moved to Antioch (cloud GPU); setup tested
 * **Why:** the user switched training from the SDSC cluster (broken GPUs on zixian) to Antioch.
 * **Setup** (`antioch_sim/`, usage in [antioch_sim/README.md](../../../antioch_sim/README.md)): engine `base` + our
