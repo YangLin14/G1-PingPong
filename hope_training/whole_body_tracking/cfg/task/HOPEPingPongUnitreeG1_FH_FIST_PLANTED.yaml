@@ -634,3 +634,7 @@ overrides:
   rewards.foot_displacement.weight: -2.0
   commands.racket_target.feet_planted_max_disp: 0.05
   commands.racket_target.feet_planted_max_lift: 0.03
+  # Recovery steps allowed (2026-10-19, v2): v1 fell (still) or broke the foot rule (planted) more and
+  # more as the shoves ramped up to 0.8 m/s: without a step the robot cannot absorb them. The foot
+  # costs and the planted rule are now off for 0.8 s after each shove; elsewhere the feet stay put.
+  commands.racket_target.foot_push_grace_s: 0.8

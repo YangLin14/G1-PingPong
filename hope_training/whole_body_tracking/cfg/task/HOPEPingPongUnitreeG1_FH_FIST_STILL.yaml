@@ -7,7 +7,7 @@
 #   start on the station         stand start and reference-state init at y -0.30 m
 #   foot_motion       -1.0       foot planar speed > 5 cm/s and ankle lift > 1 cm (mdp.foot_motion_debt)
 #   foot_displacement -1.0       foot > 2 cm from its episode-start spot (mdp.foot_displacement_debt)
-# Stepping is still allowed (e.g. to catch a shove); it just costs. Warm start from g1_fh_stable_swing model_40299.
+# Stepping costs, except within 0.8 s after a shove (recovery step, foot_push_grace_s). Warm start from g1_fh_stable_swing model_40299.
 # =============================================================================
 # =============================================================================
 # G1 FOREHAND, BALANCE FIRST + STEADIER SWING (D21): _FH_FIST_STABLE plus sharper racket rewards, so
@@ -635,3 +635,7 @@ overrides:
   commands.motion.pose_range: {x: [-0.05, 0.05], y: [-0.32, -0.28], z: [-0.01, 0.01], roll: [-0.1, 0.1], pitch: [-0.1, 0.1], yaw: [-0.2, 0.2]}
   rewards.foot_motion.weight: -1.0
   rewards.foot_displacement.weight: -1.0
+  # Recovery steps allowed (2026-10-19, v2): v1 fell (still) or broke the foot rule (planted) more and
+  # more as the shoves ramped up to 0.8 m/s: without a step the robot cannot absorb them. The foot
+  # costs and the planted rule are now off for 0.8 s after each shove; elsewhere the feet stay put.
+  commands.racket_target.foot_push_grace_s: 0.8

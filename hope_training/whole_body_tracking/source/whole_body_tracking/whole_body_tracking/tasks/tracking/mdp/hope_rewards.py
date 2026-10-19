@@ -4046,14 +4046,26 @@ def _foot_ids(cmd, foot_body_names) -> list[int]:
     return ids
 
 
+def _in_push_grace(env: ManagerBasedRLEnv, cmd) -> torch.Tensor:
+    """True for envs shoved less than ``cfg.foot_push_grace_s`` ago (False everywhere when 0)."""
+    grace = float(getattr(cmd.cfg, "foot_push_grace_s", 0.0))
+    last = getattr(env, "_last_push_step", None)
+    if grace <= 0.0 or last is None:
+        return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+    since = (int(env.common_step_counter) - last).float() * float(env.step_dt)
+    return since < grace
+
+
 def _feet_anchor_xy(env: ManagerBasedRLEnv, cmd, ids) -> torch.Tensor:
-    """Foot xy at each episode's first step (re-taken after every reset), cached on the command."""
+    """Foot xy at each episode's first step (re-taken after every reset), cached on the command.
+    During a push-recovery grace the anchor follows the feet, so a recovery step's landing spot
+    becomes the new anchor."""
     pos = cmd.robot.data.body_link_pos_w[:, ids, :2]
     anchor = getattr(cmd, "_feet_anchor", None)
     if anchor is None or anchor.shape != pos.shape:
         anchor = pos.clone()
         cmd._feet_anchor = anchor
-    fresh = env.episode_length_buf <= 1
+    fresh = (env.episode_length_buf <= 1) | _in_push_grace(env, cmd)
     if bool(fresh.any()):
         anchor[fresh] = pos[fresh]
     return anchor
@@ -4082,7 +4094,7 @@ def foot_motion_debt(
     cmd.metrics["foot_lift_max"] = lift.max(dim=-1).values
     cost = _huber(torch.clamp(speed - float(speed_margin), min=0.0) / float(speed_std))
     cost = cost + _huber(torch.clamp(lift - float(lift_margin), min=0.0) / float(lift_std))
-    return cost.sum(dim=-1)
+    return cost.sum(dim=-1) * (~_in_push_grace(env, cmd)).float()
 
 
 def foot_displacement_debt(
@@ -4100,7 +4112,8 @@ def foot_displacement_debt(
     anchor = _feet_anchor_xy(env, cmd, ids)
     disp = torch.linalg.norm(cmd.robot.data.body_link_pos_w[:, ids, :2] - anchor, dim=-1)
     cmd.metrics["foot_displacement_max"] = disp.max(dim=-1).values
-    return _huber(torch.clamp(disp - float(margin), min=0.0) / float(std)).sum(dim=-1)
+    cost = _huber(torch.clamp(disp - float(margin), min=0.0) / float(std)).sum(dim=-1)
+    return cost * (~_in_push_grace(env, cmd)).float()
 
 
 def feet_planted_violation(
@@ -4125,4 +4138,4 @@ def feet_planted_violation(
         out |= torch.linalg.norm(pos[..., :2] - anchor, dim=-1).max(dim=-1).values > max_disp
     if max_lift > 0.0:
         out |= (pos[..., 2] - float(flat_ankle_z)).max(dim=-1).values > max_lift
-    return out & started
+    return out & started & ~_in_push_grace(env, cmd)

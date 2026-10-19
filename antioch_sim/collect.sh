@@ -16,7 +16,12 @@ while :; do
     info=$($A service exec --session "$ses" --no-stream -- bash -c "
       pgrep -f scripts/train.py >/dev/null && echo RUNNING || echo STOPPED
       ls $WB/logs/rsl_rl/*/*_$run/model_*.pt 2>/dev/null" 2>/dev/null | grep -v '^Session ses-')
-    [ -z "$info" ] && { echo "[collect] $(date +%H:%M) $run: session not reachable"; continue; }
+    if [ -z "$info" ]; then
+      echo x >> "$out/.unreachable"; echo "[collect] $(date +%H:%M) $run: session not reachable"
+      (( $(wc -l < "$out/.unreachable") >= 4 )) && { echo "[collect] $run: gave up (session gone?)"; touch "$out/.collected"; }
+      continue
+    fi
+    rm -f "$out/.unreachable"
     state=$(echo "$info" | head -1)
     for f in $(echo "$info" | grep '\.pt$'); do
       n=$(basename "$f" .pt); n=${n#model_}

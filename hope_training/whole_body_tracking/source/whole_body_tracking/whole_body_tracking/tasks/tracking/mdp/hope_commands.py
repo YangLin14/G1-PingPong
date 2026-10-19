@@ -11283,6 +11283,10 @@ class RacketTargetCommandCfg(CommandTermCfg):
     # term so a task can switch it on through ``overrides`` (dict params cannot be overridden).
     feet_planted_max_disp: float = 0.0
     feet_planted_max_lift: float = 0.0
+    # Recovery grace after a shove (s; 0 = none): the foot costs and the planted termination are off
+    # for this long after each push_by_setting_velocity_ramped shove, and the feet's reference spot
+    # follows the feet, so a recovery step is free and its landing spot becomes the new spot.
+    foot_push_grace_s: float = 0.0
     # Deploy-parity readiness thresholds.  They are read-only diagnostics in legacy tasks.  A task
     # that explicitly registers ``ArmDeadlineMiss`` (currently FinalV2Plus only) uses the same single
     # source of truth to make one decision at the exogenous arm deadline: ready -> release; otherwise

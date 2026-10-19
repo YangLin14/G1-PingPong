@@ -552,3 +552,9 @@ def push_by_setting_velocity_ramped(
     ranges = torch.tensor(range_list, device=asset.device) * scale
     vel_w += math_utils.sample_uniform(ranges[:, 0], ranges[:, 1], vel_w.shape, device=asset.device)
     asset.write_root_velocity_to_sim(vel_w, env_ids=env_ids)
+    # When each env was last shoved (env.common_step_counter), for the foot terms' recovery grace (D22).
+    last = getattr(env, "_last_push_step", None)
+    if last is None:
+        last = torch.full((env.num_envs,), -(10**9), dtype=torch.long, device=asset.device)
+        env._last_push_step = last
+    last[env_ids] = int(getattr(env, "common_step_counter", 0))
