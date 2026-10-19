@@ -2,6 +2,26 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-19 00:40 — D21 results: no falls up to 1.0 m/s; new best `stable_swing` `model_40299`
+* **5859 `g1_fh_stable_swing`** finished 40 299 on 10-17 21:32. **5858 `g1_fh_stable`** crashed at 40 067:
+  the value loss blew up to ~5e30, the action std became invalid (`normal expects all elements of std >= 0.0`),
+  and the process hung until we cancelled it on 10-19. Its value loss had spiked (>100) 266 times since 32 700.
+  The swing run had 18 spikes; the fist run 5719 had 9 over its last 8000 iterations.
+  Checkpoints up to 40 000 are from before the crash.
+* **Isaac:** as the shoves ramp up (first ~2000 iterations), the velocity pass rate falls from 0.59 to ~0.19 and
+  the virtual hit rate from 0.99 to ~0.75; then it stays flat. The pelvis goes 0.692 → 0.685 m. Falls stay ~0.
+* **MuJoCo** (fist model, 8 checkpoints screened, the best 3 on 120 balls per shove level; full table in
+  [runs_and_results.md](runs_and_results.md)):
+  * no falls at any shove level up to 1.0 m/s (`model_32299`: 5 %); at 1.0 m/s 93 % hits (82 %);
+  * pelvis 0.66 m (was ~0.72), CoM closer to the feet;
+  * **balls land short**: median 0.26–0.56 m short without an offset (old 0.21), so only 6–12 % in the zone;
+  * with an aim offset fitted on seeds 0–2 and tested on 3–5, `stable_swing` `model_40299` with (+0.27, −0.08) m
+    puts **38 %** in the zone (`model_32299` with its offset: 36 %), 30 % at 0.5 m/s and 21 % at 1.0 m/s
+    (`model_32299`: 28 % and 17 %).
+* **Conclusion:** balance-first worked without losing accuracy, provided the aim offset is re-fitted. The run
+  with sharper racket rewards is better than balance alone (38 % vs 24 % in zone with offset).
+  **New best policy: `g1_fh_stable_swing` `model_40299`.**
+
 ### 2026-10-17 00:15 — zixian fixed (rebooted); balance-first runs (D21) started
 * **Node:** zixian was rebooted on 10-16 at 15:56 (Slurm `BootTime`). A plain torch CUDA probe (5856) works on
   idx 1. We still never use idx 0 or 5.

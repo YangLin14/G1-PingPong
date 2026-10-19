@@ -6,6 +6,8 @@
 
 | Job | Run name | Task (questions) | Started | State | Last iteration | Note |
 |---|---|---|---|---|---|---|
+| 5858 | `g1_fh_stable` | `_FH_FIST_STABLE` (D21, balance only) | 10-17 00:08 | crashed at 40 067 (value loss blew up to ~5e30, then hung; cancelled 10-19) | from `model_32299` → 40 000 | value loss spiked 266 times from 32 700 on; in MuJoCo worse than the swing run |
+| 5859 | `g1_fh_stable_swing` | `_FH_FIST_STABLE_SWING` (D21 + sharper racket rewards) | 10-17 00:08 | finished 10-17 21:32 | from `model_32299` → 40 299 | **new best: `model_40299`** (18 value-loss spikes) |
 | 5719 | `g1_fh_fist` | as 5686, strike marked at frame 43 | 10-15 15:05 | finished 10-16 11:35 (cancelled 11:45: hung at Isaac shutdown) | resumes 23 700 → 32 299 | best in MuJoCo: `model_32299` |
 | 5686 | `g1_fh_fist` | `HOPEPingPongUnitreeG1_FH_FIST` (rally pace + shoves + **fist grip**, D19/D20) | 10-14 21:40 | stopped 10-15 15:00 (strike mark change) | warm start 17 300 → 32 300 | continued by 5719 |
 | – | `g1_fh_bal` | `HOPEPingPongUnitreeG1_FH_XC_RALLY_BAL` (shoves on the old mount, D19) | – | not submitted | – | superseded by `g1_fh_fist` |
@@ -120,7 +122,40 @@ seen in the per-serve records:
 The old example serves (`eval.json`) are not our task: with them `model_2300` and `model_2400` never
 touch the ball; use `eval_bank` for the forehand.
 
-#### Latest, 2026-10-14: per zone, 120 balls (3 seeds × 40, robot stood up after a fall)
+#### Latest, 2026-10-19: balance-first runs (D21) vs `model_32299`, fist model, MuJoCo contact
+
+120 balls per row (3 seeds × 40). Shoves once per ball. "+ aim" = aim offset fitted on seeds 0–2 without
+shoves, tested on seeds 3–5 (`stable_swing` `model_40299`: (+0.27, −0.08) m; `model_32299`: (+0.19, +0.04) m).
+
+| Policy | Shove | Aim offset | Fell | Hit | At apex | Legal | In zone | Pelvis (m) |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| `stable_swing` `model_40299` | none | no | 0 % | 100 % | 95 % | 78 % | 12 % | 0.660 |
+| | 0.5 m/s | no | 0 % | 100 % | 94 % | 78 % | 14 % | 0.661 |
+| | 0.75 m/s | no | 0 % | 98 % | 93 % | 68 % | 12 % | 0.662 |
+| | 1.0 m/s | no | 0 % | 93 % | 87 % | 67 % | 10 % | 0.663 |
+| | none | yes | 0 % | 100 % | 100 % | 63 % | **38 %** | 0.660 |
+| | 0.5 m/s | yes | 0 % | 100 % | 99 % | 69 % | **30 %** | 0.661 |
+| | 1.0 m/s | yes | **0 %** | **98 %** | 95 % | 61 % | **21 %** | 0.660 |
+| `fist` `model_32299` | none | no | 0 % | 100 % | 90 % | 92 % | 34 % | ~0.72 |
+| | 1.0 m/s | no | 5 % | 82 % | 69 % | 58 % | 13 % | ~0.72 |
+| | none | yes | 0 % | – | – | 68 % | 36 % | ~0.72 |
+| | 0.5 m/s | yes | 0 % | 99 % | 93 % | 62 % | 28 % | 0.721 |
+| | 1.0 m/s | yes | 1.7 % | 87 % | 79 % | 46 % | 17 % | 0.716 |
+
+Other checkpoints (seed 0 only, or seeds 0–2): `stable_swing` 38 000 / 39 000 / 39 500 and `stable`
+38 000–40 000 also never fall, but put 0–10 % in the zone without the offset; `stable` `model_39500` with
+its offset (+0.37, −0.06): 24 %; `stable_swing` `model_39000` with (+0.31, −0.07): 24 %.
+
+* **Balance goal met.** No falls at any shove level up to 1.0 m/s; at 1.0 m/s it still hits 93–98 %
+  (old: 82–87 %). The pelvis is 6 cm lower (0.66 m, the new ceiling) and the CoM stays closer to the feet.
+* **The new stance hits short.** Without the offset the balls land 0.26–0.56 m short (old: 0.21 m), so
+  the zone rate drops to 6–12 %. The side-to-side spread did not grow. With a re-fitted offset the zone
+  rate is back to the old level (38 % vs 36 %) and stays higher under shoves.
+* **The swing change helped.** The run with sharper racket rewards (`stable_swing`) beats the
+  balance-only run (`stable`) on the zone rate (38 % vs 24 % with offset), and its training was stable.
+* **Legal returns are a bit lower with the offset** (63 % vs 68 %): aiming deeper sends some long balls out.
+
+#### 2026-10-14: per zone, 120 balls (3 seeds × 40, robot stood up after a fall)
 
 The Isaac evaluation could not be rerun (zixian down since 10-13 20:15); these are MuJoCo only. The
 ONNX of `model_15700` was built on the laptop (`onnx_from_checkpoint.py`). Same funnel as the Isaac

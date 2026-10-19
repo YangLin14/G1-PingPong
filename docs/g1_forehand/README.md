@@ -6,16 +6,17 @@ What the Triton Droids team built on top of HOPE and the club's G1 port: a G1 th
 cross-court forehand into one of four target zones. Simulation only for now (the G1 has not
 arrived); everything is designed so the sim-to-real path stays open.
 
-## Current status (2026-10-17)
+## Current status (2026-10-19)
 
-* **Cluster:** zixian was rebooted on 10-16 and CUDA works again. We still avoid idx 0 and 5. The balance-first runs (D21) are running: 5858 `g1_fh_stable` and 5859 `g1_fh_stable_swing`. Both start from `model_32299` and run to 40 300 (ETA 10-17 ~15:00). `g1_fh_fist` (D20) finished at 32 299.
-* **Best policy: `g1_fh_fist` `model_32299`** (fist grip, MuJoCo, deploy defaults, no aim offset, 240 balls):
-  hits 100 %, at the apex ~95 %, legal return ~86 %, in the target zone ~26 %. With the aim offset (+0.14, −0.03) m: **42 % in zone**, 80 % legal (held-out balls, training paddle model).
-  (Previous best, old grip `g1_fh_diag` `model_15700`: 35 % in zone with the aim offset.)
-* **Balance:** no falls without shoves or with shoves up to 0.5 m/s; 5 % at 1.0 m/s (old: 26 %).
-  Passes our criterion, so no new balance reward (D19).
+* **Cluster:** no job of ours is running. zixian works again since the 10-16 reboot; idx 0 and 5 are still avoided.
+* **Best policy: `g1_fh_stable_swing` `model_40299`** (D21, fist grip, MuJoCo, 120 held-out balls, aim offset (+0.27, −0.08) m):
+  hits 100 %, legal 63 %, **in the target zone 38 %**; with 1.0 m/s shoves: hits 98 %, in zone 21 %, **no falls**.
+  Without the offset it hits short (12 % in zone), so the offset must be applied.
+  (Previous best, `g1_fh_fist` `model_32299`: 36 % in zone with its offset; 5 % falls at 1.0 m/s.)
+* **Balance:** no falls at any shove level up to 1.0 m/s; the pelvis stands at 0.66 m (was ~0.72).
+* `g1_fh_stable` (balance only) crashed at 40 067 (value loss blew up) and is worse (24 % in zone).
 * **Robot model:** fist grip, racket perpendicular to the forearm (D20).
-* Neighbouring checkpoints differ a lot (32 000: 73 % hits): always pick by the MuJoCo test.
+* Neighbouring checkpoints differ a lot: always pick by the MuJoCo test.
 
 Details: [status/log.md](status/log.md) (newest first).
 
