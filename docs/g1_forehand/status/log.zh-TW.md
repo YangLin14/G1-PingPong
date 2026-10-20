@@ -2,6 +2,15 @@
 
 [English](log.md) · [文件目錄](../README.zh-TW.md)
 
+### 2026-10-19 17:20 — D22 三個訓練全部改成「不推」重跑（使用者決定）
+* 使用者要求訓練時不要再推機器人。三個有推的 run（`g1_fh_ss16k` 跑到約 41 800；`g1_fh_still16k_v2`、`g1_fh_planted16k_v2` 剛開始）都停掉，session 釋放。
+* 從 `model_40299` 重新練到 44 300，16384 環境，加上 `task.domain_rand.push_velocity_range=null`（沒有 `push_robot` 事件；HOPE 原本的設定就沒有）：
+  `g1_fh_ss16k_nopush`、`g1_fh_still16k_nopush`、`g1_fh_planted16k_nopush`。其他照 D22（still/planted 保留 0.8 秒寬限設定，沒有推的話不會起作用）。
+  啟動 log 確認沒有推擠事件。
+* 腳本修正：`bash -c` 裡的 `pgrep -f scripts/train.py` 會找到自己這行指令，所以 `status.sh` 把沒啟動的 job 顯示成「running」，
+  `collect.sh` 也永遠不會釋放跑完的 session；改成 `pgrep -f "[s]cripts/train.py"`。三個同時上傳時網路很慢，上傳逾時的 job 要手動補完：
+  `SESSION=... ./push_ignored.sh`、`service cp` 上傳 checkpoint、`service exec -- touch /workspace/project/.train_go`。
+
 ### 2026-10-19 16:30 — D22 v1 的 still/planted 被推就撐不住；加上恢復寬限後重跑（v2）
 * 推力慢慢加大時（前 2000 圈從 0 加到 0.8 m/s），兩個限制腳的訓練每 250 圈都變得更差，而 `g1_fh_ss16k` 一直是 0 跌倒（佔結束 episode 的比例）：
 

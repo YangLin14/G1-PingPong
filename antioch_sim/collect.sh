@@ -14,7 +14,7 @@ while :; do
     [ -f "$out/.collected" ] && continue
     left=1
     info=$($A service exec --session "$ses" --no-stream -- bash -c "
-      pgrep -f scripts/train.py >/dev/null && echo RUNNING || echo STOPPED
+      pgrep -f "[s]cripts/train.py" >/dev/null && echo RUNNING || echo STOPPED
       ls $WB/logs/rsl_rl/*/*_$run/model_*.pt 2>/dev/null" 2>/dev/null | grep -v '^Session ses-')
     if [ -z "$info" ]; then
       echo x >> "$out/.unreachable"; echo "[collect] $(date +%H:%M) $run: session not reachable"

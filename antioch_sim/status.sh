@@ -6,7 +6,7 @@ for job in "$@"; do
   echo "== $run ($ses)"
   .venv/bin/antioch service exec --session "$ses" --no-stream -- bash -c "
     L=/workspace/project/hope_training/whole_body_tracking/logs/antioch/$run.log
-    pgrep -f scripts/train.py >/dev/null && echo running || echo 'NOT running'
+    pgrep -f "[s]cripts/train.py" >/dev/null && echo running || echo 'NOT running'
     grep -E 'Learning iteration' \$L | tail -1 | tr -s ' '
     grep -E 'Iteration time|Mean value_function loss|Mean episode length' \$L | tail -3 | tr -s ' '
     grep -E 'Traceback|ERROR during run|watchdog' \$L | head -3

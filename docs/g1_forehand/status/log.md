@@ -2,6 +2,19 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-19 17:20 — all three D22 jobs restarted WITHOUT shoves (user's decision)
+* The user asked to stop shoving the robot in training. The three shoved runs (`g1_fh_ss16k` at ~41 800,
+  `g1_fh_still16k_v2` and `g1_fh_planted16k_v2` just started) were stopped and their sessions released.
+* Restarted from `model_40299` to 44 300, 16384 envs, with `task.domain_rand.push_velocity_range=null`
+  (no `push_robot` event; the HOPE base config has none): `g1_fh_ss16k_nopush`, `g1_fh_still16k_nopush`,
+  `g1_fh_planted16k_nopush`. Everything else as in D22 (still/planted keep the 0.8 s grace setting, which does
+  nothing without shoves). The startup log confirms no push event.
+* Script fixes: `pgrep -f scripts/train.py` inside `bash -c` matched its own command line, so `status.sh`
+  reported a job that never started as "running" and `collect.sh` would never have released a finished
+  session; now `pgrep -f "[s]cripts/train.py"`. A start whose uploads time out (slow network with three
+  uploads at once) must be finished by hand: `SESSION=... ./push_ignored.sh`, `service cp` the checkpoint,
+  `service exec -- touch /workspace/project/.train_go`.
+
 ### 2026-10-19 16:30 — D22 v1 still/planted fail under shoves; restarted with a recovery grace (v2)
 * As the shoves ramped up (0 → 0.8 m/s over the first 2000 iterations), the two foot-constrained jobs got
   worse every 250 iterations, while `g1_fh_ss16k` stayed at 0 falls (share of ended episodes):
