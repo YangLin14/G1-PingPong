@@ -2,6 +2,18 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-20 00:05 — D23: second backhand run from a NEW model (`g1_bh_still_scratch`)
+* The user asked why the backhand run starts from the forehand `model_40299` instead of a new model, and asked
+  to train a new one in parallel. Same task `HOPEPingPongUnitreeG1_BH_FIST_STILL`, no checkpoint, 0 → 10 000,
+  16 384 envs (session `ses-76G0YF4V73MZACAFAMFB92ZZPZ`). The two will be compared in MuJoCo at matching
+  iteration counts (foot motion, falls, centre-zone rate).
+* Warm start trade-off: it keeps the forehand's balance and whole-body control, but also its habit of stepping
+  (the forehand station kept changing) and a forehand arm; a new model has no habit but learns standing,
+  tracking and hitting from zero.
+* First readings: warm start at 40 669 (370 iterations in): episodes 463 / 500 steps, `feet_planted` ends 12 %
+  (100 % at the start), virtual hit 0.75. New model at iteration 32: episodes 16 steps, `feet_planted` 67 %,
+  no hits yet (expected this early).
+
 ### 2026-10-20 00:00 — D23 backhand standing-still drill started (`g1_bh_still`)
 * The user put the three D22 jobs aside and asked for a new approach: backhand, robot left of the table
   centre, one target in the middle of the opponent's half, full focus on balance, feet not moving, no
