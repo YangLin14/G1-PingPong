@@ -23,6 +23,12 @@ Writes ``<out>.npz`` with the schema the RacketTargetCommand loader validates, p
 All rows are forehand (clip 0); pair it with ``commands.racket_target.active_clip_ids: [0]``.
 
   python3 hope_training/whole_body_tracking/scripts/make_g1_forehand_bank.py --rows 50000
+
+``--backhand`` (D23, backhand balance drill) writes a backhand bank instead: clip 1, ONE station
+(``BACKHAND`` below: y = +0.25 m, left of the table centre, more room on the right), feeds hit from the
+middle of the opponent's end line that bounce on the robot's left, apex strike points in the backhand
+box in front of the body, and one target, ``opp_center_mid`` (middle of the opponent's half). Then
+run ``filter_bank_reach.py`` to keep only the rows the robot reaches without moving its feet.
 """
 
 from __future__ import annotations
@@ -85,6 +91,33 @@ class BankCfg:
     max_clearance_err: float = 0.10
     flight_h: float = 0.002
     flight_steps: int = 400
+    # Other drills (defaults = the forehand cross-court bank)
+    clip: int = 0                                   # 0 forehand, 1 backhand
+    feed_zone: tuple | None = None                  # ((depth), (lateral)) fractions; None = fs.FEED_ZONE
+    feed_origin_lateral: tuple | None = None        # None = fs.FEED_ORIGIN_LATERAL
+    fixed_station_y: float | None = None            # one station for every row (racket offset = apex y - it)
+    task: str = "HOPEPingPongUnitreeG1_FH cross-court apex forehand"
+
+
+#: Backhand balance drill (D23): the robot stands still at y = +0.25 m (robot's left of the table
+#: centre) and blocks with the backhand (black face) to the middle of the opponent's half. The strike
+#: box is the flat063 backhand clip's strike frame (racket 0.37 m ahead of the pelvis, +0.03 m left,
+#: 0.93 m high) widened; filter_bank_reach.py keeps what waist + arm actually reach.
+BACKHAND = dict(
+    clip=1,
+    targets=("opp_center_mid",),
+    vin_x=(-5.5, -2.5),
+    vin_y=(-0.3, 1.2),            # from the middle of the far end line toward the robot's left
+    vin_z=(-3.5, -1.5),
+    apex_x=(0.34, 0.50),
+    apex_z=(0.82, 1.06),
+    racket_offset_y=(-0.10, 0.20),
+    fixed_station_y=0.25,
+    feed_zone=((1.0 / 3.0, 2.0 / 3.0), (0.0, 0.9)),
+    feed_origin_lateral=(-0.4, 0.4),
+    nominal_racket_vel=(1.8, -0.2, 0.8),
+    task="HOPEPingPongUnitreeG1_BH backhand balance drill (fixed station, centre target)",
+)
 
 
 def _uniform(g: torch.Generator, n: int, lo: float, hi: float) -> torch.Tensor:
@@ -192,8 +225,8 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
     prm = vb.load_venue_params(venue_yaml)
     tprm = table_params(prm, venue_yaml)
     scfg = fs.ForehandSuccessCfg()
-    (fx, fy) = scfg.feed_bounds()
-    (oy, oz) = scfg.feed_origin_bounds()
+    (fx, fy) = scfg.feed_bounds(cfg.feed_zone)
+    (oy, oz) = scfg.feed_origin_bounds(cfg.feed_origin_lateral)
     zone_cfgs = [scfg.with_target(t) for t in cfg.targets]
     zones = torch.tensor([sum(map(list, c.zone_bounds()), []) for c in zone_cfgs])  # (Z, 4) x_lo x_hi y_lo y_hi
 
@@ -227,9 +260,14 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
         in_box = found & (p_apex[:, 0] >= cfg.apex_x[0]) & (p_apex[:, 0] <= cfg.apex_x[1]) \
             & (p_apex[:, 2] >= cfg.apex_z[0]) & (p_apex[:, 2] <= cfg.apex_z[1])
         rejects["apex_out_of_box"] += int((found & ~in_box).sum())
-        offset_y = _uniform(g, n, *cfg.racket_offset_y)
-        station_y = p_apex[:, 1] - offset_y
-        ok_station = station_y.abs() <= cfg.station_y_max
+        if cfg.fixed_station_y is None:
+            offset_y = _uniform(g, n, *cfg.racket_offset_y)
+            station_y = p_apex[:, 1] - offset_y
+            ok_station = station_y.abs() <= cfg.station_y_max
+        else:
+            station_y = torch.full((n,), float(cfg.fixed_station_y))
+            offset_y = p_apex[:, 1] - station_y
+            ok_station = (offset_y >= cfg.racket_offset_y[0]) & (offset_y <= cfg.racket_offset_y[1])
         rejects["station_out_of_range"] += int((in_box & ~ok_station).sum())
         keep = in_box & ok_station
         if not bool(keep.any()):
@@ -275,7 +313,7 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
         k = idx[sel]
         sy = station_y[k]
         rows = {
-            "clip": torch.zeros(len(sel), dtype=torch.int64),
+            "clip": torch.full((len(sel),), cfg.clip, dtype=torch.int64),
             "station_xy": torch.stack([torch.zeros_like(sy), sy], -1),
             "target_position_offset": torch.stack([ball[sel, 0], ball[sel, 1] - sy, ball[sel, 2]], -1),
             "target_velocity": v_r[sel],
@@ -318,7 +356,7 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
         "schema_version": SCHEMA_VERSION,
         "contract": {
             "recipe_revision": RECIPE_REVISION,
-            "task": "HOPEPingPongUnitreeG1_FH cross-court apex forehand",
+            "task": cfg.task,
             "robot": "unitree_g1",
             "frame": "env frame: robot at origin facing +x, +y = robot's left",
             "table_near_x": scfg.table_near_x,
@@ -353,7 +391,7 @@ def generate(cfg: BankCfg) -> tuple[dict, dict]:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--rows", type=int, default=BankCfg.rows)
-    p.add_argument("--targets", nargs="+", default=list(BankCfg.targets), choices=sorted(fs.TARGET_ZONES))
+    p.add_argument("--targets", nargs="+", default=list(BankCfg.targets), choices=sorted({**fs.TARGET_ZONES, **fs.OTHER_TARGET_ZONES}))
     p.add_argument("--seed", type=int, default=BankCfg.seed)
     p.add_argument("--vin-x", nargs=2, type=float, default=BankCfg.vin_x, metavar=("LO", "HI"),
                    help="pre-bounce feed velocity x at the feed bounce (m/s, negative = toward the robot)")
@@ -361,11 +399,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--vin-z", nargs=2, type=float, default=BankCfg.vin_z, metavar=("LO", "HI"))
     p.add_argument("--spin-rev-s", type=float, default=BankCfg.spin_in_rev_s, help="max feed spin (rev/s)")
     p.add_argument("--out", default=str(DEFAULT_OUT), help="output path without extension")
+    p.add_argument("--backhand", action="store_true",
+                   help="backhand balance drill bank (BACKHAND preset; --targets/--vin-* are ignored)")
     args = p.parse_args(argv)
-    arrays, receipt = generate(BankCfg(
-        rows=args.rows, targets=tuple(args.targets), seed=args.seed, vin_x=tuple(args.vin_x),
-        vin_y=tuple(args.vin_y), vin_z=tuple(args.vin_z), spin_in_rev_s=args.spin_rev_s,
-    ))
+    if args.backhand:
+        cfg = BankCfg(rows=args.rows, seed=args.seed, spin_in_rev_s=args.spin_rev_s, **BACKHAND)
+    else:
+        cfg = BankCfg(
+            rows=args.rows, targets=tuple(args.targets), seed=args.seed, vin_x=tuple(args.vin_x),
+            vin_y=tuple(args.vin_y), vin_z=tuple(args.vin_z), spin_in_rev_s=args.spin_rev_s,
+        )
+    arrays, receipt = generate(cfg)
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     np.savez(out.with_suffix(".npz"), **arrays)

@@ -1,0 +1,221 @@
+{
+ "schema_version": 2,
+ "contract": {
+  "recipe_revision": 12,
+  "task": "HOPEPingPongUnitreeG1_BH backhand balance drill (fixed station, centre target)",
+  "robot": "unitree_g1",
+  "frame": "env frame: robot at origin facing +x, +y = robot's left",
+  "table_near_x": 0.5,
+  "table_surface_z": 0.76,
+  "feed_zone_xy": [
+   [
+    0.9566666666666668,
+    1.4133333333333336
+   ],
+   [
+    0.0,
+    0.68625
+   ]
+  ],
+  "feed_origin": {
+   "crosses_far_end_line_at_x": 3.24,
+   "y": [
+    -0.305,
+    0.305
+   ],
+   "z": [
+    0.81,
+    1.21
+   ]
+  },
+  "target_zones": {
+   "opp_center_mid": [
+    [
+     2.3266666666666667,
+     2.783333333333333
+    ],
+    [
+     -0.25416666666666665,
+     0.25416666666666665
+    ]
+   ]
+  },
+  "target_zone_id": [
+   "opp_center_mid"
+  ],
+  "strike": "incoming ball at its post-bounce apex (vz = 0)",
+  "racket_speed_limit_mps": 3.5,
+  "net_clearance_margin_m": 0.03,
+  "physics": "ball_physics_venue.yaml"
+ },
+ "generation": {
+  "rows": 52000,
+  "targets": [
+   "opp_center_mid"
+  ],
+  "seed": 0,
+  "vin_x": [
+   -5.5,
+   -2.5
+  ],
+  "vin_y": [
+   -0.3,
+   1.2
+  ],
+  "vin_z": [
+   -3.5,
+   -1.5
+  ],
+  "spin_in_rev_s": 5.0,
+  "apex_x": [
+   0.34,
+   0.5
+  ],
+  "apex_z": [
+   0.82,
+   1.06
+  ],
+  "racket_offset_y": [
+   -0.1,
+   0.2
+  ],
+  "station_y_max": 0.45,
+  "racket_speed_limit": 3.5,
+  "nominal_racket_vel": [
+   1.8,
+   -0.2,
+   0.8
+  ],
+  "solve_iters": 12,
+  "solve_damping": 0.001,
+  "max_landing_err": 0.05,
+  "net_margin": 0.03,
+  "net_clearance_target": 0.25,
+  "net_clearance_weight": 1.0,
+  "max_clearance_err": 0.1,
+  "flight_h": 0.002,
+  "flight_steps": 400,
+  "clip": 1,
+  "feed_zone": [
+   [
+    0.3333333333333333,
+    0.6666666666666666
+   ],
+   [
+    0.0,
+    0.9
+   ]
+  ],
+  "feed_origin_lateral": [
+   -0.4,
+   0.4
+  ],
+  "fixed_station_y": 0.25,
+  "task": "HOPEPingPongUnitreeG1_BH backhand balance drill (fixed station, centre target)"
+ },
+ "attempts": 4784000,
+ "reject_counts": {
+  "no_apex": 0,
+  "apex_out_of_box": 4569013,
+  "station_out_of_range": 120966,
+  "feed_not_from_opp_right": 40949,
+  "landing_miss": 10,
+  "net": 2,
+  "speed": 0,
+  "not_in_zone": 6
+ },
+ "accepted_summary": {
+  "racket_speed_mps": {
+   "min": 0.9908500909805298,
+   "mean": 1.754217199346194,
+   "p95": 2.2327660083770753,
+   "max": 2.6385176181793213
+  },
+  "apex_height_above_table_m": {
+   "min": 0.13573551177978516,
+   "mean": 0.23745557446090074,
+   "p95": 0.29114649891853334,
+   "max": 0.2999929189682007
+  },
+  "incoming_speed_mps": {
+   "min": 2.0651817321777344,
+   "mean": 2.977206655268486,
+   "p95": 3.350932848453522,
+   "max": 3.585447311401367
+  },
+  "feed_speed_pre_bounce_mps": {
+   "min": 4.375207901000977,
+   "mean": 5.491395570039749,
+   "p95": 6.01736741065979,
+   "max": 6.241949081420898
+  },
+  "feed_flight_s": {
+   "min": 0.4962671399116516,
+   "mean": 0.5917513576029585,
+   "p95": 0.6955865085124968,
+   "max": 0.7980485558509827
+  },
+  "net_clearance_m": {
+   "min": 0.24664424359798431,
+   "mean": 0.25074805323034527,
+   "p95": 0.2525271773338318,
+   "max": 0.25508949160575867
+  },
+  "landing_residual_m": {
+   "min": 1.6800463527033571e-06,
+   "mean": 0.0004529733366830245,
+   "p95": 0.0009829823567997662,
+   "max": 0.0020068215671926737
+  },
+  "station_y_m": {
+   "min": 0.25,
+   "mean": 0.25,
+   "p95": 0.25,
+   "max": 0.25
+  },
+  "rows_per_target": {
+   "opp_center_mid": 52000
+  }
+ },
+ "bank_path": "g1_bh_center_bank_raw.npz",
+ "bank_sha256": "7b72cdb6a123790a60ccfc0c6edebbe79e0dcf5d5c56ef000970dc1bbd1ee4d2",
+ "reach_filter": {
+  "source_bank": "g1_bh_center_bank_raw.npz",
+  "clip": "g1ikfist_hope_backhand_flat063",
+  "strike_frame": 48,
+  "model": "g1_29dof_pingpang_fist_sole.xml",
+  "ik_joints": [
+   "waist_yaw_joint",
+   "waist_roll_joint",
+   "waist_pitch_joint",
+   "right_shoulder_pitch_joint",
+   "right_shoulder_roll_joint",
+   "right_shoulder_yaw_joint",
+   "right_elbow_joint",
+   "right_wrist_roll_joint",
+   "right_wrist_pitch_joint",
+   "right_wrist_yaw_joint"
+  ],
+  "soft_limit_factor": 0.9,
+  "pos_tol_m": 0.03,
+  "face_tol_deg": 15.0,
+  "reachable_fraction": 1.0,
+  "kept_rows": 52000,
+  "pos_err_m_median_all": 1.7554167342883506e-16,
+  "face_err_deg_median_all": 0.0010047419605834311,
+  "kept_strike_offset_ranges": {
+   "x": [
+    0.34000101685523987,
+    0.4999999701976776
+   ],
+   "y": [
+    -0.09999614208936691,
+    0.19999903440475464
+   ],
+   "z": [
+    0.895735502243042,
+    1.0599929094314575
+   ]
+  }
+ }
+}

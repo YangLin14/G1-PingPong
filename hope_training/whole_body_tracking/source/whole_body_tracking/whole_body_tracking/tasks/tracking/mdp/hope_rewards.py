@@ -4139,3 +4139,47 @@ def feet_planted_violation(
     if max_lift > 0.0:
         out |= (pos[..., 2] - float(flat_ankle_z)).max(dim=-1).values > max_lift
     return out & started & ~_in_push_grace(env, cmd)
+
+
+# --- Flat feet (docs/g1_forehand/decisions.md D23): soles flat on the floor -----------------------
+# Sole box of the fist_sole G1 model in the ankle_roll_link frame (unitree/scripts/build_g1_pingpang_models.py
+# SOLE_*): flat bottom at z = -0.0354 between x = -0.0658 and 0.1424, |y| <= 0.0378.
+G1_SOLE_CORNERS = ((-0.0658, -0.0378, -0.0354), (-0.0658, 0.0378, -0.0354),
+                   (0.1424, -0.0378, -0.0354), (0.1424, 0.0378, -0.0354))
+
+
+def foot_flat_debt(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    foot_body_names: tuple[str, str] = ("left_ankle_roll_link", "right_ankle_roll_link"),
+    tilt_margin: float = 0.035,
+    tilt_std: float = 0.1,
+) -> torch.Tensor:
+    """Cost for a sole that is not flat (always on): the angle between each foot's up axis and the
+    world up axis above ``tilt_margin`` (rad), Huber, summed over both feet. Standing on a toe, a heel
+    or one edge of the foot all tilt the sole.
+
+    Also records where the sole box corners are relative to the floor (z = 0): ``sole_corner_min_z``
+    (most negative = deepest into the floor, the sim's contact softness) and ``sole_corner_lift_max``
+    (the lower foot's highest corner: > 0 means even the planted foot is not flat), so the training
+    log shows any sinking or rocking."""
+    if tilt_std <= 0.0 or tilt_margin < 0.0:
+        raise ValueError("foot_flat_debt requires tilt_margin >= 0 and tilt_std > 0")
+    cmd = _cmd(env, command_name)
+    ids = _foot_ids(cmd, foot_body_names)
+    data = cmd.robot.data
+    quat = data.body_link_quat_w[:, ids]                                   # (N, 2, 4)
+    up = torch.zeros(quat.shape[:-1] + (3,), device=quat.device, dtype=quat.dtype)
+    up[..., 2] = 1.0
+    foot_up = quat_apply(quat, up)
+    tilt = torch.acos(foot_up[..., 2].clamp(-1.0, 1.0))                    # (N, 2)
+    corners = torch.tensor(G1_SOLE_CORNERS, device=quat.device, dtype=quat.dtype)
+    n, f = quat.shape[:2]
+    cz = (data.body_link_pos_w[:, ids].unsqueeze(2)
+          + quat_apply(quat.unsqueeze(2).expand(n, f, 4, 4).reshape(-1, 4),
+                       corners.expand(n, f, 4, 3).reshape(-1, 3)).reshape(n, f, 4, 3))[..., 2]
+    cz = cz - env.scene.env_origins[:, 2].view(-1, 1, 1)
+    cmd.metrics["foot_tilt_max"] = tilt.max(dim=-1).values
+    cmd.metrics["sole_corner_min_z"] = cz.amin(dim=(1, 2))
+    cmd.metrics["sole_corner_lift_max"] = cz.amax(dim=2).amin(dim=1)
+    return _huber(torch.clamp(tilt - float(tilt_margin), min=0.0) / float(tilt_std)).sum(dim=-1)

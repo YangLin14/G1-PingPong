@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import dataclasses
 import math
 import pathlib
 import sys
@@ -105,6 +106,7 @@ class Mount:
     finger_s: tuple = ()        # finger positions along the handle (from the grip centre), pinky -> index
     thumb: tuple = ()           # thumb capsule chain, wrist frame
     blade_mesh_prefix_urdf: str = "../meshes/"
+    sole_box: bool = False      # replace the four 5 mm foot contact spheres by one box under the sole
 
     @property
     def out_dir(self) -> pathlib.Path:
@@ -161,7 +163,28 @@ def _fist_mount() -> Mount:
 
 
 FIST = _fist_mount()
-MOUNTS = (FOREARM, FIST)
+
+#: Fist grip + flat-sole foot collision (Triton Droids D23, backhand balance run, 2026-10-19). The
+#: upstream foot touches the floor through four 5 mm spheres (x -0.05 / 0.12, y +-0.025 / 0.03), while
+#: the visible sole is flat from heel to toe and reaches 1.6 cm further forward and 1.1 cm further
+#: back, so a tilted foot shows its sole through the floor while the spheres still hold it up. Here
+#: one box covers the sole mesh's footprint and its bottom is the sole's bottom: what you see is what
+#: touches the floor.
+FIST_SOLE = dataclasses.replace(FIST, name="g1_29dof_pingpang_fist_sole", sole_box=True)
+MOUNTS = (FOREARM, FIST, FIST_SOLE)
+
+#: Sole box in the ankle_roll_link frame, from the upstream ankle_roll_link STL (both feet): the sole is
+#: flat at z = -0.0354 between x = -0.0658 and 0.1424, |y| <= 0.0378. 2 cm thick.
+SOLE_LINKS = ("left_ankle_roll_link", "right_ankle_roll_link")
+SOLE_X = (-0.0658, 0.1424)
+SOLE_HALF_Y = 0.0378
+SOLE_BOTTOM_Z = -0.0354
+SOLE_THICKNESS = 0.02
+SOLE_CENTRE = ((SOLE_X[0] + SOLE_X[1]) / 2, 0.0, SOLE_BOTTOM_Z + SOLE_THICKNESS / 2)
+#: MuJoCo contact time constant for the sole: the default 0.02 s lets a standing G1 sink 0.65 mm into the
+#: floor; 0.005 s (= the racket's collision class, >= 2 x the 1 ms step) halves that to 0.37 mm.
+SOLE_SOLREF = "0.005 1"
+SOLE_HALF = ((SOLE_X[1] - SOLE_X[0]) / 2, SOLE_HALF_Y, SOLE_THICKNESS / 2)
 
 # Back-compat names (the FOREARM mount, which every existing checkpoint uses).
 G1_RACKET_MOUNT_XYZ = FOREARM.xyz
@@ -452,6 +475,19 @@ def build_urdf(upstream: ET.ElementTree, mount: Mount = FOREARM) -> ET.ElementTr
         rubber = next(el for el in root.iter("link") if el.get("name") == RUBBER_HAND_LINK)
         rubber.find("visual/geometry/mesh").set("filename", "../meshes/" + FIST_MESH)
 
+    if mount.sole_box:
+        for link in root.iter("link"):
+            if link.get("name") not in SOLE_LINKS:
+                continue
+            spheres = [c for c in link.findall("collision") if c.find("geometry/sphere") is not None]
+            if len(spheres) != 4:
+                raise ValueError(f"expected 4 foot contact spheres on {link.get('name')}, found {len(spheres)}")
+            for c in spheres:
+                link.remove(c)
+            col = ET.SubElement(link, "collision")
+            ET.SubElement(col, "origin", xyz=_fmt(SOLE_CENTRE), rpy="0 0 0")
+            ET.SubElement(ET.SubElement(col, "geometry"), "box", size=_fmt([2 * h for h in SOLE_HALF]))
+
     # Handle capsule: a URDF cylinder along the handle axis (Isaac converts cylinders to capsules
     # when replace_cylinders_with_capsules=True; this is a primitive, not a mesh).
     hx = tuple((a + b) / 2 for a, b in zip(mount.handle_from, mount.handle_to))
@@ -548,6 +584,20 @@ def build_mjcf(upstream: ET.ElementTree, effort_limits: dict[str, float], mount:
         if len(hand_geoms) != 1:
             raise ValueError(f"expected one {RUBBER_HAND_LINK} geom in the upstream MJCF, found {len(hand_geoms)}")
         hand_geoms[0].set("mesh", "right_fist")
+
+    if mount.sole_box:
+        for name in SOLE_LINKS:
+            foot = _find_body(root, name)
+            spheres = [g for g in foot.findall("geom") if g.get("type") is None and g.get("size") == "0.005"]
+            if len(spheres) != 4:
+                raise ValueError(f"expected 4 foot contact spheres on {name}, found {len(spheres)}")
+            at = list(foot).index(spheres[0])
+            for g in spheres:
+                foot.remove(g)
+            foot.insert(at, ET.Element(
+                "geom", name=f"{name}_sole", type="box", pos=_fmt(SOLE_CENTRE), size=_fmt(SOLE_HALF),
+                solref=SOLE_SOLREF, rgba="0.2 0.2 0.2 1",
+            ))
 
     # Free joint rename + pelvis site.
     pelvis = _find_body(root, "pelvis")

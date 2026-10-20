@@ -33,6 +33,10 @@ UNITREE_G1_URDF_PATH = f"{UNITREE_G1_ASSET_ROOT}/urdf/model.urdf"
 # fist run never overwrites the asset that forearm-mount runs (g1_fh_diag, ...) load on requeue.
 UNITREE_G1_FIST_ASSET_ROOT = f"{ASSET_DIR}/unitree_g1_fist"
 UNITREE_G1_FIST_URDF_PATH = f"{UNITREE_G1_FIST_ASSET_ROOT}/urdf/model.urdf"
+# Fist grip + one box under each sole instead of four 5 mm contact spheres (D23,
+# unitree/URDF/g1_29dof_pingpang_fist_sole/): the visible sole can no longer sink into the floor.
+UNITREE_G1_FIST_SOLE_ASSET_ROOT = f"{ASSET_DIR}/unitree_g1_fist_sole"
+UNITREE_G1_FIST_SOLE_URDF_PATH = f"{UNITREE_G1_FIST_SOLE_ASSET_ROOT}/urdf/model.urdf"
 
 ##
 # Body / joint name constants (real names from the Unitree G1 URDF).
@@ -123,6 +127,7 @@ G1_FIST_MOUNT_QUAT = (0.70710678, 0.0, -0.70710678, 0.0)  # rpy (0, -pi/2, 0)
 G1_RACKET_MOUNTS = {
     "forearm": (G1_MOUNT_OFFSET, G1_MOUNT_QUAT, UNITREE_G1_URDF_PATH),
     "fist": (G1_FIST_MOUNT_OFFSET, G1_FIST_MOUNT_QUAT, UNITREE_G1_FIST_URDF_PATH),
+    "fist_sole": (G1_FIST_MOUNT_OFFSET, G1_FIST_MOUNT_QUAT, UNITREE_G1_FIST_SOLE_URDF_PATH),
 }
 
 # Contact bodies allowed to touch (feet) or carrying the paddle (wrists + racket links); the

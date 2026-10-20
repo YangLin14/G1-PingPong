@@ -141,6 +141,10 @@ def add_foot_terms(cfg) -> None:
     cfg.terminations.feet_planted = DoneTerm(
         func=mdp.feet_planted_violation,
         params={"command_name": "racket_target", "foot_body_names": feet})
+    # D23: soles flat on the floor (tilt above 2 deg costs); off until a task sets its weight.
+    cfg.rewards.foot_flat = RewTerm(
+        func=mdp.foot_flat_debt, weight=0.0,
+        params={"command_name": "racket_target", "foot_body_names": feet})
 
 
 @configclass

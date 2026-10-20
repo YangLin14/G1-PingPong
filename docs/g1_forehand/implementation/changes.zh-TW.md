@@ -62,3 +62,10 @@
 | `docs/g1_forehand/plans/serve_side_backspin.md` | 暫緩的發球計畫（D4）。 |
 | `hope_training/whole_body_tracking/scripts/trace_base_motion.py`、`hope_training/slurm/pip_env/trace_base.sbatch` | Isaac 追蹤（不訓練）：每個環境每一步記錄底座 xy、朝向、底座目標、clip 幀和擊球時刻；`+no_push=true` 關掉推力。用來跟 MuJoCo 比較兩球之間的底座移動。 |
 | `antioch_sim/`（`antioch.yaml`、`Dockerfile`、`cluster-constraints.txt`、`push_ignored.sh`、`README.md`）、`hope_training/antioch/train.sh` | 在 Antioch 上訓練用的專案：base 引擎加叢集的 Isaac Sim 5.1 / Isaac Lab 2.3.2；啟動腳本支援接續/暖啟動，並有關閉時卡住的看門狗；把已 commit 但被忽略的題庫檔上傳的小工具。 |
+| `unitree/scripts/build_g1_pingpang_models.py`（D23） | `Mount.sole_box` 和 `FIST_SOLE` 安裝 -> `unitree/URDF/g1_29dof_pingpang_fist_sole/`：握拳握法，加上每隻腳底一個方塊（`SOLE_*`：x −0.0658..0.1424、\|y\| ≤ 0.0378、底面 z −0.0354、厚 2 cm，從原廠 ankle_roll 網格量出來），在 URDF 和 MJCF 裡取代四顆 5 mm 小球；MJCF 腳底 `solref` 0.005 1。舊模型不變（`--check` 通過）。 |
+| `robots/g1.py`、`scripts/train.py`（D23） | `g1_racket_mount: fist_sole` -> Isaac 資產 `assets/unitree_g1_fist_sole/`（第一次用時從上面的模型產生）。 |
+| `scripts/plant_clip_feet.py`（D23） | 重解 clip 的兩條腿（MuJoCo、阻尼最小平方 IK），讓每個 `ankle_roll_link` 整段固定在一個平貼的姿勢：用原 clip 的平均 x 和 yaw，可選 `--stance-width`（以骨盆為中心），腳底貼地；骨盆降到 `--pelvis-z`。輸出腳的誤差、腳底四角高度、重心到支撐範圍邊緣的距離、腿關節離極限的餘裕、腳踝側傾。產出 `g1ikfist_hope_backhand_flat063`（0.63 m、0.32 m）。 |
+| `scripts/make_g1_forehand_bank.py`、`utils/forehand_success.py`（D23） | `--backhand`（預設組 `BACKHAND`）：clip 1、一個固定站位（y +0.25 m）、可改來球落點和發球位置、目標 `opp_center_mid`（新的 `OTHER_TARGET_ZONES`，正手報表仍然是四個區）。`feed_bounds(zone)` / `feed_origin_bounds(lateral)` 可以覆寫。 |
+| `scripts/filter_bank_reach.py`（D23） | 只留下腳不動就打得到的球：腿和骨盆放在 clip 擊球那一格的姿勢、站在站位上，用腰 + 右手臂做 IK（軟性限制 0.9）到擊球點和拍面方向（反手用黑面）；誤差 < 3 cm 且 < 15° 才保留。輸出新題庫和 receipt 裡的 `reach_filter`。 |
+| `mdp/hope_rewards.py`、`config/g1/hope_env_cfg.py`（D23） | `foot_flat_debt`（裝成 `rewards.foot_flat`，預設關閉）：腳底傾斜超過 2° 的 Huber 懲罰；指標 `foot_tilt_max`、`sole_corner_min_z`（腳底最深陷進地板的角）、`sole_corner_lift_max`。 |
+| `cfg/task/HOPEPingPongUnitreeG1_BH_FIST_STILL.yaml`（D23） | 反手站著打的練習：`_FH_FIST_STABLE_SWING` + `fist_sole`、clip 1 = flat063、題庫 `g1_bh_center_bank`、站位 +0.25 m、腳的懲罰和 `feet_planted`（6 cm / 4 cm）、骨盆上限 0.65 m、站寬 0.28–0.36 m、不推。 |

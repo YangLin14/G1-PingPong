@@ -59,6 +59,12 @@ TARGET_ZONES: dict[str, tuple[tuple[float, float], tuple[float, float]]] = {
     # Future target, disabled for now: middle depth at the opponent's right side line.
     # "opp_right_side": (_MID, _EDGE),
 }
+#: Targets of other drills, kept out of TARGET_ZONES so the forehand reports keep their four columns.
+#: ``opp_center_mid``: the backhand balance drill (D23) aims at the middle of the opponent's half,
+#: middle depth third, the middle third of the table width (|y| <= 0.25 m).
+OTHER_TARGET_ZONES: dict[str, tuple[tuple[float, float], tuple[float, float]]] = {
+    "opp_center_mid": (_MID, (-1.0 / 3.0, 1.0 / 3.0)),
+}
 FEED_ZONE: tuple[tuple[float, float], tuple[float, float]] = (_MID, (-0.75, -0.25))
 # Where the feed is hit from: crossing the far end line over the opponent's right half (robot's +y),
 # at a plausible racket height above the table (m).
@@ -113,24 +119,27 @@ class ForehandSuccessCfg:
         y = (self.zone_lateral_frac[0] * half_w, self.zone_lateral_frac[1] * half_w)
         return x, y
 
-    def feed_bounds(self) -> tuple[tuple[float, float], tuple[float, float]]:
-        """((x_lo, x_hi), (y_lo, y_hi)) of FEED_ZONE (incoming bounce on the robot's half)."""
+    def feed_bounds(self, zone=None) -> tuple[tuple[float, float], tuple[float, float]]:
+        """((x_lo, x_hi), (y_lo, y_hi)) of FEED_ZONE, or of ``zone`` = ((depth), (lateral)) fractions
+        (incoming bounce on the robot's half)."""
         half_len = TABLE_LENGTH / 2.0
         half_w = TABLE_WIDTH / 2.0
-        (d0, d1), (l0, l1) = FEED_ZONE
+        (d0, d1), (l0, l1) = zone or FEED_ZONE
         # depth on the robot's half is measured from the net back toward the robot's end line
         x = (self.net_x - d1 * half_len, self.net_x - d0 * half_len)
         return x, (l0 * half_w, l1 * half_w)
 
-    def feed_origin_bounds(self) -> tuple[tuple[float, float], tuple[float, float]]:
-        """((y_lo, y_hi), (z_lo, z_hi)) where the feed crosses the far end line (x = far_x)."""
+    def feed_origin_bounds(self, lateral=None) -> tuple[tuple[float, float], tuple[float, float]]:
+        """((y_lo, y_hi), (z_lo, z_hi)) where the feed crosses the far end line (x = far_x); ``lateral``
+        overrides FEED_ORIGIN_LATERAL (fractions of the half width along +y)."""
         half_w = TABLE_WIDTH / 2.0
-        y = (FEED_ORIGIN_LATERAL[0] * half_w, FEED_ORIGIN_LATERAL[1] * half_w)
+        lat = lateral or FEED_ORIGIN_LATERAL
+        y = (lat[0] * half_w, lat[1] * half_w)
         z = (self.table_surface_z + FEED_ORIGIN_HEIGHT[0], self.table_surface_z + FEED_ORIGIN_HEIGHT[1])
         return y, z
 
     def with_target(self, name: str) -> "ForehandSuccessCfg":
-        depth, lateral = TARGET_ZONES[name]
+        depth, lateral = {**TARGET_ZONES, **OTHER_TARGET_ZONES}[name]
         return replace(self, zone_depth_frac=depth, zone_lateral_frac=lateral)
 
 
