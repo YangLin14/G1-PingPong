@@ -145,6 +145,11 @@ def add_foot_terms(cfg) -> None:
     cfg.rewards.foot_flat = RewTerm(
         func=mdp.foot_flat_debt, weight=0.0,
         params={"command_name": "racket_target", "foot_body_names": feet})
+    # D23 (new-model run): a one-off cost when an episode ENDS EARLY (any termination except the time
+    # limit; Isaac Lab's is_terminated). Without it, a policy trained from scratch learned to end every
+    # episode at the end of the 0.3 s settle window (kick a foot > 25 cm -> ee_body_pos) rather than
+    # pay the foot costs that start there. Off until a task sets its weight.
+    cfg.rewards.early_termination = RewTerm(func=mdp.is_terminated, weight=0.0)
 
 
 @configclass
