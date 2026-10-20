@@ -11287,6 +11287,10 @@ class RacketTargetCommandCfg(CommandTermCfg):
     # for this long after each push_by_setting_velocity_ramped shove, and the feet's reference spot
     # follows the feet, so a recovery step is free and its landing spot becomes the new spot.
     foot_push_grace_s: float = 0.0
+    # Settle time after each episode reset (s; 0 = only the first step, as before; D23): during it the
+    # feet's reference spot follows the feet and the foot costs and planted termination are off, so the
+    # small drop/slide while a freshly spawned robot comes to rest on the floor is not a "step".
+    foot_settle_s: float = 0.0
     # Deploy-parity readiness thresholds.  They are read-only diagnostics in legacy tasks.  A task
     # that explicitly registers ``ArmDeadlineMiss`` (currently FinalV2Plus only) uses the same single
     # source of truth to make one decision at the exogenous arm deadline: ready -> release; otherwise

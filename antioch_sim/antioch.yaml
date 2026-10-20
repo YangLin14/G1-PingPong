@@ -19,10 +19,13 @@ services:
     # Without TASK the service just idles. With `session new --env TASK=... --env RUN_NAME=...`
     # it waits for /workspace/project/.train_go (start_job.sh creates it after uploading the
     # banks and the checkpoint), then runs hope_training/antioch/train.sh in the foreground.
+    # Afterwards it idles: when the service command exits, Antioch marks the session failed at once
+    # and its files can no longer be copied (10-19: the final checkpoints of g1_fh_ss16k_nopush and
+    # g1_fh_still16k_nopush were lost that way). collect.sh releases the session once files are home.
     command:
       - bash
       - -c
-      - 'if [ -z "${TASK:-}" ]; then exec sleep infinity; fi; until [ -f /workspace/project/.train_go ]; do sleep 5; done; exec env FOREGROUND=1 bash /workspace/project/hope_training/antioch/train.sh'
+      - 'if [ -z "${TASK:-}" ]; then exec sleep infinity; fi; until [ -f /workspace/project/.train_go ]; do sleep 5; done; env FOREGROUND=1 bash /workspace/project/hope_training/antioch/train.sh; echo "[service] train.sh exited $?; idling until the session is released"; exec sleep infinity'
     shm_size: 8Gi
     # The whole repository (git-ignored files, .git and virtual envs are skipped) -> /workspace/project.
     # Training writes checkpoints under hope_training/whole_body_tracking/logs/ on the session;

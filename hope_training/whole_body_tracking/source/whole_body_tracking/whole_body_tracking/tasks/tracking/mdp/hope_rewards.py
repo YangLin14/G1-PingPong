@@ -4056,6 +4056,15 @@ def _in_push_grace(env: ManagerBasedRLEnv, cmd) -> torch.Tensor:
     return since < grace
 
 
+def _settle_steps(env: ManagerBasedRLEnv, cmd) -> int:
+    """Steps after a reset during which the feet may still settle (``cfg.foot_settle_s``; at least 1)."""
+    return max(1, int(round(float(getattr(cmd.cfg, "foot_settle_s", 0.0)) / float(env.step_dt))))
+
+
+def _settling(env: ManagerBasedRLEnv, cmd) -> torch.Tensor:
+    return env.episode_length_buf <= _settle_steps(env, cmd)
+
+
 def _feet_anchor_xy(env: ManagerBasedRLEnv, cmd, ids) -> torch.Tensor:
     """Foot xy at each episode's first step (re-taken after every reset), cached on the command.
     During a push-recovery grace the anchor follows the feet, so a recovery step's landing spot
@@ -4065,7 +4074,7 @@ def _feet_anchor_xy(env: ManagerBasedRLEnv, cmd, ids) -> torch.Tensor:
     if anchor is None or anchor.shape != pos.shape:
         anchor = pos.clone()
         cmd._feet_anchor = anchor
-    fresh = (env.episode_length_buf <= 1) | _in_push_grace(env, cmd)
+    fresh = _settling(env, cmd) | _in_push_grace(env, cmd)
     if bool(fresh.any()):
         anchor[fresh] = pos[fresh]
     return anchor
@@ -4094,7 +4103,7 @@ def foot_motion_debt(
     cmd.metrics["foot_lift_max"] = lift.max(dim=-1).values
     cost = _huber(torch.clamp(speed - float(speed_margin), min=0.0) / float(speed_std))
     cost = cost + _huber(torch.clamp(lift - float(lift_margin), min=0.0) / float(lift_std))
-    return cost.sum(dim=-1) * (~_in_push_grace(env, cmd)).float()
+    return cost.sum(dim=-1) * (~(_in_push_grace(env, cmd) | _settling(env, cmd))).float()
 
 
 def foot_displacement_debt(
@@ -4113,7 +4122,7 @@ def foot_displacement_debt(
     disp = torch.linalg.norm(cmd.robot.data.body_link_pos_w[:, ids, :2] - anchor, dim=-1)
     cmd.metrics["foot_displacement_max"] = disp.max(dim=-1).values
     cost = _huber(torch.clamp(disp - float(margin), min=0.0) / float(std)).sum(dim=-1)
-    return cost * (~_in_push_grace(env, cmd)).float()
+    return cost * (~(_in_push_grace(env, cmd) | _settling(env, cmd))).float()
 
 
 def feet_planted_violation(
@@ -4133,7 +4142,7 @@ def feet_planted_violation(
     ids = _foot_ids(cmd, foot_body_names)
     anchor = _feet_anchor_xy(env, cmd, ids)
     pos = cmd.robot.data.body_link_pos_w[:, ids]
-    started = env.episode_length_buf > 1
+    started = ~_settling(env, cmd)
     if max_disp > 0.0:
         out |= torch.linalg.norm(pos[..., :2] - anchor, dim=-1).max(dim=-1).values > max_disp
     if max_lift > 0.0:

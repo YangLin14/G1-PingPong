@@ -14,7 +14,9 @@
 #                    station y = +0.25 m for every ball, feeds from the middle of the far end line
 #                    bouncing on the robot's left, apex strike points that waist + arm reach from the
 #                    clip's strike pose (IK, soft limits), one target: opp_center_mid
-#   start there      stand start and reference-state init at y = +0.25 m
+#   start there      stand start and reference-state init at y = +0.25 m; reset noise kept above the
+#                    floor (z +0.4..1.5 cm, roll/pitch +-0.02 rad), 0.3 s to settle (foot_settle_s), and
+#                    always from the clip pose (stand_start_prob 0: the default stand is narrower)
 #   feet still       foot_motion -1, foot_displacement -1, foot_flat -1 (sole tilt > 2 deg), and the
 #                    episode ends if a foot slides > 6 cm or lifts > 4 cm (feet_planted)
 #   lower pelvis     root_height_ceiling 0.66 -> 0.65 m (the clip stands at 0.63 m)
@@ -133,7 +135,7 @@ env:
   episode_length_s: 10.0
 motion:
   wrap_teleport: false
-  stand_start_prob: 0.25
+  stand_start_prob: 0.0  # D23 (was 0.25; also set in overrides)
   stand_start_min_hold: 45
   stand_start_yaw_range:
   - -0.6
@@ -634,7 +636,14 @@ overrides:
   rewards.base_ang_vel_xy.weight: -0.15
   # D23: one station (y = +0.25 m, left of the table centre) and every fresh episode starts there
   commands.motion.stand_start_y_range: [0.23, 0.27]
-  commands.motion.pose_range: {x: [-0.05, 0.05], y: [0.23, 0.27], z: [-0.01, 0.01], roll: [-0.1, 0.1], pitch: [-0.1, 0.1], yaw: [-0.2, 0.2]}
+  # Reset noise kept off the floor (smoke test 10-19: z +-1 cm and roll/pitch +-0.1 rad tilted the flat
+  # soles 1-1.5 cm into the floor, the depenetration kicked the feet away and feet_planted ended 100 %
+  # of episodes within ~15 steps): z only upward, roll/pitch +-0.02 rad (sole corner <= 3 mm).
+  commands.motion.pose_range: {x: [-0.05, 0.05], y: [0.23, 0.27], z: [0.004, 0.015], roll: [-0.02, 0.02], pitch: [-0.02, 0.02], yaw: [-0.2, 0.2]}
+  commands.racket_target.foot_settle_s: 0.3
+  # Every episode starts from the clip pose (no default-stand starts: the default stand has the feet
+  # ~0.25 m apart, the clip 0.32 m, so a stand start would have to step to match the reference).
+  commands.motion.stand_start_prob: 0.0
   # D23: feet still and flat; the planted rule ends the episode on a real step
   rewards.foot_motion.weight: -1.0
   rewards.foot_displacement.weight: -1.0

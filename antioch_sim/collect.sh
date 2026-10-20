@@ -34,7 +34,10 @@ while :; do
       $A session release "$ses" >/dev/null 2>&1 && echo "[collect] $(date +%H:%M) $run: finished, files home, session released"
       touch "$out/.collected"
     elif [ "$state" = STOPPED ]; then
-      echo "[collect] $(date +%H:%M) $run: train.py stopped before the final checkpoint -> NOT releasing; check $out/$run.log"
+      # The session now idles after train.sh (antioch.yaml), so a stopped run would bill an idle GPU
+      # until its idle timeout: the log and every kept checkpoint are home, so release it.
+      $A session release "$ses" >/dev/null 2>&1
+      echo "[collect] $(date +%H:%M) $run: train.py stopped BEFORE the final checkpoint; log + checkpoints home, session released; check $out/$run.log"
       touch "$out/.collected"
     fi
   done
