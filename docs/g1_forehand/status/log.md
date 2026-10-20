@@ -2,6 +2,25 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-19 22:20 — no-shove jobs: hit rate drops as rally pace ramps back in (expected); `still` falls at full pace
+* All three are warm starts from `model_40299`, so the rally-pace and timing-jitter ramps start over (D15): the share of
+  rally-pace swings goes 0 → 0.6 over 3000 iterations (40 300 → 43 300). The Isaac virtual hit rate follows it
+  down, as it did in D21 (0.99 → ~0.75):
+
+  | iteration | rally-pace share | ss16k hit | still16k hit | still16k falls | planted16k hit | planted16k ended by foot rule |
+  |---:|---:|---:|---:|---:|---:|---:|
+  | 40 500 | 0.04 | 1.00 | 1.00 | 0.1 % | 1.00 | 38 % |
+  | 41 500 | 0.24 | 1.00 | 0.99 | 1.4 % | 0.97 | 39 % |
+  | 42 500 | 0.44 | 0.94 | 0.92 | 16 % | (0.94 at 42 250) | 40 % |
+  | 43 500 | 0.60 | 0.80 | 0.79 | **21 %** | – | – |
+
+* `ss16k_nopush`: still ~0 falls at full pace. `still16k_nopush`: falls climb with the pace to ~21 % of ended
+  episodes. The late clip entry (time-to-strike 0.4–0.83 s, no hold) needs the feet to move, and the foot costs
+  stop that. `planted16k_nopush`: the foot rule still ends ~40 % of episodes; it reaches full pace at ~43 300.
+* The background collector had stopped with the previous Claude session (laptop process); restarted at 22:20.
+  Checkpoints up to 42 000 (ss/still) and 41 500 (planted) were already home.
+* ETA: ss/still ~23:10 PDT, planted ~02:40 PDT.
+
 ### 2026-10-19 17:20 — all three D22 jobs restarted WITHOUT shoves (user's decision)
 * The user asked to stop shoving the robot in training. The three shoved runs (`g1_fh_ss16k` at ~41 800,
   `g1_fh_still16k_v2` and `g1_fh_planted16k_v2` just started) were stopped and their sessions released.
