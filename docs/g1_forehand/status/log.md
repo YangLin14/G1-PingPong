@@ -2,6 +2,35 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-20 00:00 — D23 backhand standing-still drill started (`g1_bh_still`)
+* The user put the three D22 jobs aside and asked for a new approach: backhand, robot left of the table
+  centre, one target in the middle of the opponent's half, full focus on balance, feet not moving, no
+  sinking into the floor, pelvis low; stepping becomes a separate policy later. Design in
+  [decisions D23](../decisions.md).
+* **Feet in the floor, measured (MuJoCo):** the upstream foot touches the floor through four 5 mm spheres
+  while the visible sole is flat and longer. A foot tilted 15° shows its sole up to 5.7 mm under the floor
+  (pitch) / 2.0 mm (roll); with the new sole box: 0. Standing still, the soft contact sinks 0.65 mm; the
+  sole box with `solref` 0.005 sinks 0.37 mm.
+* **Old backhand clip:** left foot rolled 10–12° (on its edge), right sole 3 mm under the floor. The new clip
+  `g1ikfist_hope_backhand_flat063`: both feet flat and fixed (error < 0.001 mm), pelvis 0.63 m, CoM ≥ 6.6 cm
+  inside the support area. With the source stance (0.344 m) the left ankle roll sat 3.3° from its soft
+  limit; 0.32 m leaves ≥ 6.6° both ways.
+* **Bank:** 52 000 backhand balls, station y +0.25 m, target `opp_center_mid`; racket 1.1–2.5 m/s
+  (mean 1.76), feed 4.5–6.2 m/s before the bounce, 0.50–0.77 s from the far end line to the apex. IK: 100 %
+  reachable from the clip's strike pose with waist + arm (a wider test box drops to 43 % at 0.58–0.62 m
+  ahead, so the filter does reject unreachable balls).
+* **Smoke tests (Antioch, 1024 envs):** (1) `feet_planted` ended 100 % of episodes within ~15 steps and the
+  sole corners went 1.2 cm into the floor: the reset noise (root z ±1 cm, roll/pitch ±0.1 rad) put the flat
+  soles into the floor and the depenetration kicked the feet away. Fixed: z only upward (+0.4..1.5 cm),
+  roll/pitch ±0.02 rad, 0.3 s settle time (`foot_settle_s`), every episode from the clip pose (the default
+  stand is narrower than the clip). (2) After the fix: deepest sole corner 0.0 mm, highest 0.5 mm, sole
+  tilt ≤ 0.07 rad, pelvis 0.638 m; `feet_planted` still ends the episodes but they grow fast
+  (23 → 79 steps in 65 iterations): the forehand policy is unlearning its steps.
+* **Antioch:** when `train.sh` ends, the service command exits and Antioch marks the session failed at once,
+  so its files are gone: the final checkpoints of `ss16k_nopush` / `still16k_nopush` (44 299) were lost;
+  44 000 is home. The service now idles after training; `collect.sh` releases the session. Max 3 sessions.
+* **Main run:** `g1_bh_still`, 16 384 envs, `model_40299` → 50 300.
+
 ### 2026-10-19 22:20 — no-shove jobs: hit rate drops as rally pace ramps back in (expected); `still` falls at full pace
 * All three are warm starts from `model_40299`, so the rally-pace and timing-jitter ramps start over (D15): the share of
   rally-pace swings goes 0 → 0.6 over 3000 iterations (40 300 → 43 300). The Isaac virtual hit rate follows it

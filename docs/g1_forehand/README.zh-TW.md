@@ -5,9 +5,9 @@
 Triton Droids 在 HOPE 和社團 G1 移植版上做的東西：讓 G1 把斜線來球用正手回到對方四個目標區之一。
 G1 實機還沒到，目前只在模擬中進行，但所有設計都保留了之後上實機（sim-to-real）的路徑。
 
-## 目前狀態（2026-10-19）
+## 目前狀態（2026-10-20）
 
-* **運算資源：** 訓練在 **Antioch** 上跑（雲端 RTX PRO 6000；[operations/antioch.zh-TW.md](operations/antioch.zh-TW.md)）。正在跑：D22 三個「腳不動」訓練（16384 環境，約 5.5 小時）。
+* **運算資源：** 訓練在 **Antioch** 上跑（雲端 RTX PRO 6000；[operations/antioch.zh-TW.md](operations/antioch.zh-TW.md)）。正在跑：**D23 反手站著打的練習** `g1_bh_still`（16384 環境；平底的腳、腳平貼的 clip、一個站位、打對方中間；[決策 D23](decisions.zh-TW.md)）。D22 的三個正手訓練先放著（最後的 checkpoint 是 44 000）。
 * **部署修正（10-19）：** `hold_last_target` 讓擊球後繼續顯示上一球的目標，跟訓練一樣：MuJoCo 裡兩球之間不再踏步（每球 3.5 步 → 0 步）。修正後的瞄準補償 (+0.23, −0.01) m，目標區 30%（驗證球、不推）。
 * **目前最好的策略：`g1_fh_stable_swing` `model_40299`**（D21、握拳、MuJoCo、120 顆驗證用的球、瞄準補償 (+0.27, −0.08) m）：
   打到 100%、合法 63%、**目標區 38%**；推 1.0 m/s 時：打到 98%、目標區 21%、**沒有跌倒**。

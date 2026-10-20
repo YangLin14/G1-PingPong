@@ -6,9 +6,9 @@ What the Triton Droids team built on top of HOPE and the club's G1 port: a G1 th
 cross-court forehand into one of four target zones. Simulation only for now (the G1 has not
 arrived); everything is designed so the sim-to-real path stays open.
 
-## Current status (2026-10-19)
+## Current status (2026-10-20)
 
-* **Compute:** training runs on **Antioch** (cloud RTX PRO 6000; [operations/antioch.zh-TW.md](operations/antioch.zh-TW.md)). Running now: the three D22 "feet still" jobs (16384 envs, ~5.5 h).
+* **Compute:** training runs on **Antioch** (cloud RTX PRO 6000; [operations/antioch.zh-TW.md](operations/antioch.zh-TW.md)). Running now: **D23 backhand standing-still drill** `g1_bh_still` (16384 envs; flat-sole feet, flat-feet clip, one station, centre target; [decisions D23](decisions.md)). The three D22 forehand jobs are put aside (last checkpoints 44 000).
 * **Deploy fix (10-19):** `hold_last_target` keeps the last ball's target after contact, as in training: the robot no longer steps between balls in MuJoCo (3.5 → 0 steps per ball). Aim offset with the fix: (+0.23, −0.01) m, 30 % in zone (held-out, no shoves).
 * **Best policy: `g1_fh_stable_swing` `model_40299`** (D21, fist grip, MuJoCo, 120 held-out balls, aim offset (+0.27, −0.08) m):
   hits 100 %, legal 63 %, **in the target zone 38 %**; with 1.0 m/s shoves: hits 98 %, in zone 21 %, **no falls**.

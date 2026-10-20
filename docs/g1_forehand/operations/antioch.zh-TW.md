@@ -223,6 +223,22 @@ $A session release
 * 在 zsh 裡用 `set -- $p` 拆字串不會拆開（zsh 預設不做 word splitting），所以多個 job 的檢查改寫成 bash 腳本 `status.sh`。
 * macOS 內建的 bash 是 3.2，沒有 `declare -A`，`collect.sh` 改用標記檔記錄哪個 job 處理完了。
 
+### 問題 12：訓練跑完時 session 直接「失敗」，最後一個 checkpoint 拿不回來
+
+* **狀況（10-19 23:03–23:10）：** `g1_fh_still16k_nopush` 和 `g1_fh_ss16k_nopush` 跑完的那一刻，session 就從 `session list` 消失，
+  `collect.sh` 只顯示 `session not reachable`。兩個都只拿回 `model_44000`，最後的 `model_44299` 沒了。反手冒煙測試也一樣：
+  `Session ... is failed and cannot host work: service 'sim' exited with code '0'`。
+* **原因：** 訓練是服務的啟動指令（問題 10 的解法）。`train.sh` 一結束，服務的指令就結束，**Antioch 會立刻把 session 標成失敗**，
+  上面的檔案也就拿不到了。collector 每 15 分鐘才抓一次，來不及。
+* **解法：** `antioch.yaml` 的指令在 `train.sh` 結束後改成 `sleep infinity`，session 會繼續開著，等 `collect.sh` 把最後的 checkpoint 和 log
+  拿回來後再釋放。`collect.sh` 也改成：訓練中途停掉（沒有最後一個 checkpoint）時，一樣把 log 拿回來後就釋放，不然閒置的 GPU 會一直算錢。
+* **注意：** `collect.sh` 執行中不要直接改它（bash 是邊讀邊跑），要先停掉再重開。
+
+### 問題 13：session 上限 3 個
+
+* 同時最多 3 個 session，第 4 個 `session new` 會回 `session_quota_exceeded`（`start_job.sh` 會在解析 JSON 時出錯）。
+  要先等一個跑完、或 `session release`。
+
 ## 7. 一次跑多個訓練（2026-10-19 起的做法）
 
 ```bash
