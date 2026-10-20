@@ -2,6 +2,21 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-20 04:40 — D23 new-model run restarted with an early-termination cost (`g1_bh_scratch`)
+* `g1_bh_still_scratch` was stuck: at iteration 2 842 every episode still ended after ~15 steps, almost all by
+  `ee_body_pos` (a foot > 25 cm off the reference height), and the action noise had already shrunk to 0.15.
+  15 steps = the 0.3 s settle window: the policy kicked a foot up exactly when the foot costs start. For a
+  policy that cannot stand yet, ending the episode cost nothing, so it learned to end it. Stopped and released.
+* Fix: `rewards.early_termination` (Isaac Lab `is_terminated`, any end except the time limit), installed off;
+  task `HOPEPingPongUnitreeG1_BH_FIST_STILL_SCRATCH` = the backhand drill + weight −200 (−4 once per early end).
+  The warm-start run is unchanged.
+* `g1_bh_scratch` (0 → 10 000, 16 384 envs): at iteration 383 episodes are 342 / 500 steps, 67 % reach the time
+  limit, falls 8 %, `feet_planted` 25 %, pelvis 0.648 m, action noise 0.42 (healthy). No hits yet.
+* Warm start `g1_bh_still` at 43 094: episodes 468, virtual hit 0.90, `feet_planted` 19 % (rising with the
+  rally-pace ramp), no falls, pelvis 0.632 m.
+* `g1_fh_planted16k_nopush` also ended without its final checkpoint (session failed at the end, as above);
+  44 000 is home.
+
 ### 2026-10-20 00:05 — D23: second backhand run from a NEW model (`g1_bh_still_scratch`)
 * The user asked why the backhand run starts from the forehand `model_40299` instead of a new model, and asked
   to train a new one in parallel. Same task `HOPEPingPongUnitreeG1_BH_FIST_STILL`, no checkpoint, 0 → 10 000,

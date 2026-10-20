@@ -2,6 +2,17 @@
 
 [English](log.md) · [文件目錄](../README.zh-TW.md)
 
+### 2026-10-20 04:40 — D23 新模型訓練加上「提早結束」的懲罰後重開（`g1_bh_scratch`）
+* `g1_bh_still_scratch` 卡住了：到第 2 842 個 iteration，每個 episode 還是約 15 步就結束，幾乎都是 `ee_body_pos`（腳的高度離參考動作
+  超過 25 cm），動作雜訊也已經降到 0.15。15 步 = 0.3 秒的落地穩定期：策略剛好在腳的懲罰開始時把腳踢高。對還站不穩的策略來說，
+  結束 episode 不用付任何代價，所以它學會直接結束。已停止並釋放 session。
+* 修正：新增 `rewards.early_termination`（Isaac Lab 的 `is_terminated`，時間到以外的結束都算），預設關閉；任務
+  `HOPEPingPongUnitreeG1_BH_FIST_STILL_SCRATCH` = 反手練習 + 權重 −200（每次提早結束扣 4 分）。接續權重的訓練不變。
+* `g1_bh_scratch`（0 → 10 000，16 384 環境）：第 383 個 iteration 時 episode 342 / 500 步，67% 跑到時間上限、跌倒 8%、
+  `feet_planted` 25%、骨盆 0.648 m、動作雜訊 0.42（正常）。還打不到球。
+* 接續權重的 `g1_bh_still` 在 43 094：episode 468 步、虛擬擊中 0.90、`feet_planted` 19%（隨著對打節奏的比例上升）、沒有跌倒、骨盆 0.632 m。
+* `g1_fh_planted16k_nopush` 也一樣在結束時 session 失敗，沒拿到最後的 checkpoint；44 000 有拿回來。
+
 ### 2026-10-20 00:05 — D23：第二個反手訓練，從新模型開始（`g1_bh_still_scratch`）
 * 使用者問為什麼反手訓練要從正手的 `model_40299` 接著練、不從新模型開始，並要求同時練一個新模型。同一個任務
   `HOPEPingPongUnitreeG1_BH_FIST_STILL`，沒有起始 checkpoint，0 → 10 000，16 384 環境（session `ses-76G0YF4V73MZACAFAMFB92ZZPZ`）。
