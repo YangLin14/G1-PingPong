@@ -352,6 +352,16 @@ class PingPongRealPhysicsScene:
         d.qvel[self._ball_vadr:self._ball_vadr + 6] = 0.0
         self._mj.mj_forward(m, d)
 
+    def set_robot_pose(self, base_pos, base_quat_wxyz, joints: dict) -> None:
+        """Place the robot (zero velocity): base position/orientation and joints by name (others kept)."""
+        m, d = self.model, self.data
+        d.qpos[self._base_qadr:self._base_qadr + 3] = np.asarray(base_pos, dtype=np.float64)
+        d.qpos[self._base_qadr + 3:self._base_qadr + 7] = np.asarray(base_quat_wxyz, dtype=np.float64)
+        for name, value in joints.items():
+            d.qpos[int(m.jnt_qposadr[self._joint_id(name)])] = float(value)
+        d.qvel[:] = 0.0
+        self._mj.mj_forward(m, d)
+
     def set_ball(self, pos_w, vel_w, spin_w=None) -> None:
         """Place the ball at ``pos_w`` (MuJoCo world) with world linear velocity ``vel_w`` and optional
         world angular velocity ``spin_w`` (rad/s; the orientation is reset, so body = world axes)."""

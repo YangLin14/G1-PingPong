@@ -2,6 +2,19 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-20 16:55 — D23 status + first backhand MuJoCo videos
+* `g1_bh_still` finished at 50 299 (final checkpoint home: the session-idles fix works). Last 1000 iterations
+  flat: episodes ~420–460, virtual hit 0.86, velocity pass 0.17, landed in Isaac 0.61, no falls, `feet_planted`
+  ends ~24 %, foot max slide 3.9 cm, pelvis 0.635 m. `g1_bh_scratch` at 7 698: episodes 463, hit 0.84,
+  velocity pass 0.19, landed 0.60, no falls, `feet_planted` 16 %, slide 3.4 cm, pelvis 0.633 m (finishes ~20:30).
+* `mujoco_eval_onnx.py`: the swing side now comes from the bank row's clip (backhand banks), and
+  `--stand-clip NPZ` resets the robot in that clip's first frame at the bank's single station (as training
+  does) instead of the stand keyframe at the origin. `mujoco_pingpong_scene.set_robot_pose`.
+* Videos (12 balls, seed 1, no shoves, no aim offset, flat-sole model): `artifacts/evals/g1_bh_still_model_50299/`
+  and `artifacts/evals/g1_bh_scratch_model_7500/` `backhand_12balls.mp4`. Both: 12/12 contacts, 0 falls, pelvis
+  0.63 m. Over the net: warm start 1/12, new model 5/12; nothing in the centre zone yet. The returns land short
+  (into the net), as the forehand did before its aim offset; the offset and the full comparison come next.
+
 ### 2026-10-20 12:40 — laptop disk full: checkpoints slimmed
 * 1.6 GB free; `artifacts/antioch/` held 22 GB. Of each 320 MB checkpoint, 314 MB is the exact-resume simulator
   snapshot, only needed to continue the same run bit-exactly. `scripts/slim_checkpoint.py` keeps weights,

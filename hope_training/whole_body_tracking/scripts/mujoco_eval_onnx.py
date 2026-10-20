@@ -331,6 +331,33 @@ def run_eval(args) -> dict:
     # Aim compensation (landing space): solve the racket for the target moved by the measured mean miss.
     aim_offset = np.asarray(getattr(args, "aim_offset", None) or (0.0, 0.0), dtype=np.float64)
 
+    # --stand-clip (D23 standing drills): every reset puts the robot in the clip's first frame at the
+    # bank's (single) station instead of the stand keyframe at the origin, as training resets it.
+    stand_pose = None
+    if getattr(args, "stand_clip", None):
+        if club is None:
+            raise ValueError("--stand-clip needs --serve-bank")
+        import yaml as _yaml
+
+        clip_npz = pathlib.Path(args.stand_clip)
+        with open(clip_npz.with_suffix(".yaml"), "r", encoding="utf-8") as fh:
+            clip_order = [str(n) for n in _yaml.safe_load(fh)["joint_order"]]
+        clip = np.load(clip_npz)
+        stations = np.unique(np.round(club["bank"].rows["station_xy"], 4), axis=0)
+        if len(stations) != 1:
+            raise ValueError(f"--stand-clip needs a single-station bank; found {len(stations)} stations")
+        pelvis = clip["body_pos_w"][:, 0]
+        stand_pose = {
+            "pos": np.array([*(stations[0] + pelvis[0, :2] - pelvis[:, :2].mean(axis=0)), pelvis[0, 2] + 0.005]),
+            "quat": np.asarray(clip["body_quat_w"][0, 0], dtype=np.float64),
+            "joints": dict(zip(clip_order, np.asarray(clip["joint_pos"][0], dtype=np.float64))),
+        }
+
+    def _reset_robot():
+        scene.reset_stand()
+        if stand_pose is not None:
+            scene.set_robot_pose(stand_pose["pos"], stand_pose["quat"], stand_pose["joints"])
+
     cam = tracker = None
     if getattr(args, "perception", None):
         if club is None:
@@ -348,7 +375,8 @@ def run_eval(args) -> dict:
         from mujoco_video import RolloutVideo
 
         az, el, dist = (float(v) for v in args.video_camera)
-        lookat = np.asarray(scene.base_pos_w(), dtype=np.float64) + np.asarray(args.video_lookat_offset, dtype=np.float64)
+        base0 = stand_pose["pos"] if stand_pose is not None else scene.base_pos_w()
+        lookat = np.asarray(base0, dtype=np.float64) + np.asarray(args.video_lookat_offset, dtype=np.float64)
         capture = RolloutVideo(
             scene.model,
             scene.data,
@@ -417,12 +445,12 @@ def run_eval(args) -> dict:
     # last_action, lifecycle and the base target (the fixed station of this
     # harness, captured at spawn) all persist across serves (matching the deploy
     # runner). Independent mode re-creates them per serve.
-    scene.reset_stand()
+    _reset_robot()
     lifecycle = SwingLifecycle(runtime_cfg.lifecycle)
     source = QueueRacketCommandSource()
     last_action = np.zeros(num_joints, dtype=np.float64)
     base_target_xy = scene.base_pos_w()[:2].copy()
-    spawn_xy = base_target_xy.copy()
+    spawn_xy = base_target_xy.copy() if stand_pose is None else np.zeros(2)  # station is env-frame absolute
     if club is not None and np.linalg.norm(spawn_xy) > 0.05:
         raise RuntimeError(f"--serve-bank assumes the robot spawns at the env origin; stand keyframe base xy = {spawn_xy}")
     max_rest_ticks = max(1, int(round(args.max_rest_seconds / dt)))
@@ -442,12 +470,10 @@ def run_eval(args) -> dict:
         # Side pattern FH, FH, BH, BH, ... exercises all four adjacent side
         # transitions (FH->FH, FH->BH, BH->BH, BH->FH) across the session.
         side = FOREHAND if club is not None or (trial % 4) < 2 else BACKHAND
-        if prev_side is not None:
-            transitions_seen.add((prev_side, side))
-        prev_side = side
         serve_spin = None
         if club is not None:
             row = club["bank"].sample(rng)
+            side = BACKHAND if int(row["clip"]) == 1 else FOREHAND  # D23: backhand banks (clip 1)
             serve_pos, serve_vel, serve_spin = club["mfb"].feed_start(row, club["prm"], club["cfg"])
             _strike_pt = row["target_position_offset"] + np.array([*row["station_xy"], 0.0])
             zone_idx = int(row["target_zone_id"])
@@ -455,10 +481,13 @@ def run_eval(args) -> dict:
             scene.highlight_zone(zone_idx)
         else:
             _strike_pt, serve_pos, serve_vel = _sample_serve(rng, side, scene, physics, args)
+        if prev_side is not None:
+            transitions_seen.add((prev_side, side))
+        prev_side = side
 
         if not continuous:
             # Independent-strike evaluation: fresh robot + policy state per serve.
-            scene.reset_stand()
+            _reset_robot()
             lifecycle = SwingLifecycle(runtime_cfg.lifecycle)
             source = QueueRacketCommandSource()
             last_action = np.zeros(num_joints, dtype=np.float64)
@@ -468,7 +497,7 @@ def run_eval(args) -> dict:
         elif trial > 0:
             if getattr(args, "reset_after_fall", False) and (serve_records[-1]["fell"] or scene.base_fallen()):
                 # a person stands the robot back up; otherwise one fall decides every later ball
-                scene.reset_stand()
+                _reset_robot()
                 lifecycle = SwingLifecycle(runtime_cfg.lifecycle)
                 source = QueueRacketCommandSource()
                 last_action = np.zeros(num_joints, dtype=np.float64)
@@ -919,6 +948,9 @@ def parse_args() -> argparse.Namespace:
                         help="When the shove comes, in s after the ball is fed (uniform).")
     parser.add_argument("--reset-after-fall", action="store_true",
                         help="Continuous mode: stand the robot back up before the next ball if it fell.")
+    parser.add_argument("--stand-clip", default=None, metavar="NPZ",
+                        help="With --serve-bank (single-station bank): start every reset in this clip's first "
+                             "frame at the bank station, as training resets standing drills (D23).")
     parser.add_argument("--seed", type=int, default=0, help="RNG seed for the example serve distribution.")
     parser.add_argument("--view", action="store_true", help="Launch the MuJoCo passive viewer (debug only).")
     parser.add_argument("--json-out", default=None, help="Also write {'success_rate': ...} to this file.")

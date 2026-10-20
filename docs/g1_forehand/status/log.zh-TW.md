@@ -2,6 +2,17 @@
 
 [English](log.md) · [文件目錄](../README.zh-TW.md)
 
+### 2026-10-20 16:55 — D23 進度 + 第一批反手 MuJoCo 影片
+* `g1_bh_still` 在 50 299 跑完（最後的 checkpoint 有拿回來：session 結束後繼續待著的修正有效）。最後 1000 個 iteration 持平：
+  episode 約 420–460 步、虛擬擊中 0.86、速度達標 0.17、Isaac 落在桌上 0.61、沒有跌倒、`feet_planted` 結束約 24%、腳最多滑 3.9 cm、
+  骨盆 0.635 m。`g1_bh_scratch` 在 7 698：episode 463 步、擊中 0.84、速度達標 0.19、落桌 0.60、沒有跌倒、`feet_planted` 16%、
+  滑 3.4 cm、骨盆 0.633 m（約 20:30 跑完）。
+* `mujoco_eval_onnx.py`：揮拍的正反手改成看題庫那一列的 clip（反手題庫），加上 `--stand-clip NPZ`：重置時讓機器人擺成那個 clip 第一格的姿勢、
+  站在題庫唯一的站位上（跟訓練一樣），不再用原點的預設站姿。`mujoco_pingpong_scene.set_robot_pose`。
+* 影片（12 球、seed 1、不推、不加瞄準補償、平底的腳）：`artifacts/evals/g1_bh_still_model_50299/` 和
+  `artifacts/evals/g1_bh_scratch_model_7500/` 的 `backhand_12balls.mp4`。兩個都是 12/12 碰到球、0 跌倒、骨盆 0.63 m。
+  過網：接續權重 1/12、新模型 5/12；還沒有打進中間區。回球偏短（掛網），跟正手加補償前一樣；接下來量瞄準補償並做完整比較。
+
 ### 2026-10-20 12:40 — 筆電硬碟滿了：checkpoint 瘦身
 * 只剩 1.6 GB；`artifacts/antioch/` 有 22 GB。每個 320 MB 的 checkpoint 裡有 314 MB 是模擬環境的完整狀態，只有要「一模一樣地」接著同一個 run
   才需要。`scripts/slim_checkpoint.py` 只留權重、優化器、iteration 和環境步數（6.6 MB）；瘦身前後匯出的 ONNX 逐位元組相同。
