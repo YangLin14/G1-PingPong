@@ -239,6 +239,15 @@ $A session release
 * 同時最多 3 個 session，第 4 個 `session new` 會回 `session_quota_exceeded`（`start_job.sh` 會在解析 JSON 時出錯）。
   要先等一個跑完、或 `session release`。
 
+### 問題 14：拿回來的 checkpoint 把筆電硬碟塞滿
+
+* **狀況（10-20）：** 筆電只剩 1.6 GB。`artifacts/antioch/` 有 22 GB：16384 環境的 checkpoint 每個 320 MB，每 500 圈一個。
+* **原因：** 其中 314 MB 是 `hope_exact_resume_state`（每個模擬環境當下的完整狀態），只有「一模一樣地接著同一個 run」（`load_exact`）才用得到。
+  評估、匯出 ONNX、用 `checkpoint_path` 接續或從它開始新訓練，只讀權重（2.2 MB）、優化器（4.4 MB）、`iter`、`infos`。
+* **解法：** `scripts/slim_checkpoint.py` 拿掉那一塊，只留 `common_step_counter`（`restore_step_counter=true` 讀得到），320 MB → 6.6 MB。
+  測過：瘦身前後匯出的 ONNX 逐位元組相同。`collect.sh` 現在每拿回一個就自動瘦身；正在跑的 session 上仍是完整檔案。
+  80 個 checkpoint 共省下 21.2 GB；已結束的 run 的 log 用 gzip 壓縮（160 MB → 約 15 MB）。卡住的 `g1_bh_still_scratch` 整個刪掉（只留 log）。
+
 ## 7. 一次跑多個訓練（2026-10-19 起的做法）
 
 ```bash

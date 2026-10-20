@@ -2,6 +2,12 @@
 
 [English](log.md) · [文件目錄](../README.zh-TW.md)
 
+### 2026-10-20 12:40 — 筆電硬碟滿了：checkpoint 瘦身
+* 只剩 1.6 GB；`artifacts/antioch/` 有 22 GB。每個 320 MB 的 checkpoint 裡有 314 MB 是模擬環境的完整狀態，只有要「一模一樣地」接著同一個 run
+  才需要。`scripts/slim_checkpoint.py` 只留權重、優化器、iteration 和環境步數（6.6 MB）；瘦身前後匯出的 ONNX 逐位元組相同。
+  本機 80 個 checkpoint 全部瘦身（省 21.2 GB），已結束的 run 的 log 用 gzip 壓縮，卡住的 `g1_bh_still_scratch` 的 checkpoint 刪掉（log 保留）。
+  `collect.sh` 現在每拿回一個就自動瘦身。剩餘空間：24 GB。兩個正在跑的訓練，完整的 checkpoint 在 session 釋放前都還在上面。
+
 ### 2026-10-20 04:40 — D23 新模型訓練加上「提早結束」的懲罰後重開（`g1_bh_scratch`）
 * `g1_bh_still_scratch` 卡住了：到第 2 842 個 iteration，每個 episode 還是約 15 步就結束，幾乎都是 `ee_body_pos`（腳的高度離參考動作
   超過 25 cm），動作雜訊也已經降到 0.15。15 步 = 0.3 秒的落地穩定期：策略剛好在腳的懲罰開始時把腳踢高。對還站不穩的策略來說，

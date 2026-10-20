@@ -26,7 +26,10 @@ while :; do
     for f in $(echo "$info" | grep '\.pt$'); do
       n=$(basename "$f" .pt); n=${n#model_}
       if (( n % EVERY == 0 || n == total - 1 )) && [ ! -s "$out/model_$n.pt" ]; then
-        $A service cp --session "$ses" "sim:$f" "$out/model_$n.pt" >/dev/null 2>&1 && echo "[collect] $(date +%H:%M) $run: model_$n.pt"
+        # Slim on arrival (drop the ~314 MB exact-resume snapshot; scripts/slim_checkpoint.py): the session
+        # keeps the full file while it runs, and the laptop disk cannot hold 320 MB every 500 iterations.
+        $A service cp --session "$ses" "sim:$f" "$out/model_$n.pt" >/dev/null 2>&1 && echo "[collect] $(date +%H:%M) $run: model_$n.pt" \
+          && ../.venv/bin/python ../hope_training/whole_body_tracking/scripts/slim_checkpoint.py "$out/model_$n.pt" >/dev/null
       fi
     done
     $A service cp --session "$ses" "sim:$WB/logs/antioch/$run.log" "$out/$run.log" >/dev/null 2>&1

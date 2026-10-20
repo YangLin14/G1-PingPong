@@ -2,6 +2,14 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-20 12:40 — laptop disk full: checkpoints slimmed
+* 1.6 GB free; `artifacts/antioch/` held 22 GB. Of each 320 MB checkpoint, 314 MB is the exact-resume simulator
+  snapshot, only needed to continue the same run bit-exactly. `scripts/slim_checkpoint.py` keeps weights,
+  optimizer, iteration and the env step counter (6.6 MB); the ONNX exported before and after is byte-identical.
+  All 80 local checkpoints slimmed (21.2 GB freed), finished-run logs gzipped, the stuck `g1_bh_still_scratch`
+  checkpoints deleted (log kept). `collect.sh` now slims each checkpoint on arrival. Free: 24 GB. Full
+  checkpoints of the two running jobs stay on their sessions until release.
+
 ### 2026-10-20 04:40 — D23 new-model run restarted with an early-termination cost (`g1_bh_scratch`)
 * `g1_bh_still_scratch` was stuck: at iteration 2 842 every episode still ended after ~15 steps, almost all by
   `ee_body_pos` (a foot > 25 cm off the reference height), and the action noise had already shrunk to 0.15.
