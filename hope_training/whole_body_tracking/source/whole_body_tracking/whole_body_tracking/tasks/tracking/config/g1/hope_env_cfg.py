@@ -152,6 +152,17 @@ def add_foot_terms(cfg) -> None:
     cfg.rewards.early_termination = RewTerm(func=mdp.is_terminated, weight=0.0)
 
 
+def add_outcome_terms(cfg) -> None:
+    """Ball-outcome rewards (decisions.md D25), installed off. At each strike the virtual ball is hit
+    with the measured (venue) paddle model and flown to the table; these pay once per strike for the
+    net-crossing height (net top + 12 cm) and for landing near the intended point, so the policy is
+    rewarded for the RETURN, not only for matching the commanded racket state."""
+    cfg.rewards.virtual_pass_net = RewTerm(
+        func=mdp.virtual_pass_net, weight=0.0, params={"command_name": "racket_target"})
+    cfg.rewards.virtual_landing = RewTerm(
+        func=mdp.virtual_landing, weight=0.0, params={"command_name": "racket_target"})
+
+
 @configclass
 class HOPEPingPongUnitreeG1EnvCfg(HOPEPingPongAgibotA3EnvCfg):
     """Full HOPE stack (imitation + racket objective) on the Unitree G1."""
@@ -178,3 +189,4 @@ class HitterPingPongUnitreeG1EnvCfg(HitterPingPongAgibotA3EnvCfg):
         g1_recipe.apply_recipe(self)
         add_balance_terms(self)
         add_foot_terms(self)
+        add_outcome_terms(self)

@@ -55,6 +55,11 @@ import numpy as np
 # MuJoCo free joint the first three qvel entries are exactly that world velocity.
 
 
+def _rpy_from_mat(r: np.ndarray) -> np.ndarray:
+    """ZYX roll, pitch, yaw (rad) of a 3x3 rotation matrix."""
+    return np.array([np.arctan2(r[2, 1], r[2, 2]), -np.arcsin(np.clip(r[2, 0], -1.0, 1.0)), np.arctan2(r[1, 0], r[0, 0])])
+
+
 def _dampratio_from_restitution(e: float) -> float:
     """Linear spring-damper damping ratio that yields normal restitution ``e``."""
     e = float(min(max(e, 1e-3), 0.999))
@@ -193,6 +198,7 @@ class PingPongRealPhysicsScene:
         # posture readout (balance diagnostics): robot root body + both feet, if the model has them
         self._root_bid = int(m.jnt_bodyid[self._joint_id(self.base_free_joint)])
         self._foot_bids = [self._body_id(n) for n in ("left_ankle_roll_link", "right_ankle_roll_link")]
+        self._torso_bid = self._body_id("torso_link")
 
         # Controlled-joint qpos/qvel addresses + driving actuator indices.
         self._q_adr = np.zeros(self.num_joints, dtype=int)
@@ -435,7 +441,10 @@ class PingPongRealPhysicsScene:
         t = float(np.clip(np.dot(com[:2] - a, ab) / max(float(np.dot(ab, ab)), 1e-9), 0.0, 1.0))
         return {"pelvis_z": float(d.qpos[self._base_qadr + 2]), "com_z": float(com[2]),
                 "com_offset": float(np.linalg.norm(com[:2] - (a + t * ab))),
-                "feet": d.xpos[list(self._foot_bids)].copy()}
+                "feet": d.xpos[list(self._foot_bids)].copy(),
+                # torso_link orientation (world): roll, pitch, yaw in rad, and its angular speed
+                "torso_rpy": _rpy_from_mat(d.xmat[self._torso_bid].reshape(3, 3)) if self._torso_bid >= 0 else None,
+                "torso_angvel": float(np.linalg.norm(d.cvel[self._torso_bid][:3])) if self._torso_bid >= 0 else None}
 
     def base_fallen(self, min_height: float = 0.4) -> bool:
         """Crude fall check: pelvis dropped well below the stand height."""

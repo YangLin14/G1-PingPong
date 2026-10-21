@@ -638,6 +638,7 @@ class RacketTargetCommand(CommandTerm):
         self.vb_spin_in_w = torch.zeros(self.num_envs, 3, device=self.device)
         self.vb_fired = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self.vb_landing_xy = torch.zeros(self.num_envs, 2, device=self.device)
+        self.vb_intended_xy = torch.zeros(self.num_envs, 2, device=self.device)
         self.vb_landing_valid = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self.vb_on_opponent = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self.vb_depth_ok = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
@@ -7404,6 +7405,7 @@ class RacketTargetCommand(CommandTerm):
         # One-shot caches consumed by hope_rewards.virtual_* THIS step.
         self.vb_fired = gate
         self.vb_landing_xy = land["land_xy"]
+        self.vb_intended_xy = intended
         self.vb_landing_valid = land["land_valid"]
         self.vb_on_opponent = on_opp
         self.vb_depth_ok = depth_ok

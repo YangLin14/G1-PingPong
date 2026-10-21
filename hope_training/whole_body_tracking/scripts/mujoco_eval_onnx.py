@@ -639,7 +639,8 @@ def run_eval(args) -> dict:
                 fell = True
             pose = scene.posture()
             if pose is not None and not fell:
-                posture_log.append((pose["pelvis_z"], pose["com_z"], pose["com_offset"], pose["feet"]))
+                posture_log.append((pose["pelvis_z"], pose["com_z"], pose["com_offset"], pose["feet"],
+                                    pose["torso_rpy"], pose["torso_angvel"]))
             if not contacted:
                 r_pos, r_vel = scene.racket_site_state()
                 b_pos, _b_vel = scene.ball_state()
@@ -734,7 +735,14 @@ def run_eval(args) -> dict:
                     "foot_slide_max_m": round(float(max(np.linalg.norm(p[3][:, :2] - posture_log[0][3][:, :2], axis=1).max()
                                                         for p in posture_log)), 4),
                     "foot_lift_max_m": round(float(max((p[3][:, 2] - posture_log[0][3][:, 2]).max()
-                                                       for p in posture_log)), 4)},
+                                                       for p in posture_log)), 4),
+                    # upper-body motion during this ball: range (max - min) of torso roll / pitch / yaw
+                    # in degrees, and the torso's peak angular speed (rad/s)
+                    **({} if posture_log[0][4] is None else {
+                        f"torso_{k}_range_deg": round(float(np.degrees(np.ptp([p[4][i] for p in posture_log]))), 2)
+                        for i, k in enumerate(("roll", "pitch", "yaw"))}),
+                    **({} if posture_log[0][5] is None else {
+                        "torso_angvel_max": round(float(max(p[5] for p in posture_log)), 3)})},
                 "strike_point_w": [round(float(v), 3) for v in _strike_pt],
                 **club_record,
             }

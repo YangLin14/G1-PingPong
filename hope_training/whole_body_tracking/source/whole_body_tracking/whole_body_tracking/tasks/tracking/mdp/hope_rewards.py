@@ -2689,7 +2689,9 @@ def virtual_landing(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
     POSITIVE.
     """
     cmd = _cmd(env, command_name)
-    dist2 = torch.sum(torch.square(cmd.vb_landing_xy - cmd._vb_target_xy.unsqueeze(0)), dim=-1)
+    # aim at this ball's intended landing point (the bank row's, when a venue tuple is selected;
+    # otherwise the fixed virtual target, as before)
+    dist2 = torch.sum(torch.square(cmd.vb_landing_xy - cmd.vb_intended_xy), dim=-1)
     kernel = torch.exp(-dist2 / float(cmd.cfg.vb_landing_sigma) ** 2)
     bonus = (cmd.vb_landing_valid & cmd.vb_net_clear & cmd.vb_on_opponent & cmd.vb_depth_ok).float()
     raw = kernel * cmd.vb_landing_valid.float() + bonus
