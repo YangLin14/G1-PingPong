@@ -2,6 +2,36 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-21 11:30 — D24 result: upright stance works, but the run blew up at the very end
+* **Training collapsed after iteration 57 781.** Up to 57 750 it was healthy (episodes 420–450 steps,
+  falls ~3 %, virtual hit ~86 %, torso 0.74 m vs reference 0.80 m). Then single batches had huge actions:
+  `action_rate_l2` reached −2.7×10¹⁸, the value loss went to `inf` at 57 856, and by 58 299 every episode
+  fell within 17 steps. **`model_58299` is unusable** (MuJoCo: 12/12 falls). The action noise std had been
+  creeping up the whole run (0.42 → 0.68). Next time: clip actions and/or lower the learning rate / entropy
+  coefficient so one bad batch cannot wreck the critic. The last checkpoint before the blow-up is
+  **`model_57500`**; it is the one evaluated below (`artifacts/evals/g1_bh_stand_model_57500/`).
+* **MuJoCo, 120 held-out balls per row** (seeds 3–5 × 40, training paddle contact `--racket-contact venue`,
+  aim offset fitted on seeds 0–2; `model_57500` offset (+0.345, −0.026)):
+
+  | policy | shove | legal | in zone | falls | pelvis | foot slide p90 | foot lift > 1 cm |
+  |---|---|---:|---:|---:|---:|---:|---:|
+  | `g1_bh_still` 50299 (crouch 0.63) | none | 100 % | 62 % | 0 % | 0.628 m | 0.2 cm | 0 % |
+  | | 0.3 m/s | 98 % | 58 % | 1 % | | 0.9 cm | 6 % |
+  | | 0.5 m/s | 74 % | 25 % | 13 % | | 2.6 cm | 41 % |
+  | `g1_bh_scratch` 9999 (crouch, new model) | none | 92 % | 42 % | 0 % | 0.610 m | 0.1 cm | 0 % |
+  | | 0.3 m/s | 88 % | 35 % | 1 % | | 0.7 cm | 2 % |
+  | | 0.5 m/s | 64 % | 24 % | 12 % | | 2.6 cm | 41 % |
+  | **`g1_bh_stand` 57500 (upright)** | none | 95 % | 47 % | 0 % | **0.700 m** | 0.5 cm | 0 % |
+  | | 0.3 m/s | 94 % | 44 % | 1 % | | 1.3 cm | 13 % |
+  | | 0.5 m/s | 56 % | 21 % | 22 % | | 6.0 cm | 44 % |
+
+* **Reading:** standing taller (pelvis 0.63 → 0.70 m, knees much straighter) costs some aim (in zone
+  62 → 47 %) and makes hard shoves worse (0.5 m/s: 22 % falls vs 13 %), as expected from a higher centre of
+  mass. Without shoves and with small shoves it still stands still: no falls, feet slide < 1.5 cm. It did not
+  reach the reference height (0.70 vs 0.755 m); the 8 000 iterations were cut short by the collapse.
+* Video: `artifacts/evals/g1_bh_stand_model_57500/backhand_12balls.mp4` (12 balls, no aim offset,
+  MuJoCo contact: 12/12 contact, 0 falls, none over the net, same as the crouched policies in that setting).
+
 ### 2026-10-20 22:10 — D24: backhand drill back to a normal upright stance (`g1_bh_stand`)
 * The user: the pelvis can be higher; the knees are bent inward instead of over the toes, and the deep bend
   loads the knees. Asked for the normal pelvis height and a normal straight stance.
