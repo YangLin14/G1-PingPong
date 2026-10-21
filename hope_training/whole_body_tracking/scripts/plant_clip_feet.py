@@ -154,7 +154,8 @@ def _support_margin(points_xy: np.ndarray, com: np.ndarray) -> float:
     return margin
 
 
-def plant(src: str, dst: str, pelvis_z: float, stance_width: float | None = None) -> dict:
+def plant(src: str, dst: str, pelvis_z: float, stance_width: float | None = None,
+          foot_yaw_deg: float | None = None, foot_x: float | None = None) -> dict:
     data = np.load(MOTIONS_DIR / f"{src}.npz")
     with open(MOTIONS_DIR / f"{src}.yaml", "r", encoding="utf-8") as fh:
         sidecar = yaml.safe_load(fh)
@@ -185,6 +186,15 @@ def plant(src: str, dst: str, pelvis_z: float, stance_width: float | None = None
         mid = float(root_pos[:, 1].mean())
         targets["left"][0][1] = mid + stance_width / 2
         targets["right"][0][1] = mid - stance_width / 2
+    if foot_yaw_deg is not None:
+        # toes pointing this way (deg, both feet mirrored: + = toes out). The G1 ankle has no yaw joint, so the
+        # knee bends in the plane the foot points along: toes straight ahead -> knees straight ahead
+        for side, sign in (("left", 1.0), ("right", -1.0)):
+            targets[side] = (targets[side][0], _yaw_quat(np.radians(sign * foot_yaw_deg)))
+    if foot_x is not None:
+        # ankles this far ahead of the mean pelvis (m); 0 = right under it, as in the G1 stand keyframe
+        for side in FEET:
+            targets[side][0][0] = float(root_pos[:, 0].mean()) + foot_x
 
     foot_err = {"left": [], "right": []}
     for f in range(frames):
@@ -257,7 +267,9 @@ def plant(src: str, dst: str, pelvis_z: float, stance_width: float | None = None
         fh.write(f"# {dst}: {src} with flat, fixed feet and a lower pelvis. Regenerate with\n"
                  f"#   python3 hope_training/whole_body_tracking/scripts/plant_clip_feet.py --src {src} --dst {dst} "
                  f"--pelvis-z {pelvis_z}"
-                 + (f" --stance-width {stance_width}" if stance_width is not None else "") + "\n")
+                 + (f" --stance-width {stance_width}" if stance_width is not None else "")
+                 + (f" --foot-yaw-deg {foot_yaw_deg}" if foot_yaw_deg is not None else "")
+                 + (f" --foot-x {foot_x}" if foot_x is not None else "") + "\n")
         yaml.safe_dump(out, fh, sort_keys=False, default_flow_style=None, allow_unicode=True)
     return report
 
@@ -268,9 +280,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dst", default="g1ikfist_hope_backhand_flat063")
     ap.add_argument("--stance-width", type=float, default=None,
                     help="centre the feet under the pelvis this far apart (m); default: the source stance")
+    ap.add_argument("--foot-yaw-deg", type=float, default=None,
+                    help="toe-out angle of both feet (deg, 0 = straight ahead); default: the source feet")
+    ap.add_argument("--foot-x", type=float, default=None,
+                    help="ankles this far ahead of the mean pelvis (m); default: the source feet")
     ap.add_argument("--pelvis-z", type=float, default=0.63, help="mean pelvis height of the output clip (m)")
     args = ap.parse_args(argv)
-    print(yaml.safe_dump(plant(args.src, args.dst, args.pelvis_z, args.stance_width), sort_keys=False))
+    print(yaml.safe_dump(plant(args.src, args.dst, args.pelvis_z, args.stance_width, args.foot_yaw_deg, args.foot_x), sort_keys=False))
     return 0
 
 
