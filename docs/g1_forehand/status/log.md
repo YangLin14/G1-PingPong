@@ -2,6 +2,16 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-20 22:10 — D24: backhand drill back to a normal upright stance (`g1_bh_stand`)
+* The user: the pelvis can be higher; the knees are bent inward instead of over the toes, and the deep bend
+  loads the knees. Asked for the normal pelvis height and a normal straight stance.
+* New clip `g1ikfist_hope_backhand_stand` (the G1 stand keyframe's height and feet; `plant_clip_feet.py` gained
+  `--foot-yaw-deg` and `--foot-x`). Per clip (mean over the swing): A3 backhand 0.675 m / knees 71° / hip yaw 13° /
+  ~23 N·m; flat063 0.630 m / 82° / 11° / ~27 N·m; **stand 0.755 m / 42° / 2° / ~18 N·m**. Ankle roll ≤ 0.017 rad,
+  CoM 8 cm inside the feet. Reach: 100 % of a 3000-row bank sample from the stand clip's strike pose.
+* `g1_bh_stand`: task `HOPEPingPongUnitreeG1_BH_FIST_STAND` (design: [decisions D24](../decisions.md)), warm start
+  from `g1_bh_still` `model_50299` (slim checkpoint works as a warm start), 16 384 envs, to 58 300.
+
 ### 2026-10-20 21:30 — D23 result: both backhand policies stand still; the warm start aims better (62 % in zone)
 * Runs done: `g1_bh_still` (warm start from `model_40299`) at 50 299, `g1_bh_scratch` (new model) at 9 999.
 * MuJoCo (fist_sole model, robot reset in the flat063 clip pose at the station, continuous, 40 balls × seeds;

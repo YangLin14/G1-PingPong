@@ -2,6 +2,15 @@
 
 [English](log.md) · [文件目錄](../README.zh-TW.md)
 
+### 2026-10-20 22:10 — D24：反手練習改回正常直立的站姿（`g1_bh_stand`）
+* 使用者：骨盆可以高一點；現在膝蓋往內扣、沒有對著腳尖，而且蹲很低膝蓋負擔大。要求骨盆回到正常高度、正常站直。
+* 新 clip `g1ikfist_hope_backhand_stand`（用 G1 預設站姿的高度和腳的位置；`plant_clip_feet.py` 新增 `--foot-yaw-deg` 和 `--foot-x`）。
+  各 clip（整個揮拍的平均）：A3 反手 0.675 m / 膝蓋 71° / 髖內轉 13° / 約 23 N·m；flat063 0.630 m / 82° / 11° / 約 27 N·m；
+  **stand 0.755 m / 42° / 2° / 約 18 N·m**。腳踝側傾 ≤ 0.017 rad，重心在腳的範圍內 8 cm。可及性：從 stand clip 的擊球姿勢，
+  題庫抽樣 3000 球 100% 打得到。
+* `g1_bh_stand`：任務 `HOPEPingPongUnitreeG1_BH_FIST_STAND`（設計見 [決策 D24](../decisions.zh-TW.md)），從 `g1_bh_still` `model_50299` 接續
+  （瘦身過的 checkpoint 可以直接接續），16 384 環境，到 58 300。
+
 ### 2026-10-20 21:30 — D23 結果：兩個反手策略都站得住不動；接續權重的瞄得比較準（目標區 62%）
 * 跑完：`g1_bh_still`（從 `model_40299` 接續）到 50 299，`g1_bh_scratch`（新模型）到 9 999。
 * MuJoCo（fist_sole 模型、重置時擺成 flat063 clip 的姿勢站在站位、連續打、每個 seed 40 球；瞄準補償用 seed 0–2 量，
