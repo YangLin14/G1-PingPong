@@ -2,6 +2,35 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-20 21:30 — D23 result: both backhand policies stand still; the warm start aims better (62 % in zone)
+* Runs done: `g1_bh_still` (warm start from `model_40299`) at 50 299, `g1_bh_scratch` (new model) at 9 999.
+* MuJoCo (fist_sole model, robot reset in the flat063 clip pose at the station, continuous, 40 balls × seeds;
+  aim offset fitted on seeds 0–2, tested on held-out seeds 3–5 = 120 balls per row; new per-ball foot metrics
+  `foot_slide_max_m` / `foot_lift_max_m` in `mujoco_eval_onnx.py`):
+
+  | policy | contact model | shove | legal | **in zone** | falls | foot slide p90 | foot lift > 1 cm | pelvis |
+  |---|---|---|---:|---:|---:|---:|---:|---:|
+  | warm start | venue (= training) | none | **100 %** | **62 %** | 0 % | 0.2 cm | 0 % | 0.628 m |
+  | warm start | venue | 0.3 m/s | 98 % | 58 % | 1 % | 0.9 cm | 6 % | 0.629 m |
+  | warm start | venue | 0.5 m/s | 74 % | 25 % | 13 % | 2.6 cm | 41 % | 0.635 m |
+  | new model | venue | none | 92 % | 42 % | 0 % | 0.1 cm | 0 % | 0.611 m |
+  | new model | venue | 0.3 m/s | 88 % | 35 % | 1 % | 0.7 cm | 2 % | 0.610 m |
+  | new model | venue | 0.5 m/s | 64 % | 24 % | 12 % | 2.6 cm | 41 % | 0.614 m |
+  | warm start | MuJoCo rigid | none | 3 % | 3 % | 0 % | 0.2 cm | 0 % | 0.629 m |
+  | new model | MuJoCo rigid | none | 1 % | 0 % | 0 % | 0.1 cm | 0 % | 0.612 m |
+
+  Aim offsets (venue contact): warm start (+0.26, −0.06) m, new model (+0.30, −0.00) m.
+* **Feet:** without shoves neither policy moves its feet (largest slide 2 mm, no lifts); at 0.3 m/s
+  almost never; at 0.5 m/s ~40 % of balls see a foot lift > 1 cm and 12–13 % falls (never trained with shoves).
+* **Swing:** at contact the racket direction matches the command (cos 1.00) and the face is 1° off; the speed is
+  88 % of the command (1.65 vs 1.93 m/s), which is why the returns land ~0.3 m short before the offset.
+* **Contact model gap:** with MuJoCo's own rigid ball–racket contact only 1–3 % of returns are legal (median
+  0.6–0.7 m short, mostly into the net), against 92–100 % with the venue contact model that training, the bank
+  and the planner use. The policy is not the problem there; the two physics models disagree on how hard a
+  1.6 m/s backhand block sends the ball (the forehand, at ~2.5 m/s, was much less affected). Which one matches a
+  real paddle has to be measured (research recommendation 3a: re-fit restitution).
+* Warm start wins on aim (62 % vs 42 % in zone) with equal balance; the new model stands 2 cm lower.
+
 ### 2026-10-20 16:55 — D23 status + first backhand MuJoCo videos
 * `g1_bh_still` finished at 50 299 (final checkpoint home: the session-idles fix works). Last 1000 iterations
   flat: episodes ~420–460, virtual hit 0.86, velocity pass 0.17, landed in Isaac 0.61, no falls, `feet_planted`

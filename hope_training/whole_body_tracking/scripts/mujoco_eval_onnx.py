@@ -639,7 +639,7 @@ def run_eval(args) -> dict:
                 fell = True
             pose = scene.posture()
             if pose is not None and not fell:
-                posture_log.append((pose["pelvis_z"], pose["com_z"], pose["com_offset"]))
+                posture_log.append((pose["pelvis_z"], pose["com_z"], pose["com_offset"], pose["feet"]))
             if not contacted:
                 r_pos, r_vel = scene.racket_site_state()
                 b_pos, _b_vel = scene.ball_state()
@@ -728,7 +728,13 @@ def run_eval(args) -> dict:
                     "pelvis_z_mean": round(float(np.mean([p[0] for p in posture_log])), 4),
                     "com_z_mean": round(float(np.mean([p[1] for p in posture_log])), 4),
                     "com_offset_mean": round(float(np.mean([p[2] for p in posture_log])), 4),
-                    "com_offset_max": round(float(np.max([p[2] for p in posture_log])), 4)},
+                    "com_offset_max": round(float(np.max([p[2] for p in posture_log])), 4),
+                    # feet during this ball, relative to where they stood when it was launched (D23):
+                    # largest horizontal slide of either ankle and largest ankle rise
+                    "foot_slide_max_m": round(float(max(np.linalg.norm(p[3][:, :2] - posture_log[0][3][:, :2], axis=1).max()
+                                                        for p in posture_log)), 4),
+                    "foot_lift_max_m": round(float(max((p[3][:, 2] - posture_log[0][3][:, 2]).max()
+                                                       for p in posture_log)), 4)},
                 "strike_point_w": [round(float(v), 3) for v in _strike_pt],
                 **club_record,
             }

@@ -434,7 +434,8 @@ class PingPongRealPhysicsScene:
         ab = b - a
         t = float(np.clip(np.dot(com[:2] - a, ab) / max(float(np.dot(ab, ab)), 1e-9), 0.0, 1.0))
         return {"pelvis_z": float(d.qpos[self._base_qadr + 2]), "com_z": float(com[2]),
-                "com_offset": float(np.linalg.norm(com[:2] - (a + t * ab)))}
+                "com_offset": float(np.linalg.norm(com[:2] - (a + t * ab))),
+                "feet": d.xpos[list(self._foot_bids)].copy()}
 
     def base_fallen(self, min_height: float = 0.4) -> bool:
         """Crude fall check: pelvis dropped well below the stand height."""
