@@ -2,6 +2,49 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-21 13:00 — why the backhand returns land short, why the torso moves, and D25 (`g1_bh_quiet`)
+* **Short returns: mostly the MuJoCo paddle, partly the robot.** Same 40 balls (seed 3), per contact:
+
+  | | racket speed / command | racket vs strike point | ball out vz | over the net |
+  |---|---:|---:|---:|---:|
+  | `g1_bh_scratch` 9999, MuJoCo paddle contact | 85 % | 6 cm behind | 0.74 m/s | 15 % |
+  | same, venue (measured) paddle model | 86 % | 6 cm behind | 1.47 m/s | 95 % |
+
+  1. **Paddle model (main cause in the videos).** The feed arrives with ~21 rev/s topspin (−133 rad/s). The
+     venue model (fitted to real ball–paddle measurements; the one training uses) turns that spin into lift.
+     MuJoCo's soft contact does not. On identical racket states the venue model gives vz 2.2 m/s, MuJoCo
+     0.5 m/s, so in MuJoCo the ball goes into the net. Videos should use `--racket-contact venue`.
+  2. **Robot.** The racket arrives at 85 % of the commanded speed and ~6 cm behind the strike point, so even
+     with the venue model it lands ~35 cm short. The planner aim offset (D18, +0.30 m for this model) hides
+     that: 11/12 over the net in the new video `artifacts/evals/g1_bh_scratch_model_9999/backhand_12balls_venue.mp4`.
+     The training-side fix is D25.
+* **Upper body.** New per-ball torso metrics in `mujoco_eval_onnx.py` (torso roll/pitch/yaw range, peak
+  angular speed). The reference clip turns the torso 23° (peak 1.2 rad/s). Policies (venue contact, 40 balls):
+
+  | policy | pelvis | torso yaw range | torso roll / pitch range | peak torso ang. speed |
+  |---|---:|---:|---:|---:|
+  | reference backhand clip | — | 23° | 2° / 4° | 1.2 rad/s |
+  | `g1_fh_diag` 2300 (forehand) | **0.76 m** | 34° | 10° / 6° | 2.8 rad/s |
+  | `g1_bh_scratch` 9999 | 0.61 m | 46° | 6° / 5° | 3.2 rad/s |
+  | `g1_bh_still` 50299 | 0.63 m | 42° | 10° / 10° | 3.8 rad/s |
+  | `g1_bh_stand` 57500 | 0.70 m | 47° | 7° / 10° | 3.7 rad/s |
+
+  At the end of training `g1_bh_scratch` had a torso orientation error of 10.7° and an angular-velocity
+  error of 1.5 rad/s. The racket terms (weight 14 each) outweigh torso imitation (0.5–1.0), so the torso
+  is used to chase the racket target.
+* **Paper (PingpongDuo, arXiv 2610.20579, two G1s in Isaac Lab):** what applies to us.
+  (a) Fit the ball–paddle contact to real measurements (speed-dependent restitution, tangential response);
+  our venue model already is, MuJoCo's is not, so judge returns with the venue model.
+  (b) Reward the outcome (contact, net-clearance margin, landing), not only racket tracking. They found
+  smaller racket-tracking error does not mean better returns.
+  (c) A bounded residual on the 7 racket-arm joints, gated around contact and trained on the outcome
+  with the base policy frozen: +12 points of contact and +11 of legal returns. A good next step after D25.
+  (d) Separate footwork and striking policies, each trained from states the other produces: matches our
+  plan for a separate stepping policy.
+* **D25 started:** `g1_bh_quiet` (task `HOPEPingPongUnitreeG1_BH_FIST_QUIET`), a new model, 10 000 iterations,
+  16 384 envs, session `ses-6Z99Q0N89591SRSM2HHQMRVX52`. Code: `add_outcome_terms` (G1 env, off by
+  default), `virtual_landing` now aims at the bank row's intended point (`vb_intended_xy`).
+
 ### 2026-10-21 11:30 — D24 result: upright stance works, but the run blew up at the very end
 * **Training collapsed after iteration 57 781.** Up to 57 750 it was healthy (episodes 420–450 steps,
   falls ~3 %, virtual hit ~86 %, torso 0.74 m vs reference 0.80 m). Then single batches had huge actions:
