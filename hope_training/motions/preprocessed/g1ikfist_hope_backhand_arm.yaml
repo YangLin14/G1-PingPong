@@ -1,0 +1,96 @@
+# g1ikfist_hope_backhand_arm: arm-only swing from g1ikfist_hope_backhand_stand. Regenerate with
+#   python3 hope_training/whole_body_tracking/scripts/make_arm_only_clip.py --src g1ikfist_hope_backhand_stand --dst g1ikfist_hope_backhand_arm --bank hope_training/whole_body_tracking/assets/venue_tuple/g1_bh_center_bank.npz --window 20 --waist 0.15 0.0 0.25
+name: g1ikfist_hope_backhand_arm
+swing_side: -1
+fps: 50
+frame_count: 109
+frame_time_s: 0.02
+duration_s: 2.16
+body_schema: compact_tracked_bodies_v1
+provenance: 'g1ikfist_hope_backhand_stand made arm-only by make_arm_only_clip.py (D26):
+  pelvis held at the source frame-0 orientation and mean position, waist fixed at
+  [0.15, 0.0, 0.25] rad (yaw, roll, pitch), left arm held at source frame 0, source
+  right arm plus one IK correction faded in over +-20 frames so the strike-frame racket
+  sits on the median bank strike point with the median bank face normal; legs re-solved
+  by plant_clip_feet.py. g1ikfist_hope_backhand with both legs re-solved per frame
+  by plant_clip_feet.py (D23): each ankle_roll_link held at one pose for the whole
+  clip (mean source x/y and yaw, roll = pitch = 0, sole box bottom on the floor),
+  feet centred under the mean pelvis 0.237 m apart, root lowered by -0.080 m to a
+  mean of 0.755 m; root orientation and horizontal path, waist and arms unchanged.
+  keypoint/IK retarget of hope_backhand.npz (Agibot A3) onto the Unitree G1 by hope_training/whole_body_tracking/scripts/retarget_a3_clip_to_g1_ik.py:
+  legs, waist and root from the joint-space transfer; both arms solved per frame by
+  damped least-squares IK (MuJoCo) toward the A3 elbow / wrist / racket-centre positions
+  and blade normal expressed in the torso frame and scaled by the G1/A3 segment-length
+  ratios (right upper 0.673, forearm 0.782). Preserves the A3 swing shape at G1 scale;
+  the racket-target command, not the clip, defines contact.'
+license: Apache-2.0
+strike_frame: 48
+strike_phase: 0.44444444
+strike_time_s: 0.96
+recover_end_frame: 108
+joint_order: [left_hip_pitch_joint, right_hip_pitch_joint, waist_yaw_joint, left_hip_roll_joint,
+  right_hip_roll_joint, waist_roll_joint, left_hip_yaw_joint, right_hip_yaw_joint,
+  waist_pitch_joint, left_knee_joint, right_knee_joint, left_shoulder_pitch_joint,
+  right_shoulder_pitch_joint, left_ankle_pitch_joint, right_ankle_pitch_joint, left_shoulder_roll_joint,
+  right_shoulder_roll_joint, left_ankle_roll_joint, right_ankle_roll_joint, left_shoulder_yaw_joint,
+  right_shoulder_yaw_joint, left_elbow_joint, right_elbow_joint, left_wrist_roll_joint,
+  right_wrist_roll_joint, left_wrist_pitch_joint, right_wrist_pitch_joint, left_wrist_yaw_joint,
+  right_wrist_yaw_joint]
+anchor_body: torso_link
+root_body: pelvis
+racket_link: right_wrist_yaw_link
+racket_body: pingpang_red_Link
+mount_offset_xyz: [0.083, 0.0226, 0.14]
+blade_normal_axis: y
+blade_normal_sign: -1.0
+robot: unitree_g1
+source_clip: g1ikfist_hope_backhand_stand.npz
+tracked_bodies: [pelvis, left_hip_roll_link, left_knee_link, left_ankle_roll_link,
+  right_hip_roll_link, right_knee_link, right_ankle_roll_link, torso_link, left_shoulder_roll_link,
+  left_elbow_link, left_wrist_yaw_link, right_shoulder_roll_link, right_elbow_link,
+  right_wrist_yaw_link]
+clamped_joints_rad: {}
+ik_mean_errors_m:
+  right: {elbow: 0.0312, wrist: 0.0363, racket: 0.1449, normal_deg: 5.6383}
+  left: {elbow: 0.0137, wrist: 0.0179}
+ik_strike_frame_errors: {elbow: 0.0509, wrist: 0.0675, racket: 0.1526, normal_deg: 10.4854}
+mount_rpy: [0.0, -1.570796, 0.0]
+plant_report:
+  frames: 109
+  pelvis_z_shift_m: 0.0
+  pelvis_z_m: [0.755, 0.755]
+  foot_targets:
+    left:
+      xy: [0.0076, 0.0948]
+      yaw_deg: -0.0
+    right:
+      xy: [0.0076, -0.1422]
+      yaw_deg: 0.0
+  foot_pos_err_max_mm: 0.0
+  foot_tilt_err_max_deg: 0.0
+  sole_corner_z_mm: [0.0, 0.0]
+  com_support_margin_m: [0.0606, 0.0714]
+  leg_joint_limit_margin_rad: 0.2565
+  ankle_roll_rad:
+    left: [0.0052, 0.0052]
+    right: [0.0053, 0.0053]
+arm_only_report:
+  window_frames: 20
+  strike_arm_correction_rad: {right_shoulder_pitch_joint: -0.336, right_shoulder_roll_joint: 0.161,
+    right_shoulder_yaw_joint: 0.047, right_elbow_joint: 0.21, right_wrist_roll_joint: -0.218,
+    right_wrist_pitch_joint: 0.02, right_wrist_yaw_joint: -0.127}
+  strike_racket_before_correction_m: [0.4276, -0.031, 0.9531]
+  racket_lowest_z_m: 0.9315
+  strike_racket_m: [0.4596, 0.0221, 1.0007]
+  strike_target_m: [0.4596, 0.0221, 1.0007]
+  strike_racket_speed_mps: 1.215
+  strike_face_vs_bank_median_normal_deg: 0.0
+  waist_rad: {waist_yaw_joint: 0.15, waist_roll_joint: 0.0, waist_pitch_joint: 0.25}
+  right_arm_range_rad:
+    right_shoulder_pitch_joint: [-1.635, -0.286]
+    right_shoulder_roll_joint: [-0.914, -0.589]
+    right_shoulder_yaw_joint: [0.261, 1.054]
+    right_elbow_joint: [-0.058, 1.197]
+    right_wrist_roll_joint: [0.298, 0.814]
+    right_wrist_pitch_joint: [-0.237, 0.349]
+    right_wrist_yaw_joint: [-0.163, 1.094]

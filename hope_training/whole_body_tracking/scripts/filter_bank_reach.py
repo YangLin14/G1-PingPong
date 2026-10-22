@@ -27,9 +27,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from retarget_a3_clip_to_g1 import MOTIONS_DIR, REPO_ROOT, g1_joint_limits, g1_joint_order  # noqa: E402
 
 MJCF = REPO_ROOT / "unitree" / "URDF" / "g1_29dof_pingpang_fist_sole" / "mjcf" / "g1_29dof_pingpang_fist_sole.xml"
-IK_JOINTS = ("waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint",
-             "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
+ARM_JOINTS = ("right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
              "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint")
+WAIST_JOINTS = ("waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint")
 SOFT_LIMIT_FACTOR = 0.9
 NORMAL_WEIGHT = 0.3   # m per unit of normal error
 IK_ITERS = 60
@@ -47,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="striking face: +1 red (forehand, racket +Y), -1 black (backhand)")
     ap.add_argument("--pos-tol", type=float, default=0.03)
     ap.add_argument("--face-tol-deg", type=float, default=15.0)
+    ap.add_argument("--arm-only", action="store_true",
+                    help="IK on the 7 right-arm joints only, waist held as in the clip (D26 arm-only swing)")
     ap.add_argument("--rows", type=int, default=None, help="keep at most this many reachable rows")
     args = ap.parse_args(argv)
 
@@ -56,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         side = yaml.safe_load(fh)
     clip = np.load(MOTIONS_DIR / f"{args.clip}.npz")
     f = int(side["strike_frame"])
+    IK_JOINTS = ARM_JOINTS if args.arm_only else WAIST_JOINTS + ARM_JOINTS
     order = g1_joint_order()
     lim = g1_joint_limits()
 
@@ -121,12 +124,15 @@ def main(argv: list[str] | None = None) -> int:
     np.savez(out_path, **out)
     receipt = json.loads(src.with_name(src.stem + ".receipt.json").read_text(encoding="utf-8"))
     off = out["target_position_offset"]
+    if "reach_filter" in receipt:  # re-filtering a filtered bank: keep the earlier record
+        receipt.setdefault("earlier_reach_filters", []).append(receipt.pop("reach_filter"))
     receipt["reach_filter"] = {
         "source_bank": src.name,
         "clip": args.clip,
         "strike_frame": f,
         "model": MJCF.name,
         "ik_joints": list(IK_JOINTS),
+        "arm_only": bool(args.arm_only),
         "soft_limit_factor": SOFT_LIMIT_FACTOR,
         "pos_tol_m": args.pos_tol,
         "face_tol_deg": args.face_tol_deg,

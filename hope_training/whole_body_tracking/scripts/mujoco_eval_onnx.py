@@ -390,6 +390,15 @@ def run_eval(args) -> dict:
         )
 
     default_q = runtime_cfg.action_adapter.default_q.copy()
+    # --residual-task (D26): the task's reference-residual joints follow its clip at the observed tts
+    residual = None
+    if getattr(args, "residual_task", None):
+        from reference_residual import ReferenceResidual
+
+        adapter = runtime_cfg.action_adapter
+        residual = ReferenceResidual.from_task(args.residual_task, list(profile.joint_names), adapter.action_scale,
+                                               adapter.clamp_lower, adapter.clamp_upper)
+        print(f"[mujoco_eval] reference residual: {residual.clip_name}, {len(residual.cols)} joints", file=sys.stderr)
     kp, kd = runtime_cfg.sim_kp.copy(), runtime_cfg.sim_kd.copy()
     head_idx = list(profile.passive_indices)   # (3, 4) on the A3; empty on the G1
     num_joints = profile.num_joints
@@ -425,6 +434,8 @@ def run_eval(args) -> dict:
         if runtime_cfg.passive_neck and head_idx:
             applied_action[head_idx] = 0.0
         q_des = runtime_cfg.action_adapter.decode(applied_action)
+        if residual is not None:
+            q_des = residual.apply(q_des, applied_action, target.time_to_strike)
         if runtime_cfg.passive_neck and head_idx:
             q_des[head_idx] = default_q[head_idx]
         scene.write_targets(q_des, kp, kd)
@@ -626,6 +637,7 @@ def run_eval(args) -> dict:
                     "racket_normal": [round(float(v), 4) for v in scene.racket_normal_w()],
                     "ball_spin": [round(float(v), 3) for v in scene.ball_spin_w()],
                     "geom_contact": bool(events.ball_racket_contact), "contacted_before": bool(contacted),
+                    "qpos": [round(float(v), 3) for v in scene.data.qpos[:7 + 29]],
                 })
             if club is not None and not club_state["bounced"] and not contacted:
                 club_state["bounced"] = any(
@@ -962,6 +974,9 @@ def parse_args() -> argparse.Namespace:
                         help="When the shove comes, in s after the ball is fed (uniform).")
     parser.add_argument("--reset-after-fall", action="store_true",
                         help="Continuous mode: stand the robot back up before the next ball if it fell.")
+    parser.add_argument("--residual-task", default=None, metavar="YAML",
+                        help="Task yaml with actions.joint_pos.reference_residual_bounds (D26): those joints are "
+                             "driven as clip q(tts) + bounded residual, as in training.")
     parser.add_argument("--stand-clip", default=None, metavar="NPZ",
                         help="With --serve-bank (single-station bank): start every reset in this clip's first "
                              "frame at the bank station, as training resets standing drills (D23).")

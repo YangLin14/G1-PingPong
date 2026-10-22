@@ -158,8 +158,27 @@ class ClampedJointPositionAction(JointPositionAction):
         self._passive_joint_ids = torch.tensor(
             [action_joint_ids[col] for col in passive_cols], dtype=torch.long, device=self.device
         )
+        # D26 reference residual: the listed joints are driven around the motion clip's joint angles
+        # at the current phase instead of around the default pose (see process_actions).
+        bounds = dict(self.cfg.reference_residual_bounds or {})
+        ref_cols = resolve_action_columns_by_joint_name(self, tuple(bounds))
+        self._ref_action_cols = torch.tensor(ref_cols, dtype=torch.long, device=self.device)
+        self._ref_joint_ids = torch.tensor(
+            [action_joint_ids[col] for col in ref_cols], dtype=torch.long, device=self.device
+        )
+        self._ref_bounds = torch.tensor(
+            [float(bounds[name]) for name in bounds], dtype=torch.float32, device=self.device
+        )
+        if bool((self._ref_bounds <= 0.0).any()):
+            raise ValueError(f"reference_residual_bounds must be positive, got {bounds}")
         print("[hope_actions] q_des CLAMP ACTIVE: processed targets use conservative Isaac soft "
               "limits; deploy uses hard pp_joint_limits", flush=True)
+        if bounds:
+            print(
+                "[hope_actions] REFERENCE RESIDUAL ACTIVE: q_des = clip q(phase) + "
+                f"bound * tanh(scale * a / bound) on {bounds}",
+                flush=True,
+            )
         if passive_names:
             print(
                 "[hope_actions] PASSIVE JOINTS ACTIVE: fixed at articulation defaults and zeroed "
@@ -169,6 +188,8 @@ class ClampedJointPositionAction(JointPositionAction):
 
     def process_actions(self, actions: torch.Tensor):
         super().process_actions(actions)
+        if self._ref_action_cols.numel() > 0:
+            self._apply_reference_residual()
         self._applied_raw_actions.copy_(self._raw_actions)
         self._unclamped_processed_actions.copy_(self._processed_actions)
         limits = self._asset.data.soft_joint_pos_limits[:, self._joint_ids, :]
@@ -181,6 +202,24 @@ class ClampedJointPositionAction(JointPositionAction):
             )
             self._processed_actions.index_copy_(-1, self._passive_action_cols, default_q)
             self._applied_raw_actions.index_fill_(-1, self._passive_action_cols, 0.0)
+
+    def _apply_reference_residual(self):
+        """q_des = q_clip(phase) + bound * tanh(scale * a / bound) on the reference-residual joints.
+
+        ``q_clip(phase)`` is the motion clip's own frame at the motion command's current time step,
+        WITHOUT the hold override to the default pose: during a hold the time step sits on the swing's
+        first frame, so the arm waits in the clip's ready pose. The deploy runner gets the same frame
+        from the observed time to strike (frame = strike frame - tts / dt, clamped to the clip), see
+        ``scripts/mujoco_eval_onnx.py --residual-clip``. The tanh keeps the residual within its bound.
+        """
+        motion = self._env.command_manager.get_term(self.cfg.reference_command_name)
+        q_ref = motion.motion.joint_pos[motion.time_steps].index_select(-1, self._ref_joint_ids)
+        scale = self._scale
+        if isinstance(scale, torch.Tensor):
+            scale = scale.index_select(-1, self._ref_action_cols)
+        raw = self._raw_actions.index_select(-1, self._ref_action_cols)
+        residual = self._ref_bounds * torch.tanh(raw * scale / self._ref_bounds)
+        self._processed_actions.index_copy_(-1, self._ref_action_cols, q_ref + residual)
 
     def reset(self, env_ids=None):
         super().reset(env_ids)
@@ -247,6 +286,13 @@ def passive_head_raw_action_penalty(
 @configclass
 class ClampedJointPositionActionCfg(JointPositionActionCfg):
     class_type: type = ClampedJointPositionAction
+
+    reference_residual_bounds: dict[str, float] = {}
+    """D26: exact joint name -> bound (rad). These joints follow the motion clip at the current phase plus
+    ``bound * tanh(scale * a / bound)`` instead of ``default + scale * a``. Empty = off."""
+
+    reference_command_name: str = "motion"
+    """Motion command whose clip and time step give the reference joint angles."""
 
     passive_joint_names: tuple[str, ...] = ()
     """Exact joint names fixed at default q and zeroed in applied last-action feedback.
