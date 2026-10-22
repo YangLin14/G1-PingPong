@@ -2,6 +2,68 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-22 01:50 — D26 `g1_bh_arm` started (arm-only swing around the reference)
+* `g1_bh_quiet` stopped at ~5000 (checkpoints and log in `artifacts/antioch/g1_bh_quiet/`).
+* **Clip `g1ikfist_hope_backhand_arm`:** torso angular velocity 0 for the whole clip (stand clip: 1.16 rad/s),
+  pelvis 0.755 m, feet flat and fixed, CoM ≥ 6 cm inside the feet. The strike-frame racket is exactly on the
+  median bank strike point with the median face normal; the arm correction at the strike is ≤ 0.34 rad per
+  joint. Racket speed at the strike 1.2 m/s (the stand clip's torso turn added speed; the residual and the
+  outcome rewards have to supply the rest).
+* **Arm-only reach**, fixed waist (IK, 150 rows): waist as in the stand clip 27 %; 0.15 rad turn + 0.25 rad lean
+  95 %; 0.3–0.45 rad turn + 0.25 lean 97 %. Whole bank with the new clip: 95.5 % (49 636 rows).
+* **Zero-action check in MuJoCo is not meaningful:** with all actions 0 the robot falls (even in the plain
+  default stand, 2 of 4 balls), because balance comes from the policy. The clip itself was checked
+  kinematically (above).
+* **Training:** session `ses-10Q3B60TN9CYYH102FDD664MB5`, 16 384 envs, 10 000 iterations, ~4.1 s each
+  (~11 h). The log confirms the residual is active on 17 joints, clip 1 = the arm clip, bank = `g1_bh_arm_bank`.
+* Tests: `tests/test_reference_residual.py` checks that the MuJoCo/deploy side
+  (`scripts/reference_residual.py`) gives the same joint targets as the training action.
+
+### 2026-10-22 02:00 — `g1_bh_quiet`: the arm does not swing at all; lessons from `coordinated-rl-overnight`
+* **What the robot does (MuJoCo trace, model_4500, 6 balls):** the racket stays parked at the right hip for the
+  whole swing: z 0.66–0.71 m (pelvis height), x 0.07 m, speed 0.06 m/s at the commanded strike time
+  (command: x ≈ 0.46, z ≈ 0.97, 1.6–2.2 m/s). Right shoulder pitch −0.2 rad and elbow −0.2 rad, while the clip
+  at its strike frame has −1.15 and +0.52. So it is not "torso too quiet to reach": the arm does not follow the
+  clip either. With early_termination −200, heavy torso terms and a racket reward that is 0 when far away,
+  freezing is the best the policy has found.
+* **Club branch `coordinated-rl-overnight` (triton-droids/pingpong, 10-19):** a backhand that returns 29/32
+  selected feeds with **no learned policy**, no stepping (foot drift < 1 mm), 0 falls. How:
+  1. only the **7 right-arm joints** come from the retargeted human backhand (GVHMR + GMR from `backhand_v12.mp4`);
+     **waist and left arm are held at the ready pose**; legs only add ~3° of pelvis yaw by IK plus a small
+     bounded ankle feedback (≤ 2° roll, ≤ 3° pitch);
+  2. the ball release is timed so the ball arrives at the swing's strike point;
+  3. PPO then learns only a **bounded residual** (17 upper-body joints) on top of that reference, starting
+     from an exactly zero action. The arm swings from step 0; the policy only corrects it.
+  Their racket at the strike: 0.55 m forward, 0.26 m right, 0.39 m above the pelvis.
+* **Can our bank be hit with the arm only?** IK from the stand clip's strike pose, 1500 bank rows, soft
+  limits, 3 cm / 15°: waist + arm 100 %, **arm only (waist as in clip) 66 %**, arm only with waist at 0: 55 %.
+  The clip's own racket at its strike frame is 14 cm from the median target (9 cm short, 5.5 cm high).
+* **Proposed D26:** (a) the arm (and waist) action becomes a bounded residual around the clip's joint targets
+  at the current phase, so the swing is there from the start; (b) waist held near the clip (small bound);
+  (c) bank re-filtered to arm-reachable rows (the rest go to the stepping policy); (d) early_termination
+  back to the STAND value.
+
+### 2026-10-22 00:45 — D25 `g1_bh_quiet` is stuck: quiet torso, but no hits
+* At iteration 4809/10 000: 0 falls, 89% of episodes time out, but **virtual hit rate 0** and the racket
+  position reward is exactly 0 (the racket never gets close to the target). `g1_bh_scratch` started
+  hitting at ~3000 and was at 42% by 4000.
+
+  | iteration | scratch: racket_position | scratch: hit rate | scratch: torso error | quiet: racket_position | quiet: hit rate | quiet: torso error |
+  |---:|---:|---:|---:|---:|---:|---:|
+  | 2000 | 0.002 | 0 | 12.0° | 0.000 | 0 | 4.0° |
+  | 3000 | 0.005 | 0 | 9.6° | 0.000 | 0 | 3.4° |
+  | 4000 | 0.509 | 0.42 | 9.4° | 0.000 | 0 | 3.3° |
+
+* MuJoCo, 12 balls, venue contact: model_4500 touched 1/12, racket misses the ball by a median 22 cm
+  (model_1500: 19 cm, so no progress). Torso yaw 22° per ball (reference 23°), peak 1.1 rad/s, pelvis 0.685 m,
+  foot slide ≤ 3 mm. Video: `artifacts/evals/g1_bh_quiet_model_4500/backhand_12balls.mp4`.
+* **Why:** the reference backhand clip alone does not put the racket on the strike points; the scratch run
+  got there by turning the torso about twice as much as the clip (46°). D25's torso terms (weight 2.0,
+  tight std) make leaving the clip expensive from iteration 0, and the racket reward is ~0 until the racket is
+  within a few cm, so there is no signal pulling the policy off the clip. It has settled in that local optimum.
+* **Fix proposed:** warm-start the QUIET task from `g1_bh_scratch` model_9999 (already hits 81%), so the
+  torso terms trim an existing swing instead of preventing one from being learned.
+
 ### 2026-10-21 13:00 — why the backhand returns land short, why the torso moves, and D25 (`g1_bh_quiet`)
 * **Short returns: mostly the MuJoCo paddle, partly the robot.** Same 40 balls (seed 3), per contact:
 
