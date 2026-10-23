@@ -2,6 +2,28 @@
 
 [繁體中文](log.zh-TW.md) · [Docs index](../README.md)
 
+### 2026-10-22 17:40 — D27 `g1_bh_fast` started (1.5x faster arm at the strike)
+* Clip `g1ikfist_hope_backhand_arm_fast`: strike racket 1.72 m/s (was 1.2; bank median 1.74), strike pose and
+  frame unchanged, arm joints ≤ 11 rad/s, CoM margin ≥ 0.06 m, feet flat.
+* Warm start from `g1_bh_arm` model_9999 (the user preferred it in the video; on 48 balls model_6500 scored
+  higher in-zone, 0.62 vs 0.52), 5000 more iterations.
+
+### 2026-10-22 17:00 — D26 `g1_bh_arm` finished (10000 iterations); model_6500 vs model_9999
+* MuJoCo, 48 backhand balls (seed 2): both checkpoints contact 48/48, legal 48/48, falls 0.
+  model_6500: in-zone 0.62, club success 0.50, apex 0.83. model_9999: in-zone 0.52, club success 0.38, apex 0.75.
+* model_9999, 12 balls (seed 1, video `artifacts/evals/g1_bh_arm_9999/`): legal 11/12, short by median 0.11 m
+  (max 0.33 m; model_6500 max 0.75 m). Torso roll range 5–9°, pitch 5–12°, yaw 10–21°; pelvis 0.77 m; foot slide ≤ 2 cm.
+* Late training did not help the club metric; model_6500 is the better backhand checkpoint for now.
+
+### 2026-10-22 12:10 — D26 `g1_bh_arm` model_6500 in MuJoCo: the arm swings, 11/12 legal
+* Training at ~8000/10000; training-side virtual hit 0.84, in-bounds 0.93, feet_planted terminations 0.17.
+* MuJoCo (12 backhand balls, `--residual-task`, `artifacts/evals/g1_bh_arm_6500/`): contact 12/12,
+  net clear 11/12, legal 11/12, falls 0, in-zone 5/12, club success 3/12.
+* The racket now reaches the ball (min distance 5–9 cm) instead of parking at the hip (g1_bh_quiet).
+* Posture: pelvis 0.78 m, foot slide ≤ 2 cm, torso roll range ~7°, pitch ~6°, yaw 10–20°.
+* Still short: landing x is short of the intended point by up to 0.75 m (median ~0.16 m). Next lever: strike speed
+  (reference 1.2 m/s vs bank ~1.7 m/s).
+
 ### 2026-10-22 01:50 — D26 `g1_bh_arm` started (arm-only swing around the reference)
 * `g1_bh_quiet` stopped at ~5000 (checkpoints and log in `artifacts/antioch/g1_bh_quiet/`).
 * **Clip `g1ikfist_hope_backhand_arm`:** torso angular velocity 0 for the whole clip (stand clip: 1.16 rad/s),

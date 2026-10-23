@@ -24,6 +24,12 @@ For every frame this script
 The legs are then re-solved by ``plant_clip_feet.plant`` (flat fixed soles under the still pelvis), which
 also recomputes the body tracks and velocities and writes the final clip.
 
+``--speedup s`` (D27, default 1 = off) then plays the right arm faster around the strike with a time warp
+that keeps the strike frame, the strike pose and the clip length: source time ``g(u)`` for clip time
+``u = f - strike`` with ``g'(u) = 1 + (s - 1) * (cos(pi u / W) + cos(2 pi u / W)) / 2`` for ``|u| < W``
+(``W = --speedup-window``), identity outside. ``g'(0) = s``, so the strike racket speed scales by ~s; the
+warp has zero net shift, so the frames just before and after the core play a little slower.
+
     python3 hope_training/whole_body_tracking/scripts/make_arm_only_clip.py \\
         --src g1ikfist_hope_backhand_stand --dst g1ikfist_hope_backhand_arm \\
         --bank hope_training/whole_body_tracking/assets/venue_tuple/g1_bh_center_bank.npz
@@ -54,7 +60,8 @@ IK_DAMPING = 1e-3
 
 
 def make(src: str, dst: str, bank_path: str, face_sign: float = -1.0, window: int = 20,
-         waist: tuple[float, float, float] = (0.15, 0.0, 0.25)) -> dict:
+         waist: tuple[float, float, float] = (0.15, 0.0, 0.25), speedup: float = 1.0,
+         speedup_window: int = 20) -> dict:
     import mujoco
 
     data = np.load(MOTIONS_DIR / f"{src}.npz")
@@ -128,6 +135,14 @@ def make(src: str, dst: str, bank_path: str, face_sign: float = -1.0, window: in
     frame = np.arange(frames)
     w = np.where(np.abs(frame - strike) < window, 0.5 * (1 + np.cos(np.pi * (frame - strike) / window)), 0.0)
     q[:, arm] = np.clip(q[:, arm] + w[:, None] * dq, lo, hi)
+    if speedup != 1.0:
+        if not 1.0 <= speedup < 2.7:
+            raise ValueError(f"speedup must be in [1, 2.7) to keep the warp monotone, got {speedup}")
+        u = (frame - strike).astype(np.float64)
+        W = float(speedup_window)
+        g = u + (speedup - 1.0) * 0.5 * (W / np.pi * np.sin(np.pi * u / W) + W / (2 * np.pi) * np.sin(2 * np.pi * u / W))
+        src_f = np.clip(np.where(np.abs(u) < W, g, u) + strike, 0, frames - 1)
+        q[:, arm] = np.stack([np.interp(src_f, frame, q[:, j]) for j in arm], axis=1)
 
     path = np.empty((frames, 3))
     for f in range(frames):
@@ -168,6 +183,9 @@ def make(src: str, dst: str, bank_path: str, face_sign: float = -1.0, window: in
         "strike_target_m": [round(float(v), 4) for v in target],
         "strike_racket_speed_mps": round(float(np.linalg.norm(x_next - x_prev) * fps / 2), 3),
         "strike_face_vs_bank_median_normal_deg": round(float(np.degrees(np.arccos(np.clip(n_strike @ target_normal, -1, 1)))), 2),
+        "speedup": speedup,
+        "speedup_window_frames": speedup_window,
+        "right_arm_max_speed_rad_s": {n: round(float(np.abs(np.gradient(out["joint_pos"][:, order.index(n)])).max() * fps), 2) for n in ARM},
         "waist_rad": {n: round(float(v), 4) for n, v in zip(HELD[:3], waist)},
         "right_arm_range_rad": {n: [round(float(q[:, order.index(n)].min()), 3), round(float(q[:, order.index(n)].max()), 3)] for n in ARM},
     }
@@ -177,14 +195,16 @@ def make(src: str, dst: str, bank_path: str, face_sign: float = -1.0, window: in
         f"{src} made arm-only by make_arm_only_clip.py (D26): pelvis held at the source frame-0 orientation and mean "
         f"position, waist fixed at {list(waist)} rad (yaw, roll, pitch), left arm held at source frame 0, source right arm plus one IK correction faded in over "
         f"+-{window} frames so the strike-frame racket sits on the median bank strike point with the median bank face "
-        f"normal; legs re-solved by plant_clip_feet.py. " + str(sidecar.get("provenance", ""))
+        f"normal; " + (f"right arm time-warped {speedup}x at the strike over +-{speedup_window} frames (D27); " if speedup != 1.0 else "")
+        + "legs re-solved by plant_clip_feet.py. " + str(sidecar.get("provenance", ""))
     )
     side["arm_only_report"] = report
     side["plant_report"] = plant_report
     with open(MOTIONS_DIR / f"{dst}.yaml", "w", encoding="utf-8") as fh:
         fh.write(f"# {dst}: arm-only swing from {src}. Regenerate with\n"
                  f"#   python3 hope_training/whole_body_tracking/scripts/make_arm_only_clip.py --src {src} --dst {dst} "
-                 f"--bank {bank_path} --window {window} --waist {' '.join(str(v) for v in waist)}\n")
+                 f"--bank {bank_path} --window {window} --waist {' '.join(str(v) for v in waist)}"
+                 + (f" --speedup {speedup} --speedup-window {speedup_window}" if speedup != 1.0 else "") + "\n")
         yaml.safe_dump(side, fh, sort_keys=False, default_flow_style=None, allow_unicode=True)
     return report
 
@@ -198,8 +218,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--waist", type=float, nargs=3, default=(0.15, 0.0, 0.25), metavar=("YAW", "ROLL", "PITCH"),
                     help="fixed waist angles for the whole clip (rad)")
     ap.add_argument("--window", type=int, default=20, help="frames each side of the strike the correction fades over")
+    ap.add_argument("--speedup", type=float, default=1.0, help="right-arm speed factor at the strike (D27)")
+    ap.add_argument("--speedup-window", type=int, default=20, help="frames each side of the strike the time warp spans")
     args = ap.parse_args(argv)
-    print(yaml.safe_dump(make(args.src, args.dst, args.bank, args.face_sign, args.window, tuple(args.waist)), sort_keys=False))
+    print(yaml.safe_dump(make(args.src, args.dst, args.bank, args.face_sign, args.window, tuple(args.waist),
+                              args.speedup, args.speedup_window), sort_keys=False))
     return 0
 
 
